@@ -74,9 +74,6 @@
     MPerPxY: 40,
   };
 
-  // rails everywhere on this straight
-  const RAILS_ENABLED = true;
-
   const CLIFF_PUSH = { distanceGain: 0.6, capPerFrame: 0.5 };
   const FAILSAFE   = { belowRoadUnits: 600 };
 
@@ -377,16 +374,19 @@
 
   let segments=[], trackLength=0;
 
-  function addSegment(curve, y, hillMult = 1, railPresent = true, boostStart = null, boostEnd = null){
+  function addSegment(curve, y, hillMult = 1, features = {}){
     const n=segments.length;
+    const prevY = segments.length ? segments[n-1].p2.world.y : 0;
+    const featureClone = { ...features };
+    if (!('rail' in featureClone)) featureClone.rail = true;
+    if (Array.isArray(featureClone.boostRange)) featureClone.boostRange = [...featureClone.boostRange];
+    featureClone.boost = !!featureClone.boost;
     segments.push({
       index:n,
       curve,
       hillMult,
-      rail: railPresent,
-      boostStart,
-      boostEnd,
-      p1:{ world:{ y: segments.length ? segments[n-1].p2.world.y : 0, z:n*segmentLength }, camera:{}, screen:{} },
+      features: featureClone,
+      p1:{ world:{ y: prevY, z:n*segmentLength }, camera:{}, screen:{} },
       p2:{ world:{ y:y,                                      z:(n+1)*segmentLength }, camera:{}, screen:{} },
       sprites:[], cars:[], pickups:[]
     });
@@ -404,7 +404,7 @@
     return segments.length ? segments[segments.length-1].p2.world.y : 0;
   }
 
-  function addRoad(enter, hold, leave, curve, dyInSegments = 0, hillMult = 1, railPresent = true, boostStart = null, boostEnd = null){
+  function addRoad(enter, hold, leave, curve, dyInSegments = 0, hillMult = 1, featurePayload = {}){
     const e = Math.max(0, enter|0), h = Math.max(0, hold|0), l = Math.max(0, leave|0);
     const total = e + h + l;
     if (total <= 0) return;
@@ -412,24 +412,62 @@
     const startY = lastY();
     const endY   = startY + (dyInSegments * segmentLength);
 
+    const extras = { ...featurePayload };
+    const railPresent = ('rail' in extras) ? !!extras.rail : true;
+    const boostRangeRaw = Array.isArray(extras.boostRange) ? extras.boostRange : null;
+    delete extras.rail;
+    delete extras.boostRange;
+
+    let boostStart = null;
+    let boostEnd = null;
+    if (boostRangeRaw && boostRangeRaw.length >= 2){
+      const start = Math.floor(Math.max(0, boostRangeRaw[0]));
+      const end = Math.floor(Math.max(start, boostRangeRaw[1]));
+      boostStart = start;
+      boostEnd = end;
+    }
+
+    const hasElevationChange = dyInSegments !== 0;
+    const effectiveHillMult = hillMult > 0 ? hillMult : 1;
+    const shapeProgress = (tRaw) => {
+      if (!hasElevationChange || effectiveHillMult === 1) return tRaw;
+      const t = tRaw < 0 ? 0 : (tRaw > 1 ? 1 : tRaw);
+      return Math.pow(t, effectiveHillMult);
+    };
+
+    const buildFeatures = (segOffset) => {
+      const segFeatures = { ...extras, rail: railPresent };
+      if (boostStart != null && boostEnd != null){
+        segFeatures.boostRange = [boostStart, boostEnd];
+        segFeatures.boost = segOffset >= boostStart && segOffset <= boostEnd;
+      }
+      return segFeatures;
+    };
+
+    let segOffset = 0;
+    const computeY = (progressRaw) => easeInOut(startY, endY, shapeProgress(progressRaw));
+
     for (let n = 0; n < e; n++){
       const tCurve = e > 0 ? n / e : 1;
       addSegment(easeIn(0, curve, tCurve),
-                 easeInOut(startY, endY, (0 + n) / total),
-                 hillMult, railPresent, boostStart, boostEnd);
+                 computeY((0 + n) / total),
+                 hillMult, buildFeatures(segOffset));
+      segOffset++;
     }
 
     for (let n = 0; n < h; n++){
       addSegment(curve,
-                 easeInOut(startY, endY, (e + n) / total),
-                 hillMult, railPresent, boostStart, boostEnd);
+                 computeY((e + n) / total),
+                 hillMult, buildFeatures(segOffset));
+      segOffset++;
     }
 
     for (let n = 0; n < l; n++){
       const tCurve = l > 0 ? n / l : 1;
       addSegment(easeInOut(curve, 0, tCurve),
-                 easeInOut(startY, endY, (e + h + n) / total),
-                 hillMult, railPresent, boostStart, boostEnd);
+                 computeY((e + h + n) / total),
+                 hillMult, buildFeatures(segOffset));
+      segOffset++;
     }
   }
 
@@ -503,15 +541,22 @@
       let c = toFloat(curveRaw, 0);
       let y = toFloat(dyRaw, 0);
       const rail = toBool(railRaw, true);
-      const boostStart = toFloat(boostStartRaw, null);
-      const boostEnd = toFloat(boostEndRaw, null);
+      const boostStart = (boostStartRaw === '' || boostStartRaw == null) ? null : toInt(boostStartRaw, null);
+      const boostEnd = (boostEndRaw === '' || boostEndRaw == null) ? null : toInt(boostEndRaw, null);
       const reps = Math.max(1, toInt(repeatsRaw, 1));
 
       if (type === 'straight'){ c = 0; y = 0; }
       else if (type === 'curve' && (dyRaw === '' || dyRaw == null)) { y = 0; }
 
+      const features = { rail };
+      if (boostStart != null && boostEnd != null && boostEnd >= boostStart) {
+        const start = Math.max(0, boostStart|0);
+        const end = Math.max(start, boostEnd|0);
+        features.boostRange = [start, end];
+      }
+
       for (let i=0;i<reps;i++){
-        addRoad(e, h, l, c, y, hillMult, rail, boostStart, boostEnd);
+        addRoad(e, h, l, c, y, hillMult, features);
       }
     }
 
@@ -549,6 +594,12 @@
   const overlap  = (ax, aw, bx, bw, scale=1.0) => Math.abs(ax - bx) < (aw + bw) * scale;
 
   const segmentAtS=s=>segments[Math.floor(( (s%trackLength+trackLength)%trackLength )/segmentLength) % segments.length];
+  const segmentAtIndex = (idx) => {
+    if (!segments.length) return null;
+    const count = segments.length;
+    const wrapped = ((idx % count) + count) % count;
+    return segments[wrapped];
+  };
 
   function elevationAt(s){
     if(trackLength<=0) return 0;
@@ -578,15 +629,6 @@
       rightA: {...TUNE_TRACK.cliffRightA},
       rightB: {...TUNE_TRACK.cliffRightB},
     };
-  }
-  function hasRailAt(segIndex){
-    if (!RAILS_ENABLED) return false;
-    if (!segments.length) return false;
-    const count = segments.length;
-    const idx = ((segIndex % count) + count) % count;
-    const seg = segments[idx];
-    if (!seg || seg.rail == null) return true;
-    return !!seg.rail;
   }
 
   // ---------- World<->screen ----------
@@ -782,7 +824,8 @@
   function playerLateralLimit(segIndex){
     const halfW = playerHalfWN();
     const base  = 2 - halfW - PLAYER_PAD;
-    if (hasRailAt(segIndex)) {
+    const seg = segmentAtIndex(segIndex);
+    if (seg && seg.features && seg.features.rail) {
       const railInner = TUNE_TRACK.railInset - halfW - PLAYER_PAD;
       return Math.min(base, railInner);
     }
@@ -816,6 +859,11 @@
     applyCliffPushForce(steerDx);
     playerN = clamp(playerN, -2, 2);
 
+    let segNow = segmentAtS(phys.s);
+    const segFeatures = segNow ? segNow.features : null;
+    const boostZoneActive = !!(segFeatures && segFeatures.boost);
+    if (boostZoneActive) phys.boostFlashTimer = Math.max(phys.boostFlashTimer, 0.15);
+
     const prevGrounded = phys.grounded;
     if (phys.grounded) {
       const { dy } = groundProfileAt(phys.s);
@@ -827,7 +875,11 @@
       a += -TUNE_PLAYER.rollFriction*phys.vtan;
       phys.vtan = clamp(phys.vtan + a*dt, -TUNE_PLAYER.maxSpeed, TUNE_PLAYER.maxSpeed);
 
-      const travelV = boosting ? phys.vtan * DRIFT.boostMult : phys.vtan;
+      const zoneMult = boostZoneActive
+        ? ((segFeatures && segFeatures.boostMultiplier != null) ? segFeatures.boostMultiplier : TUNE_PLAYER.crestBoostMultiplier)
+        : 1;
+      const travelBase = boosting ? phys.vtan * DRIFT.boostMult : phys.vtan;
+      const travelV = travelBase * zoneMult;
       phys.s += travelV * tx * dt;
       phys.y  = groundProfileAt(phys.s).y;
 
@@ -908,7 +960,7 @@
     prevPlayerN = playerN;
 
     // rail bounds and scraping slowdown
-    const segNow = segmentAtS(phys.s);
+    segNow = segmentAtS(phys.s);
     const bound = playerLateralLimit(segNow.index);
     const preClamp = playerN;
     playerN = clamp(playerN, -bound, bound);
@@ -993,7 +1045,8 @@
   function npcLateralLimit(segIndex, car) {
     const half = carHalfWN(car);
     const base = 1 - half - NPC.edgePad;
-    if (hasRailAt(segIndex)) {
+    const seg = segmentAtIndex(segIndex);
+    if (seg && seg.features && seg.features.rail) {
       const railInner = TUNE_TRACK.railInset - half - NPC.edgePad;
       return Math.min(base, railInner);
     }
@@ -1093,10 +1146,20 @@
   function spawnPickups(){
     for (const s of segments) s.pickups.length = 0;
     pickupCollected = 0;
-    addPickupTrail(12, 24, 2, 0.00);
-    addPickupTrail(80, 30, 2, -0.35);
-    addPickupTrail(140, 30, 2, 0.35);
-    addPickupTrail(segments.length>>1, 16, 1, 0.0);
+    const boostSegments = segments.filter(seg => seg.features && seg.features.boost);
+    if (boostSegments.length > 0) {
+      for (const seg of boostSegments) {
+        const offset = (seg.features && seg.features.boostPickupOffset != null)
+          ? seg.features.boostPickupOffset
+          : 0;
+        addPickup(seg.index, offset);
+      }
+    } else {
+      addPickupTrail(12, 24, 2, 0.00);
+      addPickupTrail(80, 30, 2, -0.35);
+      addPickupTrail(140, 30, 2, 0.35);
+      addPickupTrail(segments.length>>1, 16, 1, 0.0);
+    }
     pickupTotal = segments.reduce((acc,s)=>acc+s.pickups.length, 0);
   }
   function resolvePickupCollisionsInSeg(seg){
@@ -1423,7 +1486,7 @@
         if (!rightIsNegative) drawRightCliffs(debugFill);
 
         // guardrails — world-space short walls (projected like cliffs)
-        if (hasRailAt(segIndex)) {
+        if (seg && seg.features && seg.features.rail) {
           const texRail = textures.rail || glr.whiteTex;
 
           // Left rail: inner x at road edge, top y from p1LS/p2LS
@@ -1587,11 +1650,11 @@
     } catch (err) {
       console.warn('CSV build failed, using fallback', err);
       segments.length = 0;
-      addRoad(25,25,25,0,0,1,true,0,0);
-      addRoad(50,50,50,2,20,1,true,0,0);
-      addRoad(40,40,40,0,60,1,true,0,0);
-      addRoad(100,80,60,-4,-20,1,true,0,0);
-      addRoad(25,25,25,0,0,1,true,0,0);
+      addRoad(25,25,25,0,0,1);
+      addRoad(50,50,50,2,20,1);
+      addRoad(40,40,40,0,60,1);
+      addRoad(100,80,60,-4,-20,1);
+      addRoad(25,25,25,0,0,1);
       trackLength = segments.length * segmentLength;
     }
 
