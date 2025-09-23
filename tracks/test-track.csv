@@ -3,12 +3,12 @@
 # Provide a boost window via boostStart/boostEnd (segment offsets within the generated block) to auto-spawn pickups and apply the boost multiplier.
 
 # warmup
-straight,25,25,25,1,0,0,true,0,0,1,flat intro
+straight,25,25,25,1,0,0,false,0,0,1,flat intro
 
 # light uphill left, then a hill crest
-road,50,50,50,1,2,20,true,0,0,1,gentle left + up
-hill,40,40,40,1.6,0,60,true,0,0,1,big hill with sharper crest
+road,50,50,50,1,2,20,false,0,0,1,gentle left + up
+hill,40,40,40,1.6,0,60,false,0,0,1,big hill with sharper crest
 
 # long right downhill and settle
 road,100,80,60,1,-4,-20,false,40,90,1,long right + down (rails off, boost window)
-straight,25,25,25,1,0,0,true,0,0,2,settle
+straight,25,25,25,1,0,0,false,0,0,2,settle
