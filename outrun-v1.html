@@ -87,6 +87,12 @@
     color: [0.1, 0.5, 0.8],
   };
 
+  const DEFAULT_COLORS = {
+    road: [0.5, 0.5, 0.5, 1],
+    wall: [0.5, 0.5, 0.5, 1],
+    rail: [0.5, 0.5, 0.5, 1],
+  };
+
   // DEBUG fill mode for road & cliffs (alternating colors)
   const DEBUG = { mode: 'off', span: 3, colors: { a:[1,1,1,1], b:[0.82,0.90,1,1] } };
 
@@ -555,7 +561,7 @@
           x4: xb + wb * k0, y4: yb
         };
         const uv = { u1:u0, v1:vv0, u2:u1, v2:vv0, u3:u1, v3:vv1, u4:u0, v4:vv1 };
-        glr.drawQuadTextured(tex, quad, uv, [1,1,1,1], [fA,fA,fB,fB]);
+        glr.drawQuadTextured(tex, quad, uv, DEFAULT_COLORS.road, [fA,fA,fB,fB]);
       }
     }
   }
@@ -1248,8 +1254,8 @@
             glr.drawQuadSolid(L.quadA, tint, fogCliff);
             glr.drawQuadSolid(L.quadB, tint, fogCliff);
           } else {
-            glr.drawQuadTextured(cliffTex, L.quadA, uvA, [1,1,1,1], fogCliff);
-            glr.drawQuadTextured(cliffTex, L.quadB, uvB, [1,1,1,1], fogCliff);
+            glr.drawQuadTextured(cliffTex, L.quadA, uvA, DEFAULT_COLORS.wall, fogCliff);
+            glr.drawQuadTextured(cliffTex, L.quadB, uvB, DEFAULT_COLORS.wall, fogCliff);
           }
         };
         const drawRightCliffs = (solid=false) => {
@@ -1259,8 +1265,8 @@
             glr.drawQuadSolid(R.quadA, tint, fogCliff);
             glr.drawQuadSolid(R.quadB, tint, fogCliff);
           } else {
-            glr.drawQuadTextured(cliffTex, R.quadA, uvA, [1,1,1,1], fogCliff);
-            glr.drawQuadTextured(cliffTex, R.quadB, uvB, [1,1,1,1], fogCliff);
+            glr.drawQuadTextured(cliffTex, R.quadA, uvA, DEFAULT_COLORS.wall, fogCliff);
+            glr.drawQuadTextured(cliffTex, R.quadB, uvB, DEFAULT_COLORS.wall, fogCliff);
           }
         };
 
@@ -1296,7 +1302,7 @@
           };
           const uvL = { u1:0, v1:v0Rail, u2:1, v2:v0Rail, u3:1, v3:v1Rail, u4:0, v4:v1Rail };
           const fLs1 = fogFactorFromZ(p1LS.camera.z), fLs2 = fogFactorFromZ(p2LS.camera.z);
-          glr.drawQuadTextured(texRail, quadL, uvL, [1,1,1,1], [fLs1,fLs1,fLs2,fLs2]);
+          glr.drawQuadTextured(texRail, quadL, uvL, DEFAULT_COLORS.rail, [fLs1,fLs1,fLs2,fLs2]);
 
           // Right rail
           const xR1 = x1 + w1 * TUNE_TRACK.railInset;
@@ -1310,7 +1316,7 @@
           };
           const uvR = { u1:0, v1:v0Rail, u2:1, v2:v0Rail, u3:1, v3:v1Rail, u4:0, v4:v1Rail };
           const fRs1 = fogFactorFromZ(p1RS.camera.z), fRs2 = fogFactorFromZ(p2RS.camera.z);
-          glr.drawQuadTextured(texRail, quadR, uvR, [1,1,1,1], [fRs1,fRs1,fRs2,fRs2]);
+          glr.drawQuadTextured(texRail, quadR, uvR, DEFAULT_COLORS.rail, [fRs1,fRs1,fRs2,fRs2]);
         }
 
       } else if (it.type==='npc' || it.type==='prop'){
