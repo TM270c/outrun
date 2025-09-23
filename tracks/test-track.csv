@@ -1,11 +1,25 @@
 # type,enter,hold,leave,curve,dy,repeats,rail,boost,roadTex,cliffTex,railTex,sprites,cliff,comment
-# warmup
-straight,20,30,20,0,0,1,on,,0-1023@20,0-1023@3,0-1023@20,,,flat intro
+# global tiling defaults
+texture,,,,,,,,0-4095@18,0-4095@4,0-4095@18,,,global tiling across the route
 
-# gentle left climb then crest
-road,50,50,50,3,24,1,off,40-80,this@12,this@12,this@12,PALM|-1.35|10;PALM|1.35|120,leftA=9000:1200;leftB=1800:6000,gentle left climb
-hill,40,40,40,0,-30,1,on,,,+0-+120@3,+0-+120@12,SIGN|-1.05|5;SIGN|1.05|35,rightA=4200:2000,big hill
+# warmup coast
+straight,30,40,30,0,0,1,on,,this@18,this@3,this@18,PALM|-1.20|0;PALM|1.20|40,,gentle beachside intro
 
-# long right downhill and settle
-road,100,80,60,-4,-20,1,on,on,this@18,this@4,this@18,PALM|-1.6|40;PALM|1.6|140;SIGN|-1.1|20;SIGN|1.1|80,,long right + down
-straight,25,25,25,0,0,2,on,,this@20,this@3,this@20,PALM|-1.2|0;PALM|1.2|30,,settle
+# climbing esses with open cliffs
+road,40,60,40,2,18,1,off,,this@14,this@5,this@14,TREE|-1.40|12;TREE|1.40|108,leftA=9200:1600;leftB=2200:6200,gentle left-hand rise
+road,40,60,40,-2,12,1,off,,this@14,this@5,this@14,PALM|-1.45|36;PALM|1.45|124,rightA=4200:1800,sweeping back to the right
+
+# cresting summit
+hill,45,60,45,0,70,1,on,,this@10,this@4,this@10,SIGN|-1.05|18;SIGN|1.05|52,leftA=8500:1800;rightA=4500:2600,high ridge outlook
+
+# long downhill S with boost ribbon
+road,60,70,50,-3,-26,1,on,20-90,this@16,this@4,this@16,PALM|-1.70|28;PALM|1.70|92,,sweeping right-hand drop with boost
+road,60,70,60,3,-12,1,on,,this@16,this@4,this@16,TREE|-1.50|24;TREE|1.50|118,leftA=9000:1400;rightA=4300:2100,rolling left counter-arc
+
+# dive into the valley then breathe
+hill,50,60,50,0,-65,1,on,,this@12,this@4,this@12,SIGN|-1.10|14;SIGN|1.10|46,rightB=2600:5200,valley plummet
+straight,35,45,35,0,0,1,on,,this@18,this@3,this@18,PALM|-1.30|0;PALM|1.30|30,,short respite
+
+# rhythmic esses finale
+road,45,55,45,-2,10,2,off,15-30,this@16,this@5,this@16,TREE|-1.55|8;TREE|1.55|68,,paired sunset esses
+straight,40,40,40,0,0,1,on,,this@18,this@3,this@18,SIGN|-1.05|6;SIGN|1.05|34,,home stretch
