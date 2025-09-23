@@ -1,10 +1,10 @@
 # warmup
-straight,25,25,25,0,0,1,flat intro
+straight,25,25,25,1,0,0,true,0,0,1,flat intro
 
 # light uphill left, then a hill crest
-road,50,50,50,2,20,1,gentle left + up
-hill,40,40,40,0,60,1,big hill
+road,50,50,50,1,2,20,true,0,0,1,gentle left + up
+hill,40,40,40,1,0,60,true,0,0,1,big hill
 
 # long right downhill and settle
-road,100,80,60,-4,-20,1,long right + down
-straight,25,25,25,0,0,2,settle
+road,100,80,60,1,-4,-20,true,0,0,1,long right + down
+straight,25,25,25,1,0,0,true,0,0,2,settle
