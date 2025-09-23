@@ -87,6 +87,12 @@
     color: [0.1, 0.5, 0.8],
   };
 
+  const DEFAULT_COLORS = {
+    road: [0.5, 0.5, 0.5, 1],
+    wall: [0.5, 0.5, 0.5, 1],
+    rail: [0.5, 0.5, 0.5, 1],
+  };
+
   // DEBUG fill mode for road & cliffs (alternating colors)
   const DEBUG = { mode: 'off', span: 3, colors: { a:[1,1,1,1], b:[0.82,0.90,1,1] } };
 
@@ -134,6 +140,7 @@
   const setOverlay = v => { overlayOn = v; cSide.style.display = overlayOn ? 'block' : 'none'; };
   setOverlay(true);
   addEventListener('keydown',e=>{ if(e.code==='KeyB') setOverlay(!overlayOn); });
+  addEventListener('keydown',e=>{ if(e.code==='KeyL') resetScene().catch(err=>console.error(err)); });
 
   class GLRenderer {
     constructor(canvas) {
@@ -330,17 +337,17 @@
 
   // ---------- Assets: unified manifest & loader ----------
   const assetManifest = {
-    road:      'road-seg.png',
-    rail:      'guardrail.png',
-    cliff:     'cliff.png',
-    boost:     'boost.png',
-    horizon1:  'paralax-1.png',
-    horizon2:  'paralax-2.png',
-    horizon3:  'paralax-3.png',
-    car:       'car.png',
-    semi:      'semi.png',
-    tree:      'tree.png',
-    sign:      'billboard.png',
+    road:      'tex/road-seg.png',
+    rail:      'tex/guardrail.png',
+    cliff:     'tex/cliff.png',
+    boost:     'tex/boost.png',
+    horizon1:  'tex/paralax-1.png',
+    horizon2:  'tex/paralax-2.png',
+    horizon3:  'tex/paralax-3.png',
+    car:       'tex/car.png',
+    semi:      'tex/semi.png',
+    tree:      'tex/tree.png',
+    sign:      'tex/billboard.png',
   };
 
   const textures = {};
@@ -364,7 +371,7 @@
 
   const getKindScale = (kind) => (kind === 'PLAYER' ? TUNE_PLAYER.playerScale : 1.0);
 
-  // ---------- Track data (straight only) ----------
+  // ---------- Track data & builder ----------
   const segmentLength = TUNE_TRACK.segmentLength;
   const roadWidthAt = (s) => TUNE_TRACK.roadWidth;
 
@@ -379,9 +386,92 @@
       sprites:[], cars:[], pickups:[]
     });
   }
-  function buildStraightTrack(n=600, y=0){
+
+  const easeIn    = (a,b,t) => a + (b-a) * (t*t);
+  const easeInOut = (a,b,t) => {
+    t *= 2;
+    if (t < 1) return a + (b-a)/2 * (t*t);
+    t -= 1;
+    return a + (b-a)/2 * ((t * (t - 2)) + 1);
+  };
+
+  function lastY(){
+    return segments.length ? segments[segments.length-1].p2.world.y : 0;
+  }
+
+  function addRoad(enter, hold, leave, curve, dyInSegments = 0){
+    const e = Math.max(0, enter|0), h = Math.max(0, hold|0), l = Math.max(0, leave|0);
+    const total = e + h + l;
+    if (total <= 0) return;
+
+    const startY = lastY();
+    const endY   = startY + (dyInSegments * segmentLength);
+
+    for (let n = 0; n < e; n++){
+      const tCurve = e > 0 ? n / e : 1;
+      addSegment(easeIn(0, curve, tCurve),
+                 easeInOut(startY, endY, (0 + n) / total));
+    }
+
+    for (let n = 0; n < h; n++){
+      addSegment(curve,
+                 easeInOut(startY, endY, (e + n) / total));
+    }
+
+    for (let n = 0; n < l; n++){
+      const tCurve = l > 0 ? n / l : 1;
+      addSegment(easeInOut(curve, 0, tCurve),
+                 easeInOut(startY, endY, (e + h + n) / total));
+    }
+  }
+
+  async function buildTrackFromCSV(url){
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('CSV load failed: ' + res.status);
+    const text = await res.text();
+
+    const toInt = (v, d=0) => {
+      if (v === '' || v == null) return d;
+      const n = parseInt(v, 10);
+      return Number.isNaN(n) ? d : n;
+    };
+
+    const typeAliases = {
+      road: 'road', r: 'road',
+      straight: 'straight', flat: 'straight', s: 'straight',
+      curve: 'curve', c: 'curve', turn: 'curve',
+      hill: 'hill', h: 'hill', rise: 'hill'
+    };
+
+    const lines = text.split(/\r?\n/);
     segments.length = 0;
-    for (let i=0;i<n;i++) addSegment(0, y);
+
+    for (const raw of lines){
+      const line = raw.trim();
+      if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+
+      const [typeRaw, enter, hold, leave, curve, dy, repeats] =
+        line.split(',').map(s => (s ?? '').trim());
+
+      const typeNorm = (typeRaw || 'road').toLowerCase();
+      const type = typeAliases[typeNorm] || 'road';
+      const e = Math.max(0, toInt(enter, 0));
+      const h = Math.max(0, toInt(hold, 0));
+      const l = Math.max(0, toInt(leave, 0));
+      let c = toInt(curve, 0);
+      let y = toInt(dy, 0);
+      const reps = Math.max(1, toInt(repeats, 1));
+
+      if (type === 'straight'){ c = 0; y = 0; }
+      else if (type === 'hill'){ c = 0; }
+      else if (type === 'curve' && (dy === '' || dy == null)) { y = 0; }
+
+      for (let i=0;i<reps;i++){
+        addRoad(e, h, l, c, y);
+      }
+    }
+
+    if (segments.length === 0) throw new Error('CSV produced no segments');
     trackLength = segments.length * segmentLength;
   }
 
@@ -555,7 +645,7 @@
           x4: xb + wb * k0, y4: yb
         };
         const uv = { u1:u0, v1:vv0, u2:u1, v2:vv0, u3:u1, v3:vv1, u4:u0, v4:vv1 };
-        glr.drawQuadTextured(tex, quad, uv, [1,1,1,1], [fA,fA,fB,fB]);
+        glr.drawQuadTextured(tex, quad, uv, DEFAULT_COLORS.road, [fA,fA,fB,fB]);
       }
     }
   }
@@ -1248,8 +1338,8 @@
             glr.drawQuadSolid(L.quadA, tint, fogCliff);
             glr.drawQuadSolid(L.quadB, tint, fogCliff);
           } else {
-            glr.drawQuadTextured(cliffTex, L.quadA, uvA, [1,1,1,1], fogCliff);
-            glr.drawQuadTextured(cliffTex, L.quadB, uvB, [1,1,1,1], fogCliff);
+            glr.drawQuadTextured(cliffTex, L.quadA, uvA, DEFAULT_COLORS.wall, fogCliff);
+            glr.drawQuadTextured(cliffTex, L.quadB, uvB, DEFAULT_COLORS.wall, fogCliff);
           }
         };
         const drawRightCliffs = (solid=false) => {
@@ -1259,8 +1349,8 @@
             glr.drawQuadSolid(R.quadA, tint, fogCliff);
             glr.drawQuadSolid(R.quadB, tint, fogCliff);
           } else {
-            glr.drawQuadTextured(cliffTex, R.quadA, uvA, [1,1,1,1], fogCliff);
-            glr.drawQuadTextured(cliffTex, R.quadB, uvB, [1,1,1,1], fogCliff);
+            glr.drawQuadTextured(cliffTex, R.quadA, uvA, DEFAULT_COLORS.wall, fogCliff);
+            glr.drawQuadTextured(cliffTex, R.quadB, uvB, DEFAULT_COLORS.wall, fogCliff);
           }
         };
 
@@ -1296,7 +1386,7 @@
           };
           const uvL = { u1:0, v1:v0Rail, u2:1, v2:v0Rail, u3:1, v3:v1Rail, u4:0, v4:v1Rail };
           const fLs1 = fogFactorFromZ(p1LS.camera.z), fLs2 = fogFactorFromZ(p2LS.camera.z);
-          glr.drawQuadTextured(texRail, quadL, uvL, [1,1,1,1], [fLs1,fLs1,fLs2,fLs2]);
+          glr.drawQuadTextured(texRail, quadL, uvL, DEFAULT_COLORS.rail, [fLs1,fLs1,fLs2,fLs2]);
 
           // Right rail
           const xR1 = x1 + w1 * TUNE_TRACK.railInset;
@@ -1310,7 +1400,7 @@
           };
           const uvR = { u1:0, v1:v0Rail, u2:1, v2:v0Rail, u3:1, v3:v1Rail, u4:0, v4:v1Rail };
           const fRs1 = fogFactorFromZ(p1RS.camera.z), fRs2 = fogFactorFromZ(p2RS.camera.z);
-          glr.drawQuadTextured(texRail, quadR, uvR, [1,1,1,1], [fRs1,fRs1,fRs2,fRs2]);
+          glr.drawQuadTextured(texRail, quadR, uvR, DEFAULT_COLORS.rail, [fRs1,fRs1,fRs2,fRs2]);
         }
 
       } else if (it.type==='npc' || it.type==='prop'){
@@ -1399,7 +1489,7 @@
       else if (t < FR_SHRINK + FR_WAIT) scale = 0;
       else if (t < FR_TOTAL) { const u = t - (FR_SHRINK + FR_WAIT); scale = (u + 1) / FR_EXPAND; }
       if (!didAction && t >= FR_SHRINK) {
-        if (mode === 'reset') resetScene(); else respawnPlayerAt(respawnS, respawnN);
+        if (mode === 'reset') resetScene().catch(err=>console.error(err)); else respawnPlayerAt(respawnS, respawnN);
         didAction = true;
       }
       t++; if (t >= FR_TOTAL) { active = false; scale = 1; didAction = false; ctxHUD.clearRect(0,0,HUD_W,HUD_H); }
@@ -1434,13 +1524,24 @@
   }
 
   // ---------- Reset & main loop ----------
-  function resetScene(){
+  async function resetScene(){
     fieldOfView  = TUNE_TRACK.fov;
     cameraDepth  = 1/Math.tan((fieldOfView/2)*Math.PI/180);
     nearZ        = 1 / cameraDepth;
     playerZ      = TUNE_TRACK.cameraHeight*cameraDepth;
 
-    buildStraightTrack(700, 0); // the straight road
+    try {
+      await buildTrackFromCSV('tracks/test-track.csv');
+    } catch (err) {
+      console.warn('CSV build failed, using fallback', err);
+      segments.length = 0;
+      addRoad(25,25,25,0,0);
+      addRoad(50,50,50,2,20);
+      addRoad(40,40,40,0,60);
+      addRoad(100,80,60,-4,-20);
+      addRoad(25,25,25,0,0);
+      trackLength = segments.length * segmentLength;
+    }
 
     // Default zones: whole track
     roadTexZones.length = railTexZones.length = cliffTexZones.length = 0;
@@ -1464,7 +1565,6 @@
     hopHeld=false; driftState='idle'; driftDirSnapshot=0; driftCharge=0; allowedBoost=false; boostTimer=0;
     camRollDeg = 0; playerTiltDeg = 0; prevPlayerN = playerN; lateralRate = 0;
   }
-  resetScene();
 
   const fps = 60, step = 1/fps;
   let last=performance.now(), acc=0;
@@ -1482,7 +1582,10 @@
     if (phys.boostFlashTimer>0) phys.boostFlashTimer=Math.max(0, phys.boostFlashTimer - dt);
     requestAnimationFrame(frame);
   }
-  requestAnimationFrame(frame);
+  (async () => {
+    await resetScene();
+    requestAnimationFrame(frame);
+  })();
 })();
 </script>
 </html>
