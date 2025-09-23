@@ -377,10 +377,15 @@
 
   let segments=[], trackLength=0;
 
-  function addSegment(curve, y){
+  function addSegment(curve, y, hillMult = 1, railPresent = true, boostStart = null, boostEnd = null){
     const n=segments.length;
     segments.push({
-      index:n, curve,
+      index:n,
+      curve,
+      hillMult,
+      rail: railPresent,
+      boostStart,
+      boostEnd,
       p1:{ world:{ y: segments.length ? segments[n-1].p2.world.y : 0, z:n*segmentLength }, camera:{}, screen:{} },
       p2:{ world:{ y:y,                                      z:(n+1)*segmentLength }, camera:{}, screen:{} },
       sprites:[], cars:[], pickups:[]
@@ -399,7 +404,7 @@
     return segments.length ? segments[segments.length-1].p2.world.y : 0;
   }
 
-  function addRoad(enter, hold, leave, curve, dyInSegments = 0){
+  function addRoad(enter, hold, leave, curve, dyInSegments = 0, hillMult = 1, railPresent = true, boostStart = null, boostEnd = null){
     const e = Math.max(0, enter|0), h = Math.max(0, hold|0), l = Math.max(0, leave|0);
     const total = e + h + l;
     if (total <= 0) return;
@@ -410,18 +415,21 @@
     for (let n = 0; n < e; n++){
       const tCurve = e > 0 ? n / e : 1;
       addSegment(easeIn(0, curve, tCurve),
-                 easeInOut(startY, endY, (0 + n) / total));
+                 easeInOut(startY, endY, (0 + n) / total),
+                 hillMult, railPresent, boostStart, boostEnd);
     }
 
     for (let n = 0; n < h; n++){
       addSegment(curve,
-                 easeInOut(startY, endY, (e + n) / total));
+                 easeInOut(startY, endY, (e + n) / total),
+                 hillMult, railPresent, boostStart, boostEnd);
     }
 
     for (let n = 0; n < l; n++){
       const tCurve = l > 0 ? n / l : 1;
       addSegment(easeInOut(curve, 0, tCurve),
-                 easeInOut(startY, endY, (e + h + n) / total));
+                 easeInOut(startY, endY, (e + h + n) / total),
+                 hillMult, railPresent, boostStart, boostEnd);
     }
   }
 
@@ -434,6 +442,18 @@
       if (v === '' || v == null) return d;
       const n = parseInt(v, 10);
       return Number.isNaN(n) ? d : n;
+    };
+    const toFloat = (v, d=0) => {
+      if (v === '' || v == null) return d;
+      const n = parseFloat(v);
+      return Number.isNaN(n) ? d : n;
+    };
+    const toBool = (v, d=true) => {
+      if (v === '' || v == null) return d;
+      const norm = v.toLowerCase();
+      if (['1','true','yes','y','on'].includes(norm)) return true;
+      if (['0','false','no','n','off'].includes(norm)) return false;
+      return d;
     };
 
     const typeAliases = {
@@ -450,24 +470,48 @@
       const line = raw.trim();
       if (!line || line.startsWith('#') || line.startsWith('//')) continue;
 
-      const [typeRaw, enter, hold, leave, curve, dy, repeats] =
-        line.split(',').map(s => (s ?? '').trim());
+      const cells = line.split(',').map(s => (s ?? '').trim());
+      const typeRaw = cells[0];
+      const enter = cells[1];
+      const hold = cells[2];
+      const leave = cells[3];
+      let hillMultRaw = cells[4];
+      let curveRaw = cells[5];
+      let dyRaw = cells[6];
+      let railRaw = cells[7];
+      let boostStartRaw = cells[8];
+      let boostEndRaw = cells[9];
+      let repeatsRaw = cells[10];
+
+      if (repeatsRaw === undefined){
+        // Legacy format: type, enter, hold, leave, curve, dy, repeats[, comment]
+        hillMultRaw = '';
+        curveRaw = cells[4];
+        dyRaw = cells[5];
+        repeatsRaw = cells[6];
+        railRaw = '';
+        boostStartRaw = '';
+        boostEndRaw = '';
+      }
 
       const typeNorm = (typeRaw || 'road').toLowerCase();
       const type = typeAliases[typeNorm] || 'road';
       const e = Math.max(0, toInt(enter, 0));
       const h = Math.max(0, toInt(hold, 0));
       const l = Math.max(0, toInt(leave, 0));
-      let c = toInt(curve, 0);
-      let y = toInt(dy, 0);
-      const reps = Math.max(1, toInt(repeats, 1));
+      const hillMult = Math.max(0, toFloat(hillMultRaw, 1));
+      let c = toFloat(curveRaw, 0);
+      let y = toFloat(dyRaw, 0);
+      const rail = toBool(railRaw, true);
+      const boostStart = toFloat(boostStartRaw, null);
+      const boostEnd = toFloat(boostEndRaw, null);
+      const reps = Math.max(1, toInt(repeatsRaw, 1));
 
       if (type === 'straight'){ c = 0; y = 0; }
-      else if (type === 'hill'){ c = 0; }
-      else if (type === 'curve' && (dy === '' || dy == null)) { y = 0; }
+      else if (type === 'curve' && (dyRaw === '' || dyRaw == null)) { y = 0; }
 
       for (let i=0;i<reps;i++){
-        addRoad(e, h, l, c, y);
+        addRoad(e, h, l, c, y, hillMult, rail, boostStart, boostEnd);
       }
     }
 
@@ -535,7 +579,15 @@
       rightB: {...TUNE_TRACK.cliffRightB},
     };
   }
-  function hasRailAt(segIndex){ return RAILS_ENABLED; }
+  function hasRailAt(segIndex){
+    if (!RAILS_ENABLED) return false;
+    if (!segments.length) return false;
+    const count = segments.length;
+    const idx = ((segIndex % count) + count) % count;
+    const seg = segments[idx];
+    if (!seg || seg.rail == null) return true;
+    return !!seg.rail;
+  }
 
   // ---------- World<->screen ----------
   function projectPoint(p, camX, camY, camS){
@@ -1535,11 +1587,11 @@
     } catch (err) {
       console.warn('CSV build failed, using fallback', err);
       segments.length = 0;
-      addRoad(25,25,25,0,0);
-      addRoad(50,50,50,2,20);
-      addRoad(40,40,40,0,60);
-      addRoad(100,80,60,-4,-20);
-      addRoad(25,25,25,0,0);
+      addRoad(25,25,25,0,0,1,true,0,0);
+      addRoad(50,50,50,2,20,1,true,0,0);
+      addRoad(40,40,40,0,60,1,true,0,0);
+      addRoad(100,80,60,-4,-20,1,true,0,0);
+      addRoad(25,25,25,0,0,1,true,0,0);
       trackLength = segments.length * segmentLength;
     }
 
