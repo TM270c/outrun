@@ -87,6 +87,13 @@
     color: [0.1, 0.5, 0.8],
   };
 
+  const DEFAULT_COLORS = {
+    road: [0.5, 0.5, 0.5, 1],
+    wall: [0.5, 0.5, 0.5, 1],
+    rail: [0.5, 0.5, 0.5, 1],
+  };
+  const BOOST_TINT = [1.0, 0.78, 0.2, 1];
+
   // DEBUG fill mode for road & cliffs (alternating colors)
   const DEBUG = { mode: 'off', span: 3, colors: { a:[1,1,1,1], b:[0.82,0.90,1,1] } };
 
@@ -134,6 +141,7 @@
   const setOverlay = v => { overlayOn = v; cSide.style.display = overlayOn ? 'block' : 'none'; };
   setOverlay(true);
   addEventListener('keydown',e=>{ if(e.code==='KeyB') setOverlay(!overlayOn); });
+  addEventListener('keydown',e=>{ if(e.code==='KeyL') resetScene().catch(err=>console.error(err)); });
 
   class GLRenderer {
     constructor(canvas) {
@@ -330,17 +338,17 @@
 
   // ---------- Assets: unified manifest & loader ----------
   const assetManifest = {
-    road:      'road-seg.png',
-    rail:      'guardrail.png',
-    cliff:     'cliff.png',
-    boost:     'boost.png',
-    horizon1:  'paralax-1.png',
-    horizon2:  'paralax-2.png',
-    horizon3:  'paralax-3.png',
-    car:       'car.png',
-    semi:      'semi.png',
-    tree:      'tree.png',
-    sign:      'billboard.png',
+    road:      'tex/road-seg.png',
+    rail:      'tex/guardrail.png',
+    cliff:     'tex/cliff.png',
+    boost:     'tex/boost.png',
+    horizon1:  'tex/paralax-1.png',
+    horizon2:  'tex/paralax-2.png',
+    horizon3:  'tex/paralax-3.png',
+    car:       'tex/car.png',
+    semi:      'tex/semi.png',
+    tree:      'tex/tree.png',
+    sign:      'tex/billboard.png',
   };
 
   const textures = {};
@@ -364,25 +372,414 @@
 
   const getKindScale = (kind) => (kind === 'PLAYER' ? TUNE_PLAYER.playerScale : 1.0);
 
-  // ---------- Track data (straight only) ----------
+  // ---------- Track data & builder ----------
   const segmentLength = TUNE_TRACK.segmentLength;
   const roadWidthAt = (s) => TUNE_TRACK.roadWidth;
 
   let segments=[], trackLength=0;
 
-  function addSegment(curve, y){
-    const n=segments.length;
+  const CLIFF_DEFAULT_PROFILE = {
+    leftA:  {...TUNE_TRACK.cliffLeftA},
+    leftB:  {...TUNE_TRACK.cliffLeftB},
+    rightA: {...TUNE_TRACK.cliffRightA},
+    rightB: {...TUNE_TRACK.cliffRightB},
+  };
+
+  function cloneCliffProfile(src = CLIFF_DEFAULT_PROFILE){
+    return {
+      leftA:  { dx: src.leftA.dx,  dy: src.leftA.dy },
+      leftB:  { dx: src.leftB.dx,  dy: src.leftB.dy },
+      rightA: { dx: src.rightA.dx, dy: src.rightA.dy },
+      rightB: { dx: src.rightB.dx, dy: src.rightB.dy },
+    };
+  }
+
+  function applyCliffOverrides(base, overrides){
+    const result = cloneCliffProfile(base);
+    for (const key of Object.keys(overrides)){
+      if (!(key in result)) continue;
+      const src = overrides[key];
+      if (!src) continue;
+      if (src.dx != null && !Number.isNaN(src.dx)) result[key].dx = src.dx;
+      if (src.dy != null && !Number.isNaN(src.dy)) result[key].dy = src.dy;
+    }
+    return result;
+  }
+
+  function lerpCliffProfile(a, b, t){
+    const mix = (x, y) => x + (y - x) * t;
+    return {
+      leftA:  { dx: mix(a.leftA.dx,  b.leftA.dx),  dy: mix(a.leftA.dy,  b.leftA.dy) },
+      leftB:  { dx: mix(a.leftB.dx,  b.leftB.dx),  dy: mix(a.leftB.dy,  b.leftB.dy) },
+      rightA: { dx: mix(a.rightA.dx, b.rightA.dx), dy: mix(a.rightA.dy, b.rightA.dy) },
+      rightB: { dx: mix(a.rightB.dx, b.rightB.dx), dy: mix(a.rightB.dy, b.rightB.dy) },
+    };
+  }
+
+  const builderState = { rail: RAILS_ENABLED, cliff: cloneCliffProfile() };
+  let trackHasSpritePlan = false;
+
+  function resetTrackComposerState(){
+    builderState.rail = RAILS_ENABLED;
+    builderState.cliff = cloneCliffProfile();
+    trackHasSpritePlan = false;
+  }
+
+  function addSegment(curve, y, extras = {}){
+    const n = segments.length;
+    const prev = n > 0 ? segments[n-1] : null;
+    const cliffBase = extras.cliff
+      ? extras.cliff
+      : (prev ? prev.cliff : builderState.cliff);
+    const railState = (extras.rail != null)
+      ? !!extras.rail
+      : (prev ? prev.rail : builderState.rail);
     segments.push({
       index:n, curve,
-      p1:{ world:{ y: segments.length ? segments[n-1].p2.world.y : 0, z:n*segmentLength }, camera:{}, screen:{} },
-      p2:{ world:{ y:y,                                      z:(n+1)*segmentLength }, camera:{}, screen:{} },
-      sprites:[], cars:[], pickups:[]
+      p1:{ world:{ y: prev ? prev.p2.world.y : 0, z:n*segmentLength }, camera:{}, screen:{} },
+      p2:{ world:{ y:y,                             z:(n+1)*segmentLength }, camera:{}, screen:{} },
+      sprites:[], cars:[], pickups:[],
+      rail: railState,
+      boost: !!extras.boost,
+      cliff: cloneCliffProfile(cliffBase)
     });
   }
-  function buildStraightTrack(n=600, y=0){
-    segments.length = 0;
-    for (let i=0;i<n;i++) addSegment(0, y);
+
+  const easeIn    = (a,b,t) => a + (b-a) * (t*t);
+  const easeInOut = (a,b,t) => {
+    t *= 2;
+    if (t < 1) return a + (b-a)/2 * (t*t);
+    t -= 1;
+    return a + (b-a)/2 * ((t * (t - 2)) + 1);
+  };
+
+  function lastY(){
+    return segments.length ? segments[segments.length-1].p2.world.y : 0;
+  }
+
+  function addRoad(enter, hold, leave, curve, dyInSegments = 0, options = {}){
+    const e = Math.max(0, enter|0), h = Math.max(0, hold|0), l = Math.max(0, leave|0);
+    const total = e + h + l;
+    if (total <= 0) return { start: segments.length, end: segments.length-1, count: 0 };
+
+    const startIdx = segments.length;
+    const startY = lastY();
+    const endY   = startY + (dyInSegments * segmentLength);
+
+    const baseCliff = cloneCliffProfile(builderState.cliff);
+    const overrides = options.cliffOverrides || null;
+    const endCliff  = overrides ? applyCliffOverrides(baseCliff, overrides) : baseCliff;
+    const hasCliffAnim = !!overrides;
+
+    const railState = (options.railState != null) ? !!options.railState : builderState.rail;
+    const boostMask = Array.isArray(options.boostMask) ? options.boostMask : null;
+
+    let added = 0;
+
+    const sampleCliff = (phaseIndex) => {
+      if (!hasCliffAnim) return cloneCliffProfile(baseCliff);
+      const t = total > 0 ? phaseIndex / total : 1;
+      return lerpCliffProfile(baseCliff, endCliff, t);
+    };
+
+    for (let n = 0; n < e; n++){
+      const tCurve = e > 0 ? n / e : 1;
+      const phase = (0 + n);
+      addSegment(
+        easeIn(0, curve, tCurve),
+        easeInOut(startY, endY, phase / total),
+        {
+          rail: railState,
+          boost: boostMask ? !!boostMask[added] : false,
+          cliff: sampleCliff(phase)
+        }
+      );
+      added++;
+    }
+
+    for (let n = 0; n < h; n++){
+      const phase = (e + n);
+      addSegment(
+        curve,
+        easeInOut(startY, endY, phase / total),
+        {
+          rail: railState,
+          boost: boostMask ? !!boostMask[added] : false,
+          cliff: sampleCliff(phase)
+        }
+      );
+      added++;
+    }
+
+    for (let n = 0; n < l; n++){
+      const tCurve = l > 0 ? n / l : 1;
+      const phase = (e + h + n);
+      addSegment(
+        easeInOut(curve, 0, tCurve),
+        easeInOut(startY, endY, phase / total),
+        {
+          rail: railState,
+          boost: boostMask ? !!boostMask[added] : false,
+          cliff: sampleCliff(phase)
+        }
+      );
+      added++;
+    }
+
+    const endIdx = segments.length - 1;
+    if (added > 0){
+      builderState.cliff = cloneCliffProfile(segments[endIdx].cliff);
+      builderState.rail = railState;
+    } else if (overrides){
+      builderState.cliff = applyCliffOverrides(builderState.cliff, overrides);
+    }
+
+    return { start: startIdx, end: endIdx, count: added };
+  }
+
+  function parseRailField(str){
+    if (!str) return null;
+    const norm = str.trim().toLowerCase();
+    if (!norm) return null;
+    if (['on','true','1','yes','y','enable','enabled','both'].includes(norm)) return true;
+    if (['off','false','0','no','n','disable','disabled','none'].includes(norm)) return false;
+    return null;
+  }
+
+  function parseBoostMask(spec, total){
+    if (!spec || total <= 0) return null;
+    const tokens = spec.split(/;/);
+    const mask = new Array(total).fill(false);
+    let any = false;
+    for (const raw of tokens){
+      const token = raw.trim();
+      if (!token) continue;
+      const low = token.toLowerCase();
+      if (['on','true','yes','y','row','this','all'].includes(low)){
+        mask.fill(true);
+        any = true;
+        continue;
+      }
+      if (['off','false','no','n','none','0'].includes(low)) continue;
+      let start = null;
+      let end = null;
+      if (token.includes('-')){
+        const [a,b] = token.split('-');
+        start = parseInt(a, 10);
+        end   = parseInt(b, 10);
+      } else if (token.includes(':')){
+        const [a,b] = token.split(':');
+        start = parseInt(a, 10);
+        const len = parseInt(b, 10);
+        end = Number.isNaN(len) ? start : (start + len - 1);
+      } else {
+        start = parseInt(token, 10);
+        end = start;
+      }
+      if (Number.isNaN(start)) continue;
+      if (Number.isNaN(end)) end = start;
+      start = Math.max(0, Math.min(total-1, start));
+      end   = Math.max(0, Math.min(total-1, end));
+      if (end < start) [start, end] = [end, start];
+      for (let i=start; i<=end; i++){ mask[i] = true; any = true; }
+    }
+    return any ? mask : null;
+  }
+
+  function parseCliffOverrideSpec(str){
+    if (!str) return null;
+    const overrides = {};
+    let has = false;
+    const alias = {
+      lefta:'leftA', la:'leftA',
+      leftb:'leftB', lb:'leftB',
+      righta:'rightA', ra:'rightA',
+      rightb:'rightB', rb:'rightB'
+    };
+    const tokens = str.split(/;/);
+    for (const raw of tokens){
+      const token = raw.trim();
+      if (!token) continue;
+      const [labelRaw, valuesRaw] = token.split('=');
+      if (!valuesRaw) continue;
+      const key = alias[(labelRaw||'').trim().toLowerCase()];
+      if (!key) continue;
+      const [dxStr, dyStr] = valuesRaw.split(':');
+      const dx = dxStr != null && dxStr.trim() !== '' ? parseFloat(dxStr) : NaN;
+      const dy = dyStr != null && dyStr.trim() !== '' ? parseFloat(dyStr) : NaN;
+      if (Number.isNaN(dx) && Number.isNaN(dy)) continue;
+      if (!overrides[key]) overrides[key] = {};
+      if (!Number.isNaN(dx)) { overrides[key].dx = dx; has = true; }
+      if (!Number.isNaN(dy)) { overrides[key].dy = dy; has = true; }
+    }
+    return has ? overrides : null;
+  }
+
+  function parseZoneIndex(value, startIdx, endIdx){
+    if (value == null) return null;
+    const raw = value.trim();
+    if (!raw) return null;
+    const lower = raw.toLowerCase();
+    if (lower === 'start' || lower === 'first') return startIdx;
+    if (lower === 'end' || lower === 'last') return endIdx;
+    if (/^[+-]/.test(raw)){
+      const offset = parseInt(raw, 10);
+      if (Number.isNaN(offset)) return null;
+      return startIdx + offset;
+    }
+    const num = parseInt(raw, 10);
+    if (Number.isNaN(num)) return null;
+    return num;
+  }
+
+  function applyTexSpec(stack, spec, startIdx, endIdx, defaultTile){
+    if (!spec) return;
+    const tokens = spec.split(/;/);
+    for (const raw of tokens){
+      const token = raw.trim();
+      if (!token) continue;
+      let rangePart = token;
+      let tilePart = null;
+      const atPos = token.indexOf('@');
+      if (atPos >= 0){
+        rangePart = token.slice(0, atPos).trim();
+        tilePart  = token.slice(atPos+1).trim();
+      }
+      const tileParsed = tilePart ? parseInt(tilePart, 10) : NaN;
+      const tile = Math.max(1, Number.isNaN(tileParsed) ? (defaultTile||1) : tileParsed);
+      if (!rangePart || rangePart.toLowerCase() === 'this' || rangePart.toLowerCase() === 'row'){
+        if (startIdx <= endIdx) pushZone(stack, startIdx, endIdx, tile);
+        continue;
+      }
+      const dashPos = rangePart.indexOf('-');
+      let startStr = rangePart;
+      let endStr = rangePart;
+      if (dashPos >= 0){
+        startStr = rangePart.slice(0, dashPos).trim();
+        endStr = rangePart.slice(dashPos+1).trim();
+      }
+      const startVal = parseZoneIndex(startStr, startIdx, endIdx);
+      const endVal   = parseZoneIndex(endStr, startIdx, endIdx);
+      if (startVal == null || endVal == null) continue;
+      pushZone(stack, startVal, endVal, tile);
+    }
+  }
+
+  function applySpriteSpec(spec, startIdx, count){
+    if (!spec || count <= 0) return;
+    const tokens = spec.split(/;/);
+    for (const raw of tokens){
+      const token = raw.trim();
+      if (!token) continue;
+      const parts = token.split('|').map(s => (s ?? '').trim());
+      const kindRaw = parts[0];
+      if (!kindRaw) continue;
+      const kind = kindRaw.toUpperCase();
+      const offsetVal = parseFloat(parts[1]);
+      let posStr = parts[2] || '0';
+      let absolute = false;
+      if (posStr.startsWith('@')){ absolute = true; posStr = posStr.slice(1); }
+      const posNum = parseFloat(posStr);
+      if (Number.isNaN(posNum)) continue;
+      let segIndex;
+      if (absolute){
+        segIndex = Math.round(posNum);
+      } else {
+        const local = Math.max(0, Math.min(count-1, Math.round(posNum)));
+        segIndex = startIdx + local;
+      }
+      if (!Number.isFinite(segIndex)) continue;
+      if (segIndex < 0 || segIndex >= segments.length) continue;
+      const seg = segments[segIndex];
+      if (!seg) continue;
+      trackHasSpritePlan = true;
+      const offset = Number.isNaN(offsetVal) ? 0 : offsetVal;
+      seg.sprites.push({ kind, offset });
+    }
+  }
+
+  async function buildTrackFromCSV(url){
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('CSV load failed: ' + res.status);
+    const text = await res.text();
+
+    const toInt = (v, d=0) => {
+      if (v === '' || v == null) return d;
+      const n = parseInt(v, 10);
+      return Number.isNaN(n) ? d : n;
+    };
+
+    const typeAliases = {
+      road: 'road', r: 'road',
+      straight: 'straight', flat: 'straight', s: 'straight',
+      curve: 'curve', c: 'curve', turn: 'curve',
+      hill: 'hill', h: 'hill', rise: 'hill',
+      texture: 'texture', tex: 'texture'
+    };
+
+    const lines = text.split(/\r?\n/);
+    beginTrackBuild();
+
+    for (const raw of lines){
+      const line = raw.trim();
+      if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+
+      const parts = line.split(',').map(s => (s ?? '').trim());
+      const [typeRaw, enter, hold, leave, curve, dy, repeats, railSpec, boostSpec, roadTexSpec, cliffTexSpec, railTexSpec, spriteSpec, cliffSpec] = parts;
+
+      const typeNorm = (typeRaw || 'road').toLowerCase();
+      const type = typeAliases[typeNorm] || typeNorm || 'road';
+      const e = Math.max(0, toInt(enter, 0));
+      const h = Math.max(0, toInt(hold, 0));
+      const l = Math.max(0, toInt(leave, 0));
+      let c = toInt(curve, 0);
+      let y = toInt(dy, 0);
+      const reps = Math.max(1, toInt(repeats, 1));
+
+      const railOverride = parseRailField(railSpec);
+      if (railOverride != null) builderState.rail = railOverride;
+
+      const cliffOverrides = parseCliffOverrideSpec(cliffSpec);
+
+      const totalSegs = e + h + l;
+
+      if (type === 'texture'){
+        if (roadTexSpec) applyTexSpec(roadTexZones, roadTexSpec, 0, segments.length-1, 20);
+        if (cliffTexSpec) applyTexSpec(cliffTexZones, cliffTexSpec, 0, segments.length-1, 3);
+        if (railTexSpec) applyTexSpec(railTexZones, railTexSpec, 0, segments.length-1, 20);
+        continue;
+      }
+
+      if (type === 'straight'){ c = 0; y = 0; }
+      else if (type === 'hill'){ c = 0; }
+      else if (type === 'curve' && (dy === '' || dy == null)) { y = 0; }
+
+      if (totalSegs <= 0){
+        if (cliffOverrides) builderState.cliff = applyCliffOverrides(builderState.cliff, cliffOverrides);
+        continue;
+      }
+
+      const boostMask = parseBoostMask(boostSpec, totalSegs);
+
+      for (let i=0;i<reps;i++){
+        const range = addRoad(e, h, l, c, y, {
+          railState: builderState.rail,
+          boostMask,
+          cliffOverrides
+        });
+
+        if (!range || range.count <= 0) continue;
+
+        if (roadTexSpec) applyTexSpec(roadTexZones, roadTexSpec, range.start, range.end, 20);
+        if (cliffTexSpec) applyTexSpec(cliffTexZones, cliffTexSpec, range.start, range.end, 3);
+        if (railTexSpec) applyTexSpec(railTexZones, railTexSpec, range.start, range.end, 20);
+        if (spriteSpec) applySpriteSpec(spriteSpec, range.start, range.count);
+      }
+    }
+
+    if (segments.length === 0) throw new Error('CSV produced no segments');
     trackLength = segments.length * segmentLength;
+    ensureDefaultZones();
   }
 
   // ---------- Texture tiling zones ----------
@@ -406,6 +803,22 @@
     const v0 = (segPos % z.tile) * perSeg;
     const v1 = v0 + perSeg;
     return [v0, v1];
+  }
+
+  function ensureDefaultZones(){
+    if (!segments.length) return;
+    if (roadTexZones.length === 0) pushZone(roadTexZones, 0, segments.length-1, 20);
+    if (railTexZones.length === 0) pushZone(railTexZones, 0, segments.length-1, 20);
+    if (cliffTexZones.length === 0) pushZone(cliffTexZones, 0, segments.length-1, 3);
+  }
+
+  function beginTrackBuild(){
+    segments.length = 0;
+    roadTexZones.length = 0;
+    railTexZones.length = 0;
+    cliffTexZones.length = 0;
+    trackLength = 0;
+    resetTrackComposerState();
   }
 
   // ---------- Helpers / math ----------
@@ -436,16 +849,24 @@
     return i * segmentLength + segmentLength * 0.5;
   }
 
-  // ---------- Cliff params (single default) ----------
+  // ---------- Cliff params (per segment) ----------
   function cliffParamsAt(segIndex){
-    return {
-      leftA:  {...TUNE_TRACK.cliffLeftA},
-      leftB:  {...TUNE_TRACK.cliffLeftB},
-      rightA: {...TUNE_TRACK.cliffRightA},
-      rightB: {...TUNE_TRACK.cliffRightB},
-    };
+    if (!segments.length) return cloneCliffProfile();
+    let idx = Math.floor(segIndex);
+    if (!Number.isFinite(idx)) idx = 0;
+    idx = ((idx % segments.length) + segments.length) % segments.length;
+    const seg = segments[idx];
+    return (seg && seg.cliff) ? seg.cliff : cloneCliffProfile();
   }
-  function hasRailAt(segIndex){ return RAILS_ENABLED; }
+  function hasRailAt(segIndex){
+    if (!segments.length) return builderState.rail;
+    let idx = Math.floor(segIndex);
+    if (!Number.isFinite(idx)) idx = 0;
+    idx = ((idx % segments.length) + segments.length) % segments.length;
+    const seg = segments[idx];
+    if (!seg) return builderState.rail;
+    return !!seg.rail;
+  }
 
   // ---------- World<->screen ----------
   function projectPoint(p, camX, camY, camS){
@@ -520,7 +941,7 @@
   }
 
   // ---------- Road strip ----------
-  function drawRoadStrip(x1,y1,w1, x2,y2,w2, v0, v1, fogRoad, tex){
+  function drawRoadStrip(x1,y1,w1, x2,y2,w2, v0, v1, fogRoad, tex, tint=DEFAULT_COLORS.road){
     if (!tex) tex = glr.whiteTex;
 
     // --- rows: screen-space along Y (prevents trapezoid stretch)
@@ -555,7 +976,7 @@
           x4: xb + wb * k0, y4: yb
         };
         const uv = { u1:u0, v1:vv0, u2:u1, v2:vv0, u3:u1, v3:vv1, u4:u0, v4:vv1 };
-        glr.drawQuadTextured(tex, quad, uv, [1,1,1,1], [fA,fA,fB,fB]);
+        glr.drawQuadTextured(tex, quad, uv, tint, [fA,fA,fB,fB]);
       }
     }
   }
@@ -599,6 +1020,7 @@
   let driftCharge=0;
   let allowedBoost=false;
   let boostTimer=0;
+  let lastBoostSegIndex=-1;
 
   const input = { left:false,right:false,up:false,down:false, hop:false };
   addEventListener('keydown',e=>{
@@ -767,6 +1189,15 @@
 
     // rail bounds and scraping slowdown
     const segNow = segmentAtS(phys.s);
+    if (segNow && segNow.boost){
+      if (segNow.index !== lastBoostSegIndex){
+        boostTimer = Math.max(boostTimer, DRIFT.boostTime);
+        phys.boostFlashTimer = Math.max(phys.boostFlashTimer, DRIFT.boostTime);
+        lastBoostSegIndex = segNow.index;
+      }
+    } else {
+      lastBoostSegIndex = -1;
+    }
     const bound = playerLateralLimit(segNow.index);
     const preClamp = playerN;
     playerN = clamp(playerN, -bound, bound);
@@ -794,15 +1225,18 @@
   // ---------- Cliff interaction helpers ----------
   function floorElevationAt(s, nNorm){
     const base = elevationAt(s);
+    if (!segments.length) return base;
+    const seg = segmentAtS(s);
+    const cliff = (seg && seg.cliff) ? seg.cliff : CLIFF_DEFAULT_PROFILE;
     const left  = nNorm < 0;
-    const a = left ? TUNE_TRACK.cliffLeftA.dy  : TUNE_TRACK.cliffRightA.dy;
-    const b = left ? TUNE_TRACK.cliffLeftB.dy  : TUNE_TRACK.cliffRightB.dy;
+    const a = left ? cliff.leftA.dy  : cliff.rightA.dy;
+    const b = left ? cliff.leftB.dy  : cliff.rightB.dy;
     const band = Math.max(0, Math.min(2, Math.abs(nNorm) - 1));
     const aPart = Math.min(1, band);
     const bPart = Math.max(0, band - 1);
     return base + a * aPart + b * bPart;
   }
-  function cliffLateralSlopeAt(nNorm){
+  function cliffLateralSlopeAt(cliff, nNorm){
     const ax = Math.abs(nNorm);
     const s = Math.max(0, Math.min(2, ax - 1));
     if (s <= 0) return 0;
@@ -810,23 +1244,26 @@
     const sideSign = Math.sign(nNorm) || 1;
     const per =
         (s <= 1)
-        ? (left ? TUNE_TRACK.cliffLeftA.dy  : TUNE_TRACK.cliffRightA.dy)
-        : (left ? TUNE_TRACK.cliffLeftB.dy  : TUNE_TRACK.cliffRightB.dy);
+        ? (left ? cliff.leftA.dy  : cliff.rightA.dy)
+        : (left ? cliff.leftB.dy  : cliff.rightB.dy);
     return sideSign * per;
   }
-  function cliffDeltaYAt(nNorm){
+  function cliffDeltaYAt(cliff, nNorm){
     const ax = Math.abs(nNorm);
     if (ax <= 1) return 0;
     const left = nNorm < 0;
     const s = Math.max(0, Math.min(2, ax - 1));
     const useB = s > 1;
-    if (left)  return useB ? TUNE_TRACK.cliffLeftB.dy  : TUNE_TRACK.cliffLeftA.dy;
-    else       return useB ? TUNE_TRACK.cliffRightB.dy : TUNE_TRACK.cliffRightA.dy;
+    if (left)  return useB ? cliff.leftB.dy  : cliff.leftA.dy;
+    else       return useB ? cliff.rightB.dy : cliff.rightA.dy;
   }
   function applyCliffPushForce(step){
+    if (!segments.length) return;
+    const seg = segmentAtS(phys.s);
+    const cliff = (seg && seg.cliff) ? seg.cliff : CLIFF_DEFAULT_PROFILE;
     const ax = Math.abs(playerN);
     if (ax <= 1) return;
-    const dy = cliffDeltaYAt(playerN);
+    const dy = cliffDeltaYAt(cliff, playerN);
     if (dy === 0) return;
     const sign = Math.sign(playerN) || 1;
     const dir  = (dy < 0) ?  sign : -sign;
@@ -838,7 +1275,9 @@
   }
   function getAdditiveTiltDeg(){
     if (!cfgTiltAdd.tiltAddEnabled) return 0;
-    const slope = cliffLateralSlopeAt(playerN);
+    const seg = segmentAtS(phys.s);
+    const cliff = (seg && seg.cliff) ? seg.cliff : CLIFF_DEFAULT_PROFILE;
+    const slope = cliffLateralSlopeAt(cliff, playerN);
     const norm  = clamp(slope * cfgTiltAdd.tiltAddSens, -1, 1);
     return cfgTilt.tiltDir * norm * cfgTiltAdd.tiltAddMaxDeg;
   }
@@ -929,6 +1368,7 @@
   // ---------- Props / pickups ----------
   function addProp(segIdx, kind, offset){ segments[segIdx].sprites.push({ kind, offset }); }
   function spawnProps(){
+    if (trackHasSpritePlan) return;
     for (let i=8; i<segments.length; i+=6){
       addProp(i, Math.random()<0.5 ? 'TREE' : 'PALM', -1.25 - Math.random()*0.15);
       addProp(i, Math.random()<0.5 ? 'TREE' : 'PALM',  1.25 + Math.random()*0.15);
@@ -1116,6 +1556,7 @@
         L, R,
         v0Road, v1Road, v0Rail, v1Rail, v0Cliff, v1Cliff,
         fogRoad,
+        boost: seg.boost,
         // NEW tops for rails
         p1LS, p2LS, p1RS, p2RS
       });
@@ -1220,7 +1661,8 @@
         const { p1, p2, w1, w2, rw1, rw2, L, R,
                 v0Road, v1Road, v0Rail, v1Rail, v0Cliff, v1Cliff,
                 fogRoad, visibleRoad, segIndex,
-                p1LS, p2LS, p1RS, p2RS } = it;
+                p1LS, p2LS, p1RS, p2RS,
+                boost } = it;
         const x1=p1.screen.x, y1=p1.screen.y;
         const x2=p2.screen.x, y2=(visibleRoad?p2.screen.y:(p1.screen.y-1));
 
@@ -1248,8 +1690,8 @@
             glr.drawQuadSolid(L.quadA, tint, fogCliff);
             glr.drawQuadSolid(L.quadB, tint, fogCliff);
           } else {
-            glr.drawQuadTextured(cliffTex, L.quadA, uvA, [1,1,1,1], fogCliff);
-            glr.drawQuadTextured(cliffTex, L.quadB, uvB, [1,1,1,1], fogCliff);
+            glr.drawQuadTextured(cliffTex, L.quadA, uvA, DEFAULT_COLORS.wall, fogCliff);
+            glr.drawQuadTextured(cliffTex, L.quadB, uvB, DEFAULT_COLORS.wall, fogCliff);
           }
         };
         const drawRightCliffs = (solid=false) => {
@@ -1259,8 +1701,8 @@
             glr.drawQuadSolid(R.quadA, tint, fogCliff);
             glr.drawQuadSolid(R.quadB, tint, fogCliff);
           } else {
-            glr.drawQuadTextured(cliffTex, R.quadA, uvA, [1,1,1,1], fogCliff);
-            glr.drawQuadTextured(cliffTex, R.quadB, uvB, [1,1,1,1], fogCliff);
+            glr.drawQuadTextured(cliffTex, R.quadA, uvA, DEFAULT_COLORS.wall, fogCliff);
+            glr.drawQuadTextured(cliffTex, R.quadB, uvB, DEFAULT_COLORS.wall, fogCliff);
           }
         };
 
@@ -1269,12 +1711,14 @@
         if (leftIsNegative)  drawLeftCliffs(debugFill);
         if (rightIsNegative) drawRightCliffs(debugFill);
 
+        const roadTint = boost ? BOOST_TINT : DEFAULT_COLORS.road;
+
         if (debugFill){
           const quad = { x1:x1-w1, y1:y1, x2:x1+w1, y2:y1, x3:x2+w2, y3:y2, x4:x2-w2, y4:y2 };
           glr.drawQuadSolid(quad, tint, fogRoad);
         } else {
           const roadTex = textures.road || glr.whiteTex;
-          drawRoadStrip(x1,y1,w1, x2,y2,w2, v0Road, v1Road, fogRoad, roadTex);
+          drawRoadStrip(x1,y1,w1, x2,y2,w2, v0Road, v1Road, fogRoad, roadTex, roadTint);
         }
 
         if (!leftIsNegative)  drawLeftCliffs(debugFill);
@@ -1296,7 +1740,7 @@
           };
           const uvL = { u1:0, v1:v0Rail, u2:1, v2:v0Rail, u3:1, v3:v1Rail, u4:0, v4:v1Rail };
           const fLs1 = fogFactorFromZ(p1LS.camera.z), fLs2 = fogFactorFromZ(p2LS.camera.z);
-          glr.drawQuadTextured(texRail, quadL, uvL, [1,1,1,1], [fLs1,fLs1,fLs2,fLs2]);
+          glr.drawQuadTextured(texRail, quadL, uvL, DEFAULT_COLORS.rail, [fLs1,fLs1,fLs2,fLs2]);
 
           // Right rail
           const xR1 = x1 + w1 * TUNE_TRACK.railInset;
@@ -1310,7 +1754,7 @@
           };
           const uvR = { u1:0, v1:v0Rail, u2:1, v2:v0Rail, u3:1, v3:v1Rail, u4:0, v4:v1Rail };
           const fRs1 = fogFactorFromZ(p1RS.camera.z), fRs2 = fogFactorFromZ(p2RS.camera.z);
-          glr.drawQuadTextured(texRail, quadR, uvR, [1,1,1,1], [fRs1,fRs1,fRs2,fRs2]);
+          glr.drawQuadTextured(texRail, quadR, uvR, DEFAULT_COLORS.rail, [fRs1,fRs1,fRs2,fRs2]);
         }
 
       } else if (it.type==='npc' || it.type==='prop'){
@@ -1399,7 +1843,7 @@
       else if (t < FR_SHRINK + FR_WAIT) scale = 0;
       else if (t < FR_TOTAL) { const u = t - (FR_SHRINK + FR_WAIT); scale = (u + 1) / FR_EXPAND; }
       if (!didAction && t >= FR_SHRINK) {
-        if (mode === 'reset') resetScene(); else respawnPlayerAt(respawnS, respawnN);
+        if (mode === 'reset') resetScene().catch(err=>console.error(err)); else respawnPlayerAt(respawnS, respawnN);
         didAction = true;
       }
       t++; if (t >= FR_TOTAL) { active = false; scale = 1; didAction = false; ctxHUD.clearRect(0,0,HUD_W,HUD_H); }
@@ -1431,22 +1875,30 @@
     playerN = clamp(nNorm, -bound, bound);
     camYSmooth = phys.y + TUNE_TRACK.cameraHeight;
     hopHeld = false; driftState = 'idle'; driftDirSnapshot = 0; driftCharge = 0; allowedBoost = false; boostTimer = 0;
+    lastBoostSegIndex = -1;
   }
 
   // ---------- Reset & main loop ----------
-  function resetScene(){
+  async function resetScene(){
     fieldOfView  = TUNE_TRACK.fov;
     cameraDepth  = 1/Math.tan((fieldOfView/2)*Math.PI/180);
     nearZ        = 1 / cameraDepth;
     playerZ      = TUNE_TRACK.cameraHeight*cameraDepth;
 
-    buildStraightTrack(700, 0); // the straight road
+    try {
+      await buildTrackFromCSV('tracks/test-track.csv');
+    } catch (err) {
+      console.warn('CSV build failed, using fallback', err);
+      beginTrackBuild();
+      addRoad(25,25,25,0,0);
+      addRoad(50,50,50,2,20);
+      addRoad(40,40,40,0,60);
+      addRoad(100,80,60,-4,-20);
+      addRoad(25,25,25,0,0);
+      trackLength = segments.length * segmentLength;
+    }
 
-    // Default zones: whole track
-    roadTexZones.length = railTexZones.length = cliffTexZones.length = 0;
-    pushZone(roadTexZones,  0, segments.length-1, 20);
-    pushZone(railTexZones,  0, segments.length-1, 20);
-    pushZone(cliffTexZones, 0, segments.length-1, 3);
+    ensureDefaultZones();
 
     spawnProps();
     spawnCars();
@@ -1463,8 +1915,8 @@
     camYSmooth = phys.y + TUNE_TRACK.cameraHeight;
     hopHeld=false; driftState='idle'; driftDirSnapshot=0; driftCharge=0; allowedBoost=false; boostTimer=0;
     camRollDeg = 0; playerTiltDeg = 0; prevPlayerN = playerN; lateralRate = 0;
+    lastBoostSegIndex = -1;
   }
-  resetScene();
 
   const fps = 60, step = 1/fps;
   let last=performance.now(), acc=0;
@@ -1482,7 +1934,10 @@
     if (phys.boostFlashTimer>0) phys.boostFlashTimer=Math.max(0, phys.boostFlashTimer - dt);
     requestAnimationFrame(frame);
   }
-  requestAnimationFrame(frame);
+  (async () => {
+    await resetScene();
+    requestAnimationFrame(frame);
+  })();
 })();
 </script>
 </html>

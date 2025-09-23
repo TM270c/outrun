@@ -1,0 +1,11 @@
+# type,enter,hold,leave,curve,dy,repeats,rail,boost,roadTex,cliffTex,railTex,sprites,cliff,comment
+# warmup
+straight,20,30,20,0,0,1,on,,0-1023@20,0-1023@3,0-1023@20,,,flat intro
+
+# gentle left climb then crest
+road,50,50,50,3,24,1,off,40-80,this@12,this@12,this@12,PALM|-1.35|10;PALM|1.35|120,leftA=9000:1200;leftB=1800:6000,gentle left climb
+hill,40,40,40,0,-30,1,on,,,+0-+120@3,+0-+120@12,SIGN|-1.05|5;SIGN|1.05|35,rightA=4200:2000,big hill
+
+# long right downhill and settle
+road,100,80,60,-4,-20,1,on,on,this@18,this@4,this@18,PALM|-1.6|40;PALM|1.6|140;SIGN|-1.1|20;SIGN|1.1|80,,long right + down
+straight,25,25,25,0,0,2,on,,this@20,this@3,this@20,PALM|-1.2|0;PALM|1.2|30,,settle
