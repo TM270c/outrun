@@ -1,0 +1,7 @@
+# side,len,aEase,aDx,aDy,bEase,bDx,bDy,mode,repeats
+# Gentle both-sides raise toward wider shelves over one lap
+B,80,smooth:io,   0,1500, sharp:io,  0,2500, rel,1
+# Push left outward more aggressively (no height change)
+L,40,sharp:io, 2000,0,     sharp:io, 3500,0,  rel,1
+# Snap right to a flat baseline (absolute)
+R,60,linear:io, 7800,0,    linear:io,11000,0, abs,1
