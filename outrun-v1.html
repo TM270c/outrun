@@ -1181,6 +1181,12 @@
     }
   }
 
+  const laneToScreenX = (laneValue, fallback, xCenter, halfWidth) => {
+    const ratio = laneToRoadRatio(laneValue, fallback);
+    const left = xCenter - halfWidth;
+    return left + ratio * (halfWidth * 2);
+  };
+
   function drawBoostZonesOnStrip(zones, xNear, yNear, xFar, yFar, wNear, wFar, fogRoad, segIndex = 0){
     if (!zones || !zones.length) return;
     for (const zone of zones){
@@ -1194,10 +1200,10 @@
       const laneMinClamped = clampBoostLane(laneMin);
       const laneMaxClamped = clampBoostLane(laneMax);
 
-      const nearMin = xNear + wNear * laneToCenterOffset(laneMinClamped, fallbackStart);
-      const nearMax = xNear + wNear * laneToCenterOffset(laneMaxClamped, fallbackEnd);
-      const farMin  = xFar  + wFar  * laneToCenterOffset(laneMinClamped, fallbackStart);
-      const farMax  = xFar  + wFar  * laneToCenterOffset(laneMaxClamped, fallbackEnd);
+      const nearMin = laneToScreenX(laneMinClamped, fallbackStart, xNear, wNear);
+      const nearMax = laneToScreenX(laneMaxClamped, fallbackEnd,   xNear, wNear);
+      const farMin  = laneToScreenX(laneMinClamped, fallbackStart, xFar,  wFar);
+      const farMax  = laneToScreenX(laneMaxClamped, fallbackEnd,   xFar,  wFar);
       const quadBase = {
         x1: nearMin, y1: yNear,
         x2: nearMax, y2: yNear,
