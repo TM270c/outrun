@@ -1196,9 +1196,15 @@
         x3: farMax,  y3: yFar,
         x4: farMin,  y4: yFar,
       };
+      const padded = padQuad(quad, {
+        padLeft:   OVERLAP.x,
+        padRight:  OVERLAP.x,
+        padTop:    OVERLAP.y,
+        padBottom: OVERLAP.y,
+      });
       const colors = BOOST_ZONE_COLORS[zone.type] || BOOST_ZONE_FALLBACK_COLOR;
       const solid = Array.isArray(colors.solid) ? colors.solid : BOOST_ZONE_FALLBACK_COLOR.solid;
-      glr.drawQuadSolid(quad, solid, fogRoad);
+      glr.drawQuadSolid(padded, solid, fogRoad);
     }
   }
 
