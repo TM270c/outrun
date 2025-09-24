@@ -108,6 +108,8 @@
   };
 
   const BOOST_ZONE_TYPES = { JUMP: 'jump', DRIVE: 'drive' };
+  const BOOST_LANE_MIN = -1;
+  const BOOST_LANE_MAX =  1;
   const BOOST_ZONE_COLORS = {
     [BOOST_ZONE_TYPES.JUMP]: {
       fill: 'rgba(255,152,0,0.45)',
@@ -132,10 +134,8 @@
     if (raw == null || raw === '') return null;
     const num = Number.parseFloat(raw);
     if (!Number.isFinite(num)) return null;
-    const min = -1;
-    const max =  1;
-    if (num < min) return min;
-    if (num > max) return max;
+    if (num < BOOST_LANE_MIN) return BOOST_LANE_MIN;
+    if (num > BOOST_LANE_MAX) return BOOST_LANE_MAX;
     return num;
   }
 
@@ -515,8 +515,8 @@
           startOffset: start,
           endOffset: end,
           type: BOOST_ZONE_TYPES.JUMP,
-          nStart: -1,
-          nEnd: 1,
+          nStart: BOOST_LANE_MIN,
+          nEnd: BOOST_LANE_MAX,
           visible: false,
         }];
       }
@@ -729,8 +729,8 @@
           const parsedType = parseBoostZoneType(boostTypeRaw) || BOOST_ZONE_TYPES.JUMP;
           const laneStart = parseBoostLaneValue(boostLaneStartRaw);
           const laneEnd = parseBoostLaneValue(boostLaneEndRaw);
-          const laneA = (laneStart != null) ? laneStart : -1;
-          const laneB = (laneEnd != null) ? laneEnd : 1;
+          const laneA = (laneStart != null) ? laneStart : BOOST_LANE_MIN;
+          const laneB = (laneEnd != null) ? laneEnd : BOOST_LANE_MAX;
           const nStart = Math.min(laneA, laneB);
           const nEnd = Math.max(laneA, laneB);
           const visible = toBool(boostVisibleRaw, false);
@@ -948,10 +948,10 @@
   }
   function playerWithinBoostZone(zone, nNorm) {
     if (!zone) return false;
-    const startRaw = (zone.nStart != null) ? zone.nStart : -1;
-    const endRaw = (zone.nEnd != null) ? zone.nEnd : 1;
-    const start = clamp(startRaw, -1, 1);
-    const end = clamp(endRaw, -1, 1);
+    const startRaw = (zone.nStart != null) ? zone.nStart : BOOST_LANE_MIN;
+    const endRaw = (zone.nEnd != null) ? zone.nEnd : BOOST_LANE_MAX;
+    const start = clamp(startRaw, BOOST_LANE_MIN, BOOST_LANE_MAX);
+    const end = clamp(endRaw, BOOST_LANE_MIN, BOOST_LANE_MAX);
     const min = Math.min(start, end);
     const max = Math.max(start, end);
     return nNorm >= min && nNorm <= max;
@@ -1936,8 +1936,8 @@
             if (!zone || !zone.visible) continue;
             const colors = BOOST_ZONE_COLORS[zone.type] || null;
             const tintBoost = (colors && Array.isArray(colors.roadTint)) ? colors.roadTint : [1, 1, 1, 0.85];
-            const startN = clamp((zone.nStart != null) ? zone.nStart : -1, -1, 1);
-            const endN = clamp((zone.nEnd != null) ? zone.nEnd : 1, -1, 1);
+            const startN = clamp((zone.nStart != null) ? zone.nStart : BOOST_LANE_MIN, BOOST_LANE_MIN, BOOST_LANE_MAX);
+            const endN = clamp((zone.nEnd != null) ? zone.nEnd : BOOST_LANE_MAX, BOOST_LANE_MIN, BOOST_LANE_MAX);
             const minN = Math.min(startN, endN);
             const maxN = Math.max(startN, endN);
             if ((maxN - minN) <= 1e-3) continue;
@@ -2059,8 +2059,8 @@
     };
     ctx.fillStyle = '#1e1e1e';
     ctx.fillRect(roadX, roadY, roadW, roadH);
-    const roadLeftX = mapN(-1);
-    const roadRightX = mapN(1);
+    const roadLeftX = mapN(BOOST_LANE_MIN);
+    const roadRightX = mapN(BOOST_LANE_MAX);
     const roadWidthPx = Math.max(2, roadRightX - roadLeftX);
     ctx.fillStyle = '#484848';
     ctx.fillRect(roadLeftX, roadY, roadWidthPx, roadH);
@@ -2073,8 +2073,8 @@
 
     for (const zone of zones){
       const colors = BOOST_ZONE_COLORS[zone.type] || { fill:'rgba(255,255,255,0.2)', stroke:'#fafafa' };
-      const startN = clamp((zone.nStart != null) ? zone.nStart : -1, -1, 1);
-      const endN = clamp((zone.nEnd != null) ? zone.nEnd : 1, -1, 1);
+      const startN = clamp((zone.nStart != null) ? zone.nStart : BOOST_LANE_MIN, BOOST_LANE_MIN, BOOST_LANE_MAX);
+      const endN = clamp((zone.nEnd != null) ? zone.nEnd : BOOST_LANE_MAX, BOOST_LANE_MIN, BOOST_LANE_MAX);
       const x1 = mapN(startN);
       const x2 = mapN(endN);
       const zx = Math.min(x1, x2);
