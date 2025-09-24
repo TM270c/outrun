@@ -1,7 +1,14 @@
 # side,len,aEase,aDx,aDy,bEase,bDx,bDy,mode,repeats
+# Baseline geometry for each side
+L,1,linear:io, 7800,0,     linear:io, 1000,5000,  abs,1
+R,1,linear:io, 4000,5000,  linear:io,100000,0,    abs,1
 # Gentle both-sides raise toward wider shelves over one lap
-B,80,smooth:io,   0,1500, sharp:io,  0,2500, rel,1
+L,80,smooth:io, 7800,1500, sharp:io, 1000,7500,  abs,1
+R,80,smooth:io, 4000,6500, sharp:io,100000,2500, abs,1
 # Push left outward more aggressively (no height change)
-L,40,sharp:io, 2000,0,     sharp:io, 3500,0,  rel,1
+L,40,sharp:io, 9800,1500, sharp:io, 4500,7500,  abs,1
 # Snap right to a flat baseline (absolute)
-R,60,linear:io, 7800,0,    linear:io,11000,0, abs,1
+R,60,linear:io, 7800,0,    linear:io,11000,0,    abs,1
+# Ease back to baseline to close the loop
+L,129,smooth:io, 7800,0,   smooth:io, 1000,5000, abs,1
+R,109,smooth:io, 4000,5000,smooth:io,100000,0,   abs,1

@@ -55,12 +55,6 @@
     camBackSegments: 2,
     camYTau: 0.1,
 
-    // default cliff geometry (per-side inner ledge A, outer shelf B)
-    cliffLeftA:  { dx: 7800,   dy: 0    },
-    cliffLeftB:  { dx: 1000,   dy: 5000 },
-    cliffRightA: { dx: 4000,   dy: 5000 },
-    cliffRightB: { dx: 100000, dy: 0    },
-
     // push back from cliffs
     cliffPush: 0.5,
 
@@ -383,21 +377,16 @@
   };
   let CLIFF_READY = false;
 
-  function initCliffSeriesWithDefaults(){
+  function resetCliffSeries(){
     const n = segments.length;
-    const fill = (arr, v)=>{ arr.length = n; for (let i=0;i<n;i++) arr[i] = v; };
+    const clear = (arr)=>{ arr.length = n; for (let i=0;i<n;i++) arr[i] = 0; };
 
-    fill(CLIFF_SERIES.leftA.dx,  TUNE_TRACK.cliffLeftA.dx);
-    fill(CLIFF_SERIES.leftA.dy,  TUNE_TRACK.cliffLeftA.dy);
-    fill(CLIFF_SERIES.leftB.dx,  TUNE_TRACK.cliffLeftB.dx);
-    fill(CLIFF_SERIES.leftB.dy,  TUNE_TRACK.cliffLeftB.dy);
+    clear(CLIFF_SERIES.leftA.dx);  clear(CLIFF_SERIES.leftA.dy);
+    clear(CLIFF_SERIES.leftB.dx);  clear(CLIFF_SERIES.leftB.dy);
+    clear(CLIFF_SERIES.rightA.dx); clear(CLIFF_SERIES.rightA.dy);
+    clear(CLIFF_SERIES.rightB.dx); clear(CLIFF_SERIES.rightB.dy);
 
-    fill(CLIFF_SERIES.rightA.dx, TUNE_TRACK.cliffRightA.dx);
-    fill(CLIFF_SERIES.rightA.dy, TUNE_TRACK.cliffRightA.dy);
-    fill(CLIFF_SERIES.rightB.dx, TUNE_TRACK.cliffRightB.dx);
-    fill(CLIFF_SERIES.rightB.dy, TUNE_TRACK.cliffRightB.dy);
-
-    CLIFF_READY = true;
+    CLIFF_READY = false;
   }
 
   function addSegment(curve, y, features = {}){
@@ -682,7 +671,7 @@
 
   async function buildCliffsFromCSV_Lite(url){
     if (!segments.length) return;
-    initCliffSeriesWithDefaults();
+    resetCliffSeries();
 
     let text='';
     try {
@@ -690,7 +679,8 @@
       if (!res.ok) throw new Error('HTTP '+res.status);
       text = await res.text();
     } catch (e) {
-      console.warn('Cliff CSV not found, using defaults:', e);
+      console.warn('Cliff CSV not found, using flat cliffs:', e);
+      CLIFF_READY = true;
       return;
     }
 
@@ -698,9 +688,12 @@
     const toNum =(v,d=0)=> (v===''||v==null)?d: (Number.isNaN(parseFloat(v))?d:parseFloat(v));
     const normSide = (s)=> (s||'').trim().toUpperCase();
 
-    // independent write heads so L/R streams can advance at different rates
-    const head = { L:0, R:0 };
     const N = segments.length;
+    const head = { L:0, R:0 };
+    const state = {
+      L: { Ax:0, Ay:0, Bx:0, By:0 },
+      R: { Ax:0, Ay:0, Bx:0, By:0 },
+    };
 
     const lines = text.split(/\r?\n/);
     for (const raw of lines){
@@ -711,7 +704,7 @@
       const sideTok = normSide(c[0]||'B');
       const sides = (sideTok==='L'||sideTok==='R') ? [sideTok] : (sideTok==='B' ? ['L','R'] : ['L','R']);
 
-      const len   = Math.max(1, toInt(c[1], 1));
+      const len = Math.max(1, toInt(c[1], 1));
       const aEase = getEase01(c[2]||'smooth:io');
       const aDx   = toNum(c[3], 0), aDy = toNum(c[4], 0);
       const bEase = getEase01(c[5]||'smooth:io');
@@ -721,31 +714,25 @@
 
       for (let r=0; r<reps; r++){
         for (const S of sides){
+          const st = state[S];
           const start = head[S];
-          const prev  = (start - 1 + N) % N;
+          const from = { Ax: st.Ax, Ay: st.Ay, Bx: st.Bx, By: st.By };
+          const target = (mode==='abs') ?
+            { Ax:aDx, Ay:aDy, Bx:bDx, By:bDy } :
+            { Ax: st.Ax + aDx, Ay: st.Ay + aDy, Bx: st.Bx + bDx, By: st.By + bDy };
 
-          const from = (S==='L') ? {
-            Ax: CLIFF_SERIES.leftA.dx[prev],  Ay: CLIFF_SERIES.leftA.dy[prev],
-            Bx: CLIFF_SERIES.leftB.dx[prev],  By: CLIFF_SERIES.leftB.dy[prev],
-          } : {
-            Ax: CLIFF_SERIES.rightA.dx[prev], Ay: CLIFF_SERIES.rightA.dy[prev],
-            Bx: CLIFF_SERIES.rightB.dx[prev], By: CLIFF_SERIES.rightB.dy[prev],
-          };
+          const steps = Math.max(1, len);
+          const denom = steps <= 1 ? 1 : (steps - 1);
 
-          const to = (mode==='abs') ? { Ax:aDx, Ay:aDy, Bx:bDx, By:bDy } : {
-            Ax: from.Ax + aDx, Ay: from.Ay + aDy,
-            Bx: from.Bx + bDx, By: from.By + bDy
-          };
-
-          for (let i=0; i<len; i++){
+          for (let i=0; i<steps; i++){
             const idx = (start + i) % N;
-            const t = i / Math.max(1, len-1);
+            const t = (steps <= 1) ? 1 : (i / denom);
             const sA = aEase(t), sB = bEase(t);
 
-            const Ax = lerp(from.Ax, to.Ax, sA);
-            const Ay = lerp(from.Ay, to.Ay, sA);
-            const Bx = lerp(from.Bx, to.Bx, sB);
-            const By = lerp(from.By, to.By, sB);
+            const Ax = lerp(from.Ax, target.Ax, sA);
+            const Ay = lerp(from.Ay, target.Ay, sA);
+            const Bx = lerp(from.Bx, target.Bx, sB);
+            const By = lerp(from.By, target.By, sB);
 
             if (S==='L'){
               CLIFF_SERIES.leftA.dx[idx]=Ax;  CLIFF_SERIES.leftA.dy[idx]=Ay;
@@ -755,10 +742,33 @@
               CLIFF_SERIES.rightB.dx[idx]=Bx; CLIFF_SERIES.rightB.dy[idx]=By;
             }
           }
-          head[S] = start + len;
+
+          head[S] = start + steps;
+          st.Ax = target.Ax; st.Ay = target.Ay;
+          st.Bx = target.Bx; st.By = target.By;
         }
       }
     }
+
+    const fillRemainder = (S) => {
+      const st = state[S];
+      const start = head[S];
+      if (start >= N) return;
+      for (let i=start; i<N; i++){
+        if (S==='L'){
+          CLIFF_SERIES.leftA.dx[i]=st.Ax;  CLIFF_SERIES.leftA.dy[i]=st.Ay;
+          CLIFF_SERIES.leftB.dx[i]=st.Bx;  CLIFF_SERIES.leftB.dy[i]=st.By;
+        } else {
+          CLIFF_SERIES.rightA.dx[i]=st.Ax; CLIFF_SERIES.rightA.dy[i]=st.Ay;
+          CLIFF_SERIES.rightB.dx[i]=st.Bx; CLIFF_SERIES.rightB.dy[i]=st.By;
+        }
+      }
+    };
+
+    fillRemainder('L');
+    fillRemainder('R');
+
+    CLIFF_READY = true;
   }
 
   function enforceCliffWrap(copySpan = 1){
@@ -864,22 +874,37 @@
   }
 
   // ---------- Cliff params (per segment) ----------
-  function cliffParamsAt(segIndex){
-    if (!CLIFF_READY || !segments.length) {
+  function cliffParamsAt(segIndex, t=0){
+    const n = segments.length;
+    if (n === 0) {
       return {
-        leftA:  {...TUNE_TRACK.cliffLeftA},
-        leftB:  {...TUNE_TRACK.cliffLeftB},
-        rightA: {...TUNE_TRACK.cliffRightA},
-        rightB: {...TUNE_TRACK.cliffRightB},
+        leftA:  { dx:0, dy:0 },
+        leftB:  { dx:0, dy:0 },
+        rightA: { dx:0, dy:0 },
+        rightB: { dx:0, dy:0 },
       };
     }
-    const n = segments.length;
-    const i = ((segIndex % n) + n) % n;
+
+    const u = clamp01(t);
+    const i0 = ((segIndex % n) + n) % n;
+    const i1 = (i0 + 1) % n;
+
+    const mix = (arr, a, b) => lerp(arr[a], arr[b], u);
+
+    if (!CLIFF_READY) {
+      return {
+        leftA:  { dx:0, dy:0 },
+        leftB:  { dx:0, dy:0 },
+        rightA: { dx:0, dy:0 },
+        rightB: { dx:0, dy:0 },
+      };
+    }
+
     return {
-      leftA:  { dx: CLIFF_SERIES.leftA.dx[i],  dy: CLIFF_SERIES.leftA.dy[i]  },
-      leftB:  { dx: CLIFF_SERIES.leftB.dx[i],  dy: CLIFF_SERIES.leftB.dy[i]  },
-      rightA: { dx: CLIFF_SERIES.rightA.dx[i], dy: CLIFF_SERIES.rightA.dy[i] },
-      rightB: { dx: CLIFF_SERIES.rightB.dx[i], dy: CLIFF_SERIES.rightB.dy[i] },
+      leftA:  { dx: mix(CLIFF_SERIES.leftA.dx,  i0, i1), dy: mix(CLIFF_SERIES.leftA.dy,  i0, i1) },
+      leftB:  { dx: mix(CLIFF_SERIES.leftB.dx,  i0, i1), dy: mix(CLIFF_SERIES.leftB.dy,  i0, i1) },
+      rightA: { dx: mix(CLIFF_SERIES.rightA.dx, i0, i1), dy: mix(CLIFF_SERIES.rightA.dy, i0, i1) },
+      rightB: { dx: mix(CLIFF_SERIES.rightB.dx, i0, i1), dy: mix(CLIFF_SERIES.rightB.dy, i0, i1) },
     };
   }
 
@@ -897,28 +922,28 @@
   }
 
   // ---------- Cliff quad builders ----------
-  function makeCliffLeftQuads(x1,y1,w1, x2,y2,w2, yA1,yA2, yB1,yB2, dxA, dxB, u0,u1, rw1, rw2){
+  function makeCliffLeftQuads(x1,y1,w1, x2,y2,w2, yA1,yA2, yB1,yB2, dxA0, dxA1, dxB0, dxB1, u0,u1, rw1, rw2){
     const k1 = w1 / Math.max(1e-6, rw1), k2 = w2 / Math.max(1e-6, rw2);
     const x1_inner = x1 - w1, y1_inner = y1;
     const x2_inner = x2 - w2, y2_inner = y2;
-    const x1_A = x1_inner - dxA * k1;
-    const x2_A = x2_inner - dxA * k2;
-    const x1_B = x1_A     - dxB * k1;
-    const x2_B = x2_A     - dxB * k2;
+    const x1_A = x1_inner - dxA0 * k1;
+    const x2_A = x2_inner - dxA1 * k2;
+    const x1_B = x1_A     - dxB0 * k1;
+    const x2_B = x2_A     - dxB1 * k2;
     const quadA = { x1:x1_A, y1:yA1, x2:x1_inner, y2:y1_inner, x3:x2_inner, y3:y2_inner, x4:x2_A, y4:yA2 };
     const uvA   = { u1:u0, v1:0, u2:u0, v2:0, u3:u1, v3:1, u4:u1, v4:1 };
     const quadB = { x1:x1_B, y1:yB1, x2:x1_A, y2:yA1, x3:x2_A, y3:yA2, x4:x2_B, y4:yB2 };
     const uvB   = { u1:u0, v1:0, u2:u0, v2:0, u3:u1, v3:1, u4:u1, v4:1 };
     return {quadA, uvA, quadB, uvB, x1_inner, x2_inner, x1_A, x2_A, x1_B, x2_B};
   }
-  function makeCliffRightQuads(x1,y1,w1, x2,y2,w2, yA1,yA2, yB1,yB2, dxA, dxB, u0,u1, rw1, rw2){
+  function makeCliffRightQuads(x1,y1,w1, x2,y2,w2, yA1,yA2, yB1,yB2, dxA0, dxA1, dxB0, dxB1, u0,u1, rw1, rw2){
     const k1 = w1 / Math.max(1e-6, rw1), k2 = w2 / Math.max(1e-6, rw2);
     const x1_inner = x1 + w1, y1_inner = y1;
     const x2_inner = x2 + w2, y2_inner = y2;
-    const x1_A = x1_inner + dxA * k1;
-    const x2_A = x2_inner + dxA * k2;
-    const x1_B = x1_A     + dxB * k1;
-    const x2_B = x2_A     + dxB * k2;
+    const x1_A = x1_inner + dxA0 * k1;
+    const x2_A = x2_inner + dxA1 * k2;
+    const x1_B = x1_A     + dxB0 * k1;
+    const x2_B = x2_A     + dxB1 * k2;
     const quadA = { x1:x1_inner, y1:y1_inner, x2:x1_A, y2:yA1, x3:x2_A, y3:yA2, x4:x2_inner, y4:y2_inner };
     const uvA   = { u1:u0, v1:0, u2:u0, v2:0, u3:u1, v3:1, u4:u1, v4:1 };
     const quadB = { x1:x1_A, y1:yA1, x2:x1_B, y2:yB1, x3:x2_B, y3:yB2, x4:x2_A, y4:yA2 };
@@ -1252,7 +1277,8 @@
     const base = elevationAt(s);
     const seg = segmentAtS(s);
     const idx = seg ? seg.index : 0;
-    const params = cliffParamsAt(idx);
+    const segT = seg ? clamp01((s - seg.p1.world.z) / segmentLength) : 0;
+    const params = cliffParamsAt(idx, segT);
     const left  = nNorm < 0;
     const a = left ? params.leftA.dy  : params.rightA.dy;
     const b = left ? params.leftB.dy  : params.rightB.dy;
@@ -1261,11 +1287,11 @@
     const bPart = Math.max(0, band - 1);
     return base + a * aPart + b * bPart;
   }
-  function cliffLateralSlopeAt(segIndex, nNorm){
+  function cliffLateralSlopeAt(segIndex, nNorm, t=0){
     const ax = Math.abs(nNorm);
     const s = Math.max(0, Math.min(2, ax - 1));
     if (s <= 0) return 0;
-    const params = cliffParamsAt(segIndex);
+    const params = cliffParamsAt(segIndex, t);
     const left = nNorm < 0;
     const sideSign = Math.sign(nNorm) || 1;
     const per =
@@ -1274,10 +1300,10 @@
         : (left ? params.leftB.dy  : params.rightB.dy);
     return sideSign * per;
   }
-  function cliffDeltaYAt(segIndex, nNorm){
+  function cliffDeltaYAt(segIndex, nNorm, t=0){
     const ax = Math.abs(nNorm);
     if (ax <= 1) return 0;
-    const params = cliffParamsAt(segIndex);
+    const params = cliffParamsAt(segIndex, t);
     const left = nNorm < 0;
     const s = Math.max(0, Math.min(2, ax - 1));
     const useB = s > 1;
@@ -1289,7 +1315,8 @@
     if (ax <= 1) return;
     const seg = segmentAtS(phys.s);
     const idx = seg ? seg.index : 0;
-    const dy = cliffDeltaYAt(idx, playerN);
+    const segT = seg ? clamp01((phys.s - seg.p1.world.z) / segmentLength) : 0;
+    const dy = cliffDeltaYAt(idx, playerN, segT);
     if (dy === 0) return;
     const sign = Math.sign(playerN) || 1;
     const dir  = (dy < 0) ?  sign : -sign;
@@ -1303,7 +1330,8 @@
     if (!cfgTiltAdd.tiltAddEnabled) return 0;
     const seg = segmentAtS(phys.s);
     const idx = seg ? seg.index : 0;
-    const slope = cliffLateralSlopeAt(idx, playerN);
+    const segT = seg ? clamp01((phys.s - seg.p1.world.z) / segmentLength) : 0;
+    const slope = cliffLateralSlopeAt(idx, playerN, segT);
     const norm  = clamp(slope * cfgTiltAdd.tiltAddSens, -1, 1);
     return cfgTilt.tiltDir * norm * cfgTiltAdd.tiltAddMaxDeg;
   }
@@ -1527,20 +1555,27 @@
       const yScale1 = 1.0 - f1Road;
       const yScale2 = 1.0 - f2Road;
 
-      const cParams = cliffParamsAt(idx);
-      const dyLA = cParams.leftA.dy;
-      const dyLB = cParams.leftA.dy + cParams.leftB.dy;
-      const dyRA = cParams.rightA.dy;
-      const dyRB = cParams.rightA.dy + cParams.rightB.dy;
+      const cliffStart = cliffParamsAt(idx, 0);
+      const cliffEnd   = cliffParamsAt(idx, 1);
 
-      const p1LA={world:{x:0,y:seg.p1.world.y + dyLA * yScale1, z:seg.p1.world.z},camera:{},screen:{}};
-      const p2LA={world:{x:0,y:seg.p2.world.y + dyLA * yScale2, z:seg.p2.world.z},camera:{},screen:{}};
-      const p1LB={world:{x:0,y:seg.p1.world.y + dyLB * yScale1, z:seg.p1.world.z},camera:{},screen:{}};
-      const p2LB={world:{x:0,y:seg.p2.world.y + dyLB * yScale2, z:seg.p2.world.z},camera:{},screen:{}};
-      const p1RA={world:{x:0,y:seg.p1.world.y + dyRA * yScale1, z:seg.p1.world.z},camera:{},screen:{}};
-      const p2RA={world:{x:0,y:seg.p2.world.y + dyRA * yScale2, z:seg.p2.world.z},camera:{},screen:{}};
-      const p1RB={world:{x:0,y:seg.p1.world.y + dyRB * yScale1, z:seg.p1.world.z},camera:{},screen:{}};
-      const p2RB={world:{x:0,y:seg.p2.world.y + dyRB * yScale2, z:seg.p2.world.z},camera:{},screen:{}};
+      const dyLA1 = cliffStart.leftA.dy;
+      const dyLA2 = cliffEnd.leftA.dy;
+      const dyLB1 = cliffStart.leftA.dy + cliffStart.leftB.dy;
+      const dyLB2 = cliffEnd.leftA.dy + cliffEnd.leftB.dy;
+
+      const dyRA1 = cliffStart.rightA.dy;
+      const dyRA2 = cliffEnd.rightA.dy;
+      const dyRB1 = cliffStart.rightA.dy + cliffStart.rightB.dy;
+      const dyRB2 = cliffEnd.rightA.dy + cliffEnd.rightB.dy;
+
+      const p1LA={world:{x:0,y:seg.p1.world.y + dyLA1 * yScale1, z:seg.p1.world.z},camera:{},screen:{}};
+      const p2LA={world:{x:0,y:seg.p2.world.y + dyLA2 * yScale2, z:seg.p2.world.z},camera:{},screen:{}};
+      const p1LB={world:{x:0,y:seg.p1.world.y + dyLB1 * yScale1, z:seg.p1.world.z},camera:{},screen:{}};
+      const p2LB={world:{x:0,y:seg.p2.world.y + dyLB2 * yScale2, z:seg.p2.world.z},camera:{},screen:{}};
+      const p1RA={world:{x:0,y:seg.p1.world.y + dyRA1 * yScale1, z:seg.p1.world.z},camera:{},screen:{}};
+      const p2RA={world:{x:0,y:seg.p2.world.y + dyRA2 * yScale2, z:seg.p2.world.z},camera:{},screen:{}};
+      const p1RB={world:{x:0,y:seg.p1.world.y + dyRB1 * yScale1, z:seg.p1.world.z},camera:{},screen:{}};
+      const p2RB={world:{x:0,y:seg.p2.world.y + dyRB2 * yScale2, z:seg.p2.world.z},camera:{},screen:{}};
 
       projectPoint(p1LA, camX - x,      camY, camSRef);
       projectPoint(p2LA, camX - x - dx, camY, camSRef);
@@ -1567,7 +1602,9 @@
         w2,
         p1LA.screen.y, p2LA.screen.y,
         p1LB.screen.y, p2LB.screen.y,
-        cParams.leftA.dx, cParams.leftB.dx, 0, 1,
+        cliffStart.leftA.dx, cliffEnd.leftA.dx,
+        cliffStart.leftB.dx, cliffEnd.leftB.dx,
+        0, 1,
         rw1, rw2
       );
       const R = makeCliffRightQuads(
@@ -1576,7 +1613,9 @@
         w2,
         p1RA.screen.y, p2RA.screen.y,
         p1RB.screen.y, p2RB.screen.y,
-        cParams.rightA.dx, cParams.rightB.dx, 0, 1,
+        cliffStart.rightA.dx, cliffEnd.rightA.dx,
+        cliffStart.rightB.dx, cliffEnd.rightB.dx,
+        0, 1,
         rw1, rw2
       );
 
@@ -1937,7 +1976,7 @@
     }
 
     // NEW: prepare per-segment cliff arrays and load compact CSV
-    initCliffSeriesWithDefaults();
+    resetCliffSeries();
     await buildCliffsFromCSV_Lite('tracks/cliffs.csv').catch(()=>{});
     enforceCliffWrap(1); // make index 0 == index N-1 for each series
 
