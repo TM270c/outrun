@@ -1,7 +1,7 @@
 # Columns: type,enter,hold,leave,hillmult,curve,dy,railpresent,boostStart,boostEnd,repeats[,comment]
 # hillmult>1 sharpens elevation easing when dy ≠ 0. Set railpresent=false to drop guardrails for that build step.
 # Provide a boost window via boostStart/boostEnd (segment offsets within the generated block) to auto-spawn pickups and apply the boost multiplier.
-hill,40,40,40,1,0,0,false,0,0,1,big hill with sharper crest
-hill,40,40,40,1,0,30,false,0,0,1,big hill with sharper crest
-hill,40,40,40,1,0,60,false,0,0,1,big hill with sharper crest
-hill,40,40,40,1,0,120,false,0,0,1,big hill with sharper crest
+hill,40,40,0,1,0,20,false,0,0,1,big hill with sharper crest
+hill,40,40,20,1,0,20,false,0,0,1,big hill with sharper crest
+hill,20,40,40,1,0,20,false,0,0,1,big hill with sharper crest
+hill,10,40,40,1,0,20,false,0,0,1,big hill with sharper crest
