@@ -1,7 +1,9 @@
 # Columns: type,enter,hold,leave,curve,dy,railpresent,boostStart,boostEnd,repeats[,comment]
 # Set railpresent=false to drop guardrails for that build step. Hill types: smoothHill (eased), sharpHill (mirrored sharp), straight (linear grade).
 # Provide a boost window via boostStart/boostEnd (segment offsets within the generated block) to auto-spawn pickups and apply the boost multiplier.
-smoothHill,40,40,0,0,20,false,0,0,1,long smooth climb
-smoothHill,40,40,20,0,-20,false,0,0,1,long smooth descent
-sharpHill,20,20,20,0,15,true,0,0,1,sharper crest for jump
-straight,20,60,20,0,10,true,0,0,1,linear rise without easing
+straight,10,10,10,20,0,false,0,0,1,\\flat
+smoothHill,10,20,10,20,40,false,0,0,1, smooth hill
+straight,10,10,10,20,0,true,0,0,1, \\flat 
+straight,20,20,20,20,30,true,0,0,1, linear hill
+straight,10,10,10,20,0,true,0,0,1, \\flat 
+sharpHill,20,20,20,20,30,true,0,0,1, crest hill
