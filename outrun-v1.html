@@ -108,9 +108,45 @@
   };
 
   const BOOST_ZONE_TYPES = { JUMP: 'jump', DRIVE: 'drive' };
+  const BOOST_ZONE_FALLBACK_COLOR = {
+    fill: 'rgba(255,255,255,0.2)',
+    stroke: '#fafafa',
+    solid: [1, 1, 1, 0.35],
+  };
   const BOOST_ZONE_COLORS = {
-    [BOOST_ZONE_TYPES.JUMP]: { fill: 'rgba(255,152,0,0.45)', stroke: '#ff9800' },
-    [BOOST_ZONE_TYPES.DRIVE]: { fill: 'rgba(33,150,243,0.45)', stroke: '#2196f3' },
+    [BOOST_ZONE_TYPES.JUMP]: {
+      fill: 'rgba(255,152,0,0.45)',
+      stroke: '#ff9800',
+      solid: [1, 152/255, 0, 0.45],
+    },
+    [BOOST_ZONE_TYPES.DRIVE]: {
+      fill: 'rgba(33,150,243,0.45)',
+      stroke: '#2196f3',
+      solid: [33/255, 150/255, 243/255, 0.45],
+    },
+  };
+  const BOOST_LANE_LIMITS = { MIN: -1, MAX: 1 };
+  const ROAD_LANE_LIMITS = { MIN: -2, MAX: 2 };
+  const clampBoostLane = (v) => {
+    if (v == null) return v;
+    const min = BOOST_LANE_LIMITS.MIN;
+    const max = BOOST_LANE_LIMITS.MAX;
+    if (v < min) return min;
+    if (v > max) return max;
+    return v;
+  };
+  const clampRoadLane = (v, fallback = 0) => {
+    if (v == null) return fallback;
+    const min = ROAD_LANE_LIMITS.MIN;
+    const max = ROAD_LANE_LIMITS.MAX;
+    if (v < min) return min;
+    if (v > max) return max;
+    return v;
+  };
+  const laneToCenterOffset = (n, fallback = 0) => clampRoadLane(n, fallback) * 0.5;
+  const laneToRoadRatio = (n, fallback = 0) => {
+    const clamped = clampRoadLane(n, fallback);
+    return (clamped - ROAD_LANE_LIMITS.MIN) / (ROAD_LANE_LIMITS.MAX - ROAD_LANE_LIMITS.MIN);
   };
   function parseBoostZoneType(raw) {
     if (raw == null) return null;
@@ -124,8 +160,8 @@
     if (raw == null || raw === '') return null;
     const num = Number.parseFloat(raw);
     if (!Number.isFinite(num)) return null;
-    const min = -2;
-    const max =  2;
+    const min = BOOST_LANE_LIMITS.MIN;
+    const max = BOOST_LANE_LIMITS.MAX;
     if (num < min) return min;
     if (num > max) return max;
     return num;
@@ -502,13 +538,16 @@
       const start = Math.floor(Math.max(0, boostRangeRaw[0]));
       const end = Math.floor(Math.max(start, boostRangeRaw[1]));
       if (!(start === 0 && end === 0)) {
+        const fallbackStart = clampBoostLane(-2);
+        const fallbackEnd = clampBoostLane(2);
         zoneSpecs = [{
           id: `legacy-${boostZoneIdCounter++}`,
           startOffset: start,
           endOffset: end,
           type: BOOST_ZONE_TYPES.JUMP,
-          nStart: -2,
-          nEnd: 2,
+          nStart: fallbackStart,
+          nEnd: fallbackEnd,
+          visible: true,
         }];
       }
     }
@@ -694,6 +733,7 @@
       const boostTypeRaw = extrasAfter.length > 0 ? extrasAfter[0] : '';
       const boostLaneStartRaw = extrasAfter.length > 1 ? extrasAfter[1] : '';
       const boostLaneEndRaw = extrasAfter.length > 2 ? extrasAfter[2] : '';
+      const boostVisibleRaw = extrasAfter.length > 3 ? extrasAfter[3] : '';
       const reps = Math.max(1, toInt(repeatsRaw, 1));
 
       let elevationProfile = 'smooth';
@@ -719,10 +759,13 @@
           const parsedType = parseBoostZoneType(boostTypeRaw) || BOOST_ZONE_TYPES.JUMP;
           const laneStart = parseBoostLaneValue(boostLaneStartRaw);
           const laneEnd = parseBoostLaneValue(boostLaneEndRaw);
-          const laneA = (laneStart != null) ? laneStart : -2;
-          const laneB = (laneEnd != null) ? laneEnd : 2;
+          const fallbackStart = clampBoostLane(-2);
+          const fallbackEnd = clampBoostLane(2);
+          const laneA = clampBoostLane((laneStart != null) ? laneStart : fallbackStart);
+          const laneB = clampBoostLane((laneEnd != null) ? laneEnd : fallbackEnd);
           const nStart = Math.min(laneA, laneB);
           const nEnd = Math.max(laneA, laneB);
+          const zoneVisible = toBool(boostVisibleRaw, true);
           const zone = {
             id: `csv-${boostZoneIdCounter++}`,
             startOffset: start,
@@ -730,6 +773,7 @@
             type: parsedType,
             nStart,
             nEnd,
+            visible: zoneVisible,
           };
           features.boostZones = [zone];
           features.boostRange = [start, end];
@@ -936,8 +980,10 @@
   }
   function playerWithinBoostZone(zone, nNorm) {
     if (!zone) return false;
-    const start = (zone.nStart != null) ? zone.nStart : -2;
-    const end = (zone.nEnd != null) ? zone.nEnd : 2;
+    const fallbackStart = clampBoostLane(-2);
+    const fallbackEnd = clampBoostLane(2);
+    const start = (zone.nStart != null) ? zone.nStart : fallbackStart;
+    const end = (zone.nEnd != null) ? zone.nEnd : fallbackEnd;
     const min = Math.min(start, end);
     const max = Math.max(start, end);
     return nNorm >= min && nNorm <= max;
@@ -1123,6 +1169,36 @@
         const uv = { u1:u0, v1:vv0, u2:u1, v2:vv0, u3:u1, v3:vv1, u4:u0, v4:vv1 };
         glr.drawQuadTextured(tex, quad, uv, DEFAULT_COLORS.road, [fA,fA,fB,fB]);
       }
+    }
+  }
+
+  function drawBoostZonesOnStrip(zones, xNear, yNear, xFar, yFar, wNear, wFar, fogRoad){
+    if (!zones || !zones.length) return;
+    for (const zone of zones){
+      if (!zone || zone.visible === false) continue;
+      const fallbackStart = clampBoostLane(-2);
+      const fallbackEnd = clampBoostLane(2);
+      const startN = (zone.nStart != null) ? zone.nStart : fallbackStart;
+      const endN = (zone.nEnd != null) ? zone.nEnd : fallbackEnd;
+      const laneMin = Math.min(startN, endN);
+      const laneMax = Math.max(startN, endN);
+      const laneMinClamped = clampBoostLane(laneMin);
+      const laneMaxClamped = clampBoostLane(laneMax);
+
+      const nearMin = xNear + wNear * laneToCenterOffset(laneMinClamped, fallbackStart);
+      const nearMax = xNear + wNear * laneToCenterOffset(laneMaxClamped, fallbackEnd);
+      const farMin  = xFar  + wFar  * laneToCenterOffset(laneMinClamped, fallbackStart);
+      const farMax  = xFar  + wFar  * laneToCenterOffset(laneMaxClamped, fallbackEnd);
+
+      const quad = {
+        x1: nearMin, y1: yNear,
+        x2: nearMax, y2: yNear,
+        x3: farMax,  y3: yFar,
+        x4: farMin,  y4: yFar,
+      };
+      const colors = BOOST_ZONE_COLORS[zone.type] || BOOST_ZONE_FALLBACK_COLOR;
+      const solid = Array.isArray(colors.solid) ? colors.solid : BOOST_ZONE_FALLBACK_COLOR.solid;
+      glr.drawQuadSolid(quad, solid, fogRoad);
     }
   }
 
@@ -1671,6 +1747,8 @@
       const yScale1 = 1.0 - f1Road;
       const yScale2 = 1.0 - f2Road;
 
+      const boostZonesHere = boostZonesOnSegment(seg);
+
       const cliffStart = cliffParamsAt(idx, 0);
       const cliffEnd   = cliffParamsAt(idx, 1);
 
@@ -1743,6 +1821,7 @@
       // push strip
       drawList.push({ type:'strip', depth,
         segIndex:idx, seg, visibleRoad,
+        boostZones: boostZonesHere,
         p1, p2, w1, w2, rw1, rw2,
         L, R,
         v0Road, v1Road, v0Rail, v1Rail, v0Cliff, v1Cliff,
@@ -1851,6 +1930,7 @@
         const { p1, p2, w1, w2, rw1, rw2, L, R,
                 v0Road, v1Road, v0Rail, v1Rail, v0Cliff, v1Cliff,
                 fogRoad, visibleRoad, segIndex, seg,
+                boostZones,
                 p1LS, p2LS, p1RS, p2RS } = it;
         const x1=p1.screen.x, y1=p1.screen.y;
         const x2=p2.screen.x, y2=(visibleRoad?p2.screen.y:(p1.screen.y-1));
@@ -1911,6 +1991,7 @@
         } else {
           const roadTex = textures.road || glr.whiteTex;
           drawRoadStrip(x1,y1,w1, x2,y2,w2, v0Road, v1Road, fogRoad, roadTex);
+          drawBoostZonesOnStrip(boostZones, x1, y1, x2, y2, w1, w2, fogRoad);
         }
 
         if (!leftIsNegative)  drawLeftCliffs(debugFill);
@@ -2014,15 +2095,18 @@
 
     const seg = segmentAtS(phys.s);
     const zones = boostZonesOnSegment(seg);
-    const mapN = (n) => {
-      const clamped = clamp(n, -2, 2);
-      return roadX + ((clamped + 2) / 4) * roadW;
+    const mapN = (n, fallback = 0) => {
+      const ratio = laneToRoadRatio(n, fallback);
+      return roadX + ratio * roadW;
     };
 
     for (const zone of zones){
-      const colors = BOOST_ZONE_COLORS[zone.type] || { fill:'rgba(255,255,255,0.2)', stroke:'#fafafa' };
-      const x1 = mapN((zone.nStart != null) ? zone.nStart : -2);
-      const x2 = mapN((zone.nEnd != null) ? zone.nEnd : 2);
+      if (zone && zone.visible === false) continue;
+      const colors = BOOST_ZONE_COLORS[zone.type] || BOOST_ZONE_FALLBACK_COLOR;
+      const fallbackStart = clampBoostLane(-2);
+      const fallbackEnd = clampBoostLane(2);
+      const x1 = mapN(zone.nStart, fallbackStart);
+      const x2 = mapN(zone.nEnd, fallbackEnd);
       const zx = Math.min(x1, x2);
       const zw = Math.max(2, Math.abs(x2 - x1));
       ctx.fillStyle = colors.fill;
