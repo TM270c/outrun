@@ -374,6 +374,32 @@
 
   let segments=[], trackLength=0;
 
+  // ---- Per-segment cliff series (filled after track build)
+  const CLIFF_SERIES = {
+    leftA:  { dx: [], dy: [] },
+    leftB:  { dx: [], dy: [] },
+    rightA: { dx: [], dy: [] },
+    rightB: { dx: [], dy: [] },
+  };
+  let CLIFF_READY = false;
+
+  function initCliffSeriesWithDefaults(){
+    const n = segments.length;
+    const fill = (arr, v)=>{ arr.length = n; for (let i=0;i<n;i++) arr[i] = v; };
+
+    fill(CLIFF_SERIES.leftA.dx,  TUNE_TRACK.cliffLeftA.dx);
+    fill(CLIFF_SERIES.leftA.dy,  TUNE_TRACK.cliffLeftA.dy);
+    fill(CLIFF_SERIES.leftB.dx,  TUNE_TRACK.cliffLeftB.dx);
+    fill(CLIFF_SERIES.leftB.dy,  TUNE_TRACK.cliffLeftB.dy);
+
+    fill(CLIFF_SERIES.rightA.dx, TUNE_TRACK.cliffRightA.dx);
+    fill(CLIFF_SERIES.rightA.dy, TUNE_TRACK.cliffRightA.dy);
+    fill(CLIFF_SERIES.rightB.dx, TUNE_TRACK.cliffRightB.dx);
+    fill(CLIFF_SERIES.rightB.dy, TUNE_TRACK.cliffRightB.dy);
+
+    CLIFF_READY = true;
+  }
+
   function addSegment(curve, y, features = {}){
     const n=segments.length;
     const prevY = segments.length ? segments[n-1].p2.world.y : 0;
@@ -398,6 +424,22 @@
   const easeOutQuad= (a,b,t)=> a + (b-a) * (1 - Math.pow(1 - clamp01(t), 2));
   const easeInCub  = (a,b,t)=> a + (b-a) * Math.pow(clamp01(t), 3);
   const easeOutCub = (a,b,t)=> a + (b-a) * (1 - Math.pow(1 - clamp01(t), 3));
+
+  const easeInOutQuad01 = (t)=> (t<0.5)? 2*t*t : 1 - Math.pow(-2*t+2,2)/2;
+  const easeInOutCub01  = (t)=> (t<0.5)? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+
+  function getEase01(spec){
+    const clamp01 = (x)=> x<0?0:x>1?1:x;
+    const raw = (spec||'smooth:io').toLowerCase().trim();
+    const [kind, modeRaw] = raw.split(':');
+    const mode = (modeRaw||'io');
+    const K = {
+      linear: { in:(t)=>t, out:(t)=>t, io:(t)=>t },
+      smooth: { in:(t)=>Math.pow(clamp01(t),2), out:(t)=>1-Math.pow(1-clamp01(t),2), io:easeInOutQuad01 },
+      sharp:  { in:(t)=>Math.pow(clamp01(t),3), out:(t)=>1-Math.pow(1-clamp01(t),3), io:easeInOutCub01 },
+    };
+    return (K[kind]||K.smooth)[mode] || K.smooth.io;
+  }
 
   const CURVE_EASE = {
     linear: { in: easeLinear,  out: easeLinear },
@@ -638,6 +680,87 @@
     trackLength = segments.length * segmentLength;
   }
 
+  async function buildCliffsFromCSV_Lite(url){
+    if (!segments.length) return;
+    initCliffSeriesWithDefaults();
+
+    let text='';
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('HTTP '+res.status);
+      text = await res.text();
+    } catch (e) {
+      console.warn('Cliff CSV not found, using defaults:', e);
+      return;
+    }
+
+    const toInt =(v,d=0)=> (v===''||v==null)?d: (Number.isNaN(parseInt(v,10))?d:parseInt(v,10));
+    const toNum =(v,d=0)=> (v===''||v==null)?d: (Number.isNaN(parseFloat(v))?d:parseFloat(v));
+    const normSide = (s)=> (s||'').trim().toUpperCase();
+
+    // independent write heads so L/R streams can advance at different rates
+    const head = { L:0, R:0 };
+    const N = segments.length;
+
+    const lines = text.split(/\r?\n/);
+    for (const raw of lines){
+      const line = raw.trim();
+      if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+
+      const c = line.split(',').map(s => (s??'').trim());
+      const sideTok = normSide(c[0]||'B');
+      const sides = (sideTok==='L'||sideTok==='R') ? [sideTok] : (sideTok==='B' ? ['L','R'] : ['L','R']);
+
+      const len   = Math.max(1, toInt(c[1], 1));
+      const aEase = getEase01(c[2]||'smooth:io');
+      const aDx   = toNum(c[3], 0), aDy = toNum(c[4], 0);
+      const bEase = getEase01(c[5]||'smooth:io');
+      const bDx   = toNum(c[6], 0), bDy = toNum(c[7], 0);
+      const mode  = (c[8]||'rel').toLowerCase()==='abs' ? 'abs' : 'rel';
+      const reps  = Math.max(1, toInt(c[9], 1));
+
+      for (let r=0; r<reps; r++){
+        for (const S of sides){
+          const start = head[S];
+          const prev  = (start - 1 + N) % N;
+
+          const from = (S==='L') ? {
+            Ax: CLIFF_SERIES.leftA.dx[prev],  Ay: CLIFF_SERIES.leftA.dy[prev],
+            Bx: CLIFF_SERIES.leftB.dx[prev],  By: CLIFF_SERIES.leftB.dy[prev],
+          } : {
+            Ax: CLIFF_SERIES.rightA.dx[prev], Ay: CLIFF_SERIES.rightA.dy[prev],
+            Bx: CLIFF_SERIES.rightB.dx[prev], By: CLIFF_SERIES.rightB.dy[prev],
+          };
+
+          const to = (mode==='abs') ? { Ax:aDx, Ay:aDy, Bx:bDx, By:bDy } : {
+            Ax: from.Ax + aDx, Ay: from.Ay + aDy,
+            Bx: from.Bx + bDx, By: from.By + bDy
+          };
+
+          for (let i=0; i<len; i++){
+            const idx = (start + i) % N;
+            const t = i / Math.max(1, len-1);
+            const sA = aEase(t), sB = bEase(t);
+
+            const Ax = lerp(from.Ax, to.Ax, sA);
+            const Ay = lerp(from.Ay, to.Ay, sA);
+            const Bx = lerp(from.Bx, to.Bx, sB);
+            const By = lerp(from.By, to.By, sB);
+
+            if (S==='L'){
+              CLIFF_SERIES.leftA.dx[idx]=Ax;  CLIFF_SERIES.leftA.dy[idx]=Ay;
+              CLIFF_SERIES.leftB.dx[idx]=Bx;  CLIFF_SERIES.leftB.dy[idx]=By;
+            } else {
+              CLIFF_SERIES.rightA.dx[idx]=Ax; CLIFF_SERIES.rightA.dy[idx]=Ay;
+              CLIFF_SERIES.rightB.dx[idx]=Bx; CLIFF_SERIES.rightB.dy[idx]=By;
+            }
+          }
+          head[S] = start + len;
+        }
+      }
+    }
+  }
+
   // ---------- Texture tiling zones ----------
   let roadTexZones = [], railTexZones = [], cliffTexZones = [];
   function pushZone(stack, start, end, tile=1){
@@ -695,13 +818,23 @@
     return i * segmentLength + segmentLength * 0.5;
   }
 
-  // ---------- Cliff params (single default) ----------
+  // ---------- Cliff params (per segment) ----------
   function cliffParamsAt(segIndex){
+    if (!CLIFF_READY || !segments.length) {
+      return {
+        leftA:  {...TUNE_TRACK.cliffLeftA},
+        leftB:  {...TUNE_TRACK.cliffLeftB},
+        rightA: {...TUNE_TRACK.cliffRightA},
+        rightB: {...TUNE_TRACK.cliffRightB},
+      };
+    }
+    const n = segments.length;
+    const i = ((segIndex % n) + n) % n;
     return {
-      leftA:  {...TUNE_TRACK.cliffLeftA},
-      leftB:  {...TUNE_TRACK.cliffLeftB},
-      rightA: {...TUNE_TRACK.cliffRightA},
-      rightB: {...TUNE_TRACK.cliffRightB},
+      leftA:  { dx: CLIFF_SERIES.leftA.dx[i],  dy: CLIFF_SERIES.leftA.dy[i]  },
+      leftB:  { dx: CLIFF_SERIES.leftB.dx[i],  dy: CLIFF_SERIES.leftB.dy[i]  },
+      rightA: { dx: CLIFF_SERIES.rightA.dx[i], dy: CLIFF_SERIES.rightA.dy[i] },
+      rightB: { dx: CLIFF_SERIES.rightB.dx[i], dy: CLIFF_SERIES.rightB.dy[i] },
     };
   }
 
@@ -1731,6 +1864,10 @@
       addRoad(25,25,25,0,0,'smooth');
       trackLength = segments.length * segmentLength;
     }
+
+    // NEW: prepare per-segment cliff arrays and load compact CSV
+    initCliffSeriesWithDefaults();
+    await buildCliffsFromCSV_Lite('tracks/cliffs.csv').catch(()=>{});
 
     // Default zones: whole track
     roadTexZones.length = railTexZones.length = cliffTexZones.length = 0;
