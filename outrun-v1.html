@@ -391,34 +391,26 @@
     });
   }
 
-  const easeIn    = (a,b,t) => a + (b-a) * (t*t);
-  const easeOut   = (a,b,t) => {
-    const tt = t < 0 ? 0 : (t > 1 ? 1 : t);
-    const inv = 1 - tt;
-    return a + (b - a) * (1 - inv * inv);
-  };
-  const easeInOut = (a,b,t) => {
-    let tt = t < 0 ? 0 : (t > 1 ? 1 : t);
-    tt *= 2;
-    if (tt < 1) return a + (b-a)/2 * (tt*tt);
-    tt -= 1;
-    return a + (b-a)/2 * (1 - (tt * (tt - 2)));
-  };
-
   const clamp01 = (t) => (t < 0 ? 0 : (t > 1 ? 1 : t));
-  const easeOutUnit = (t) => easeOut(0, 1, clamp01(t));
-  const easeInOutUnit = (t) => easeInOut(0, 1, clamp01(t));
 
-  const heightProfiles = {
-    linear: (t) => clamp01(t),
-    smooth: (t) => easeInOutUnit(t),
-    sharp:  (t) => {
-      const tt = clamp01(t);
-      if (tt <= 0.5) {
-        return 0.5 * easeOutUnit(tt * 2);
-      }
-      return 1 - 0.5 * easeOutUnit((1 - tt) * 2);
-    },
+  const easeLinear = (a,b,t)=> a + (b-a) * clamp01(t);
+  const easeInQuad = (a,b,t)=> a + (b-a) * Math.pow(clamp01(t), 2);
+  const easeOutQuad= (a,b,t)=> a + (b-a) * (1 - Math.pow(1 - clamp01(t), 2));
+  const easeInCub  = (a,b,t)=> a + (b-a) * Math.pow(clamp01(t), 3);
+  const easeOutCub = (a,b,t)=> a + (b-a) * (1 - Math.pow(1 - clamp01(t), 3));
+
+  const CURVE_EASE = {
+    linear: { in: easeLinear,  out: easeLinear },
+    smooth: { in: easeInQuad,  out: easeOutQuad },
+    sharp:  { in: easeInCub,   out: easeOutCub },
+  };
+
+  const HEIGHT_EASE_UNIT = {
+    linear: { in: (t)=> clamp01(t),          out: (t)=> clamp01(t) },
+    smooth: { in: (t)=> Math.pow(clamp01(t),2),
+              out:(t)=> 1 - Math.pow(1 - clamp01(t),2) },
+    sharp:  { in: (t)=> Math.pow(clamp01(t),3),
+              out:(t)=> 1 - Math.pow(1 - clamp01(t),3) },
   };
 
   function lastY(){
@@ -432,8 +424,11 @@
 
     const startY = lastY();
     const endY   = startY + (dyInSegments * segmentLength);
-
-    const heightProfile = heightProfiles[elevationProfile] || heightProfiles.smooth;
+    const hasElevationChange = dyInSegments !== 0;
+    const profile =
+      elevationProfile === 'linear' ? 'linear' :
+      elevationProfile === 'sharp'  ? 'sharp'  :
+                                      'smooth';
 
     const extras = { ...featurePayload };
     const railPresent = ('rail' in extras) ? !!extras.rail : true;
@@ -450,8 +445,6 @@
       boostEnd = end;
     }
 
-    const hasElevationChange = dyInSegments !== 0;
-
     const buildFeatures = (segOffset) => {
       const segFeatures = { ...extras, rail: railPresent };
       if (boostStart != null && boostEnd != null){
@@ -463,30 +456,55 @@
 
     let segOffset = 0;
     const computeY = (progressRaw) => {
-      const shaped = hasElevationChange ? heightProfile(progressRaw) : 0;
-      return lerp(startY, endY, shaped);
+      if (!hasElevationChange) return startY;
+
+      // progressRaw is in [0..1] across (enter + hold + leave)
+      const t = clamp01(progressRaw);
+
+      // Breakpoint earlier if enter > leave, later if leave > enter.
+      // Add small epsilons to avoid division-by-zero.
+      const k = (e + 1e-6) / (e + l + 2e-6); // 0..1
+
+      let shaped01;
+      if (t < k) {
+        // Left side (enter): use "in" easing
+        const u = t / Math.max(k, 1e-6);
+        shaped01 = 0.5 * HEIGHT_EASE_UNIT[profile].in(u); // scales left half to [0..0.5]
+      } else {
+        // Right side (leave): use "out" easing
+        const u = (t - k) / Math.max(1 - k, 1e-6);
+        shaped01 = 0.5 + 0.5 * HEIGHT_EASE_UNIT[profile].out(u); // [0.5..1]
+      }
+
+      return lerp(startY, endY, shaped01);
     };
 
     for (let n = 0; n < e; n++){
       const tCurve = e > 0 ? n / e : 1;
-      addSegment(easeIn(0, curve, tCurve),
-                 computeY((0 + n) / total),
-                 buildFeatures(segOffset));
+      addSegment(
+        CURVE_EASE[profile].in(0, curve, tCurve),
+        computeY((0 + n) / total),
+        buildFeatures(segOffset)
+      );
       segOffset++;
     }
 
     for (let n = 0; n < h; n++){
-      addSegment(curve,
-                 computeY((e + n) / total),
-                 buildFeatures(segOffset));
+      addSegment(
+        curve,
+        computeY((e + n) / total),
+        buildFeatures(segOffset)
+      );
       segOffset++;
     }
 
     for (let n = 0; n < l; n++){
       const tCurve = l > 0 ? n / l : 1;
-      addSegment(easeOut(curve, 0, tCurve),
-                 computeY((e + h + n) / total),
-                 buildFeatures(segOffset));
+      addSegment(
+        CURVE_EASE[profile].out(curve, 0, tCurve),
+        computeY((e + h + n) / total),
+        buildFeatures(segOffset)
+      );
       segOffset++;
     }
   }
@@ -592,7 +610,6 @@
       let elevationProfile = 'smooth';
 
       if (type === 'straight'){
-        c = 0;
         elevationProfile = 'linear';
       }
       else if (type === 'curve' && (dyRaw === '' || dyRaw == null)) {
