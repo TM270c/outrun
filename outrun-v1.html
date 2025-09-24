@@ -1196,9 +1196,15 @@
         x3: farMax,  y3: yFar,
         x4: farMin,  y4: yFar,
       };
+      const padded = padQuad(quad, {
+        padLeft:   OVERLAP.x,
+        padRight:  OVERLAP.x,
+        padTop:    OVERLAP.y,
+        padBottom: OVERLAP.y,
+      });
       const colors = BOOST_ZONE_COLORS[zone.type] || BOOST_ZONE_FALLBACK_COLOR;
       const solid = Array.isArray(colors.solid) ? colors.solid : BOOST_ZONE_FALLBACK_COLOR.solid;
-      glr.drawQuadSolid(quad, solid, fogRoad);
+      glr.drawQuadSolid(padded, solid, fogRoad);
     }
   }
 
@@ -1266,6 +1272,9 @@
 
   function doHop(){
     if (!phys.grounded || phys.t < phys.nextHopTime) return false;
+    const segNow = segmentAtS(phys.s);
+    const zonesHere = boostZonesForPlayer(segNow, playerN);
+    const jumpZone = zonesHere.find(zone => zone.type === BOOST_ZONE_TYPES.JUMP);
     const { dy } = groundProfileAt(phys.s);
     const { tx, ty, nx, ny } = tangentNormalFromSlope(dy);
     const baseVx = phys.vtan * tx, baseVy = phys.vtan * ty;
@@ -1274,6 +1283,10 @@
     phys.vx=newVx; phys.vy=newVy;
     phys.grounded=false;
     phys.nextHopTime=phys.t+TUNE_PLAYER.hopCooldown;
+    if (jumpZone) {
+      boostTimer = Math.max(boostTimer, DRIFT.boostTime);
+      phys.boostFlashTimer = Math.max(phys.boostFlashTimer, 0.3);
+    }
     return true;
   }
 
