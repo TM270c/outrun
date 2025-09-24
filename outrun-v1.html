@@ -107,6 +107,38 @@
     boostLockAgainst: 0.25
   };
 
+  const BOOST_ZONE_TYPES = { JUMP: 'jump', DRIVE: 'drive' };
+  const BOOST_ZONE_COLORS = {
+    [BOOST_ZONE_TYPES.JUMP]: {
+      fill: 'rgba(255,152,0,0.45)',
+      stroke: '#ff9800',
+      roadTint: [1.0, 0.58, 0.0, 0.9],
+    },
+    [BOOST_ZONE_TYPES.DRIVE]: {
+      fill: 'rgba(33,150,243,0.45)',
+      stroke: '#2196f3',
+      roadTint: [0.2, 0.58, 1.0, 0.9],
+    },
+  };
+  function parseBoostZoneType(raw) {
+    if (raw == null) return null;
+    const norm = raw.toString().trim().toLowerCase();
+    if (!norm) return null;
+    if (['jump', 'orange', 'crest', 'air'].includes(norm)) return BOOST_ZONE_TYPES.JUMP;
+    if (['drive', 'ground', 'auto', 'blue'].includes(norm)) return BOOST_ZONE_TYPES.DRIVE;
+    return null;
+  }
+  function parseBoostLaneValue(raw) {
+    if (raw == null || raw === '') return null;
+    const num = Number.parseFloat(raw);
+    if (!Number.isFinite(num)) return null;
+    const min = -1;
+    const max =  1;
+    if (num < min) return min;
+    if (num > max) return max;
+    return num;
+  }
+
   // Tilt config
   const cfgTilt = { tiltMaxDeg: 45, tiltSens: -3, tiltCurveWeight: -.2, tiltEase: 0.08, tiltDir: 1 };
   let camRollDeg = 0, playerTiltDeg = 0, prevPlayerN = 0, lateralRate = 0;
@@ -367,6 +399,7 @@
   const roadWidthAt = (s) => TUNE_TRACK.roadWidth;
 
   let segments=[], trackLength=0;
+  let boostZoneIdCounter = 0;
 
   // ---- Per-segment cliff series (filled after track build)
   const CLIFF_SERIES = {
@@ -395,6 +428,7 @@
     const featureClone = { ...features };
     if (!('rail' in featureClone)) featureClone.rail = true;
     if (Array.isArray(featureClone.boostRange)) featureClone.boostRange = [...featureClone.boostRange];
+    if (Array.isArray(featureClone.boostZones)) featureClone.boostZones = featureClone.boostZones.map(zone => ({ ...zone }));
     featureClone.boost = !!featureClone.boost;
     segments.push({
       index:n,
@@ -464,23 +498,47 @@
     const extras = { ...featurePayload };
     const railPresent = ('rail' in extras) ? !!extras.rail : true;
     const boostRangeRaw = Array.isArray(extras.boostRange) ? extras.boostRange : null;
+    const boostZonesRaw = Array.isArray(extras.boostZones)
+      ? extras.boostZones.map(zone => ({ ...zone }))
+      : null;
     delete extras.rail;
     delete extras.boostRange;
+    delete extras.boostZones;
 
-    let boostStart = null;
-    let boostEnd = null;
-    if (boostRangeRaw && boostRangeRaw.length >= 2){
+    let zoneSpecs = boostZonesRaw && boostZonesRaw.length ? boostZonesRaw : null;
+    if ((!zoneSpecs || zoneSpecs.length === 0) && boostRangeRaw && boostRangeRaw.length >= 2) {
       const start = Math.floor(Math.max(0, boostRangeRaw[0]));
       const end = Math.floor(Math.max(start, boostRangeRaw[1]));
-      boostStart = start;
-      boostEnd = end;
+      if (!(start === 0 && end === 0)) {
+        zoneSpecs = [{
+          id: `legacy-${boostZoneIdCounter++}`,
+          startOffset: start,
+          endOffset: end,
+          type: BOOST_ZONE_TYPES.JUMP,
+          nStart: -1,
+          nEnd: 1,
+          visible: false,
+        }];
+      }
     }
 
     const buildFeatures = (segOffset) => {
       const segFeatures = { ...extras, rail: railPresent };
-      if (boostStart != null && boostEnd != null){
-        segFeatures.boostRange = [boostStart, boostEnd];
-        segFeatures.boost = segOffset >= boostStart && segOffset <= boostEnd;
+      if (zoneSpecs && zoneSpecs.length) {
+        const zonesForSeg = zoneSpecs
+          .filter(zone => segOffset >= zone.startOffset && segOffset <= zone.endOffset)
+          .map(zone => ({ ...zone }));
+        if (zonesForSeg.length) {
+          segFeatures.boostZones = zonesForSeg;
+          const minStart = zonesForSeg.reduce((acc, zone) => Math.min(acc, zone.startOffset), Number.POSITIVE_INFINITY);
+          const maxEnd = zonesForSeg.reduce((acc, zone) => Math.max(acc, zone.endOffset), Number.NEGATIVE_INFINITY);
+          segFeatures.boostRange = [minStart, maxEnd];
+          segFeatures.boost = true;
+        } else {
+          segFeatures.boost = false;
+        }
+      } else {
+        segFeatures.boost = false;
       }
       return segFeatures;
     };
@@ -582,6 +640,7 @@
 
     const lines = text.split(/\r?\n/);
     segments.length = 0;
+    boostZoneIdCounter = 0;
 
     for (const raw of lines){
       const line = raw.trim();
@@ -598,6 +657,7 @@
       let boostStartRaw;
       let boostEndRaw;
       let repeatsRaw;
+      let repeatsIdx = null;
 
       if (isBoolToken(cells[7])) {
         // Legacy format with hillMult column present
@@ -607,6 +667,7 @@
         boostStartRaw = cells[8];
         boostEndRaw = cells[9];
         repeatsRaw = cells[10];
+        repeatsIdx = 10;
       } else {
         curveRaw = cells[4];
         dyRaw = cells[5];
@@ -614,6 +675,7 @@
         boostStartRaw = cells[7];
         boostEndRaw = cells[8];
         repeatsRaw = cells[9];
+        repeatsIdx = 9;
       }
 
       if (repeatsRaw === undefined){
@@ -624,6 +686,7 @@
         railRaw = '';
         boostStartRaw = '';
         boostEndRaw = '';
+        repeatsIdx = 6;
       }
 
       const typeNorm = (typeRaw || 'road').toLowerCase();
@@ -636,6 +699,11 @@
       const rail = toBool(railRaw, true);
       const boostStart = (boostStartRaw === '' || boostStartRaw == null) ? null : toInt(boostStartRaw, null);
       const boostEnd = (boostEndRaw === '' || boostEndRaw == null) ? null : toInt(boostEndRaw, null);
+      const extrasAfter = (repeatsIdx != null) ? cells.slice(repeatsIdx + 1) : [];
+      const boostTypeRaw = extrasAfter.length > 0 ? extrasAfter[0] : '';
+      const boostLaneStartRaw = extrasAfter.length > 1 ? extrasAfter[1] : '';
+      const boostLaneEndRaw = extrasAfter.length > 2 ? extrasAfter[2] : '';
+      const boostVisibleRaw = extrasAfter.length > 3 ? extrasAfter[3] : '';
       const reps = Math.max(1, toInt(repeatsRaw, 1));
 
       let elevationProfile = 'smooth';
@@ -657,7 +725,27 @@
       if (boostStart != null && boostEnd != null && boostEnd >= boostStart) {
         const start = Math.max(0, boostStart|0);
         const end = Math.max(start, boostEnd|0);
-        features.boostRange = [start, end];
+        if (!(start === 0 && end === 0)) {
+          const parsedType = parseBoostZoneType(boostTypeRaw) || BOOST_ZONE_TYPES.JUMP;
+          const laneStart = parseBoostLaneValue(boostLaneStartRaw);
+          const laneEnd = parseBoostLaneValue(boostLaneEndRaw);
+          const laneA = (laneStart != null) ? laneStart : -1;
+          const laneB = (laneEnd != null) ? laneEnd : 1;
+          const nStart = Math.min(laneA, laneB);
+          const nEnd = Math.max(laneA, laneB);
+          const visible = toBool(boostVisibleRaw, false);
+          const zone = {
+            id: `csv-${boostZoneIdCounter++}`,
+            startOffset: start,
+            endOffset: end,
+            type: parsedType,
+            nStart,
+            nEnd,
+            visible,
+          };
+          features.boostZones = [zone];
+          features.boostRange = [start, end];
+        }
       }
 
       for (let i=0;i<reps;i++){
@@ -852,6 +940,27 @@
     const wrapped = ((idx % count) + count) % count;
     return segments[wrapped];
   };
+
+  function boostZonesOnSegment(seg) {
+    if (!seg || !seg.features) return [];
+    const zones = seg.features.boostZones;
+    return Array.isArray(zones) ? zones : [];
+  }
+  function playerWithinBoostZone(zone, nNorm) {
+    if (!zone) return false;
+    const startRaw = (zone.nStart != null) ? zone.nStart : -1;
+    const endRaw = (zone.nEnd != null) ? zone.nEnd : 1;
+    const start = clamp(startRaw, -1, 1);
+    const end = clamp(endRaw, -1, 1);
+    const min = Math.min(start, end);
+    const max = Math.max(start, end);
+    return nNorm >= min && nNorm <= max;
+  }
+  function boostZonesForPlayer(seg, nNorm) {
+    const zones = boostZonesOnSegment(seg);
+    if (!zones.length) return [];
+    return zones.filter(zone => playerWithinBoostZone(zone, nNorm));
+  }
 
   function elevationAt(s){
     if(trackLength<=0) return 0;
@@ -1070,6 +1179,7 @@
   let driftCharge=0;
   let allowedBoost=false;
   let boostTimer=0;
+  let activeDriveZoneId=null;
 
   const input = { left:false,right:false,up:false,down:false, hop:false };
   addEventListener('keydown',e=>{
@@ -1148,8 +1258,12 @@
 
     let segNow = segmentAtS(phys.s);
     const segFeatures = segNow ? segNow.features : null;
-    const boostZoneActive = !!(segFeatures && segFeatures.boost);
-    if (boostZoneActive) phys.boostFlashTimer = Math.max(phys.boostFlashTimer, 0.15);
+    const zonesHere = boostZonesForPlayer(segNow, playerN);
+    const hasZonesHere = zonesHere.length > 0;
+    const driveZoneHere = zonesHere.find(zone => zone.type === BOOST_ZONE_TYPES.DRIVE) || null;
+    const zoneMultBase = hasZonesHere
+      ? ((segFeatures && segFeatures.boostMultiplier != null) ? segFeatures.boostMultiplier : TUNE_PLAYER.crestBoostMultiplier)
+      : 1;
 
     const prevGrounded = phys.grounded;
     if (phys.grounded) {
@@ -1162,9 +1276,16 @@
       a += -TUNE_PLAYER.rollFriction*phys.vtan;
       phys.vtan = clamp(phys.vtan + a*dt, -TUNE_PLAYER.maxSpeed, TUNE_PLAYER.maxSpeed);
 
-      const zoneMult = boostZoneActive
-        ? ((segFeatures && segFeatures.boostMultiplier != null) ? segFeatures.boostMultiplier : TUNE_PLAYER.crestBoostMultiplier)
-        : 1;
+      if (driveZoneHere) {
+        if (activeDriveZoneId !== driveZoneHere.id) {
+          boostTimer = Math.max(boostTimer, DRIFT.boostTime);
+          activeDriveZoneId = driveZoneHere.id;
+        }
+      } else {
+        activeDriveZoneId = null;
+      }
+
+      const zoneMult = zoneMultBase;
       const travelBase = boosting ? phys.vtan * DRIFT.boostMult : phys.vtan;
       const travelV = travelBase * zoneMult;
       phys.s += travelV * tx * dt;
@@ -1191,6 +1312,8 @@
       phys.s  += phys.vx * dt;
       phys.y  += phys.vy * dt;
 
+      activeDriveZoneId = null;
+
       // ground re-contact
       const gy = elevationAt(phys.s);
       const { dy } = groundProfileAt(phys.s);
@@ -1205,6 +1328,13 @@
 
     // hop/boost state changes on landing
     if (!prevGrounded && phys.grounded) {
+      const landingSeg = segmentAtS(phys.s);
+      const landingZones = boostZonesForPlayer(landingSeg, playerN);
+      const landingJumpZone = landingZones.find(zone => zone.type === BOOST_ZONE_TYPES.JUMP);
+      if (landingJumpZone) {
+        boostTimer = Math.max(boostTimer, DRIFT.boostTime);
+        phys.boostFlashTimer = Math.max(phys.boostFlashTimer, 0.3);
+      }
       const steerAxis2 = (input.left&&input.right)?0:(input.left?-1:(input.right?+1:0));
       if (hopHeld) {
         const dir = (steerAxis2===0) ? 0 : steerAxis2;
@@ -1239,7 +1369,9 @@
 
     // camera Y smoothing
     const aY = 1 - Math.exp(-dt / TUNE_TRACK.camYTau);
-    const targetCamY = phys.y + TUNE_TRACK.cameraHeight;
+    const floorYForCam = floorElevationAt(phys.s, playerN);
+    const camBaseY = Math.max(phys.y, floorYForCam);
+    const targetCamY = camBaseY + TUNE_TRACK.cameraHeight;
     camYSmooth += aY * (targetCamY - camYSmooth);
 
     // lateral velocity for roll
@@ -1797,6 +1929,37 @@
           drawRoadStrip(x1,y1,w1, x2,y2,w2, v0Road, v1Road, fogRoad, roadTex);
         }
 
+        const boostZonesHere = (!debugFill && visibleRoad && seg) ? boostZonesOnSegment(seg) : [];
+        if (boostZonesHere.length) {
+          const texBoost = textures.boost || glr.whiteTex;
+          for (const zone of boostZonesHere) {
+            if (!zone || !zone.visible) continue;
+            const colors = BOOST_ZONE_COLORS[zone.type] || null;
+            const tintBoost = (colors && Array.isArray(colors.roadTint)) ? colors.roadTint : [1, 1, 1, 0.85];
+            const startN = clamp((zone.nStart != null) ? zone.nStart : -1, -1, 1);
+            const endN = clamp((zone.nEnd != null) ? zone.nEnd : 1, -1, 1);
+            const minN = Math.min(startN, endN);
+            const maxN = Math.max(startN, endN);
+            if ((maxN - minN) <= 1e-3) continue;
+            const nearLeft  = x1 + minN * w1;
+            const nearRight = x1 + maxN * w1;
+            const farLeft   = x2 + minN * w2;
+            const farRight  = x2 + maxN * w2;
+            const quad = {
+              x1: nearLeft,
+              y1: y1,
+              x2: nearRight,
+              y2: y1,
+              x3: farRight,
+              y3: y2,
+              x4: farLeft,
+              y4: y2,
+            };
+            const uv = { u1:0, v1:0, u2:1, v2:0, u3:1, v3:1, u4:0, v4:1 };
+            glr.drawQuadTextured(texBoost, quad, uv, tintBoost, fogRoad);
+          }
+        }
+
         if (!leftIsNegative)  drawLeftCliffs(debugFill);
         if (!rightIsNegative) drawRightCliffs(debugFill);
 
@@ -1871,6 +2034,82 @@
       y: SH - y*(1/TUNE_TRACK.MPerPxY) - 60
     };
   }
+  function drawBoostCrossSection(ctx){
+    const panelX = 24;
+    const panelY = 24;
+    const panelW = 220;
+    const panelH = 120;
+    const roadPadX = 18;
+    const roadPadTop = 24;
+    const roadPadBottom = 20;
+    const roadW = panelW - roadPadX * 2;
+    const roadH = panelH - roadPadTop - roadPadBottom;
+
+    ctx.save();
+    ctx.translate(panelX, panelY);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, panelW, panelH);
+
+    const roadX = roadPadX;
+    const roadY = roadPadTop;
+    const mapN = (n) => {
+      const clamped = clamp(n, -2, 2);
+      return roadX + ((clamped + 2) / 4) * roadW;
+    };
+    ctx.fillStyle = '#1e1e1e';
+    ctx.fillRect(roadX, roadY, roadW, roadH);
+    const roadLeftX = mapN(-1);
+    const roadRightX = mapN(1);
+    const roadWidthPx = Math.max(2, roadRightX - roadLeftX);
+    ctx.fillStyle = '#484848';
+    ctx.fillRect(roadLeftX, roadY, roadWidthPx, roadH);
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(roadLeftX, roadY, roadWidthPx, roadH);
+
+    const seg = segmentAtS(phys.s);
+    const zones = boostZonesOnSegment(seg);
+
+    for (const zone of zones){
+      const colors = BOOST_ZONE_COLORS[zone.type] || { fill:'rgba(255,255,255,0.2)', stroke:'#fafafa' };
+      const startN = clamp((zone.nStart != null) ? zone.nStart : -1, -1, 1);
+      const endN = clamp((zone.nEnd != null) ? zone.nEnd : 1, -1, 1);
+      const x1 = mapN(startN);
+      const x2 = mapN(endN);
+      const zx = Math.min(x1, x2);
+      const zw = Math.max(2, Math.abs(x2 - x1));
+      ctx.fillStyle = colors.fill;
+      ctx.fillRect(zx, roadY, zw, roadH);
+      ctx.strokeStyle = colors.stroke;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(zx, roadY, zw, roadH);
+    }
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+    ctx.lineWidth = 1;
+    const centerX = mapN(0);
+    ctx.beginPath();
+    ctx.moveTo(centerX, roadY);
+    ctx.lineTo(centerX, roadY + roadH);
+    ctx.stroke();
+
+    const playerX = mapN(clamp(playerN, -2, 2));
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(playerX, roadY + roadH * 0.5, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '11px system-ui, Arial';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('Cross-section', 0, panelH - 4);
+
+    ctx.restore();
+  }
   function renderOverlay(){
     if (!overlayOn) return;
     const ctx = ctxSide;
@@ -1887,6 +2126,8 @@
       if (first){ ctx.moveTo(p.x,p.y); first=false; } else { ctx.lineTo(p.x,p.y); }
     }
     ctx.stroke();
+
+    drawBoostCrossSection(ctx);
 
     const p = worldToOverlay(phys.s, phys.y);
     ctx.fillStyle = '#2e7d32';
@@ -1967,6 +2208,7 @@
     } catch (err) {
       console.warn('CSV build failed, using fallback', err);
       segments.length = 0;
+      boostZoneIdCounter = 0;
       addRoad(25,25,25,0,0,'smooth');
       addRoad(50,50,50,2,20,'smooth');
       addRoad(40,40,40,0,60,'smooth');
