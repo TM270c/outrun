@@ -761,6 +761,21 @@
     }
   }
 
+  function enforceCliffWrap(copySpan = 1){
+    if (!CLIFF_READY || !segments.length) return;
+    const n = segments.length;
+    const copyAt = (dst, src, side) => {
+      side.dx[dst] = side.dx[src];
+      side.dy[dst] = side.dy[src];
+    };
+    for (let k = 0; k < copySpan; k++){
+      const dst = k;           // beginning
+      const src = (n - 1 - k + n) % n; // end
+      copyAt(dst, src, CLIFF_SERIES.leftA);  copyAt(dst, src, CLIFF_SERIES.leftB);
+      copyAt(dst, src, CLIFF_SERIES.rightA); copyAt(dst, src, CLIFF_SERIES.rightB);
+    }
+  }
+
   // ---------- Texture tiling zones ----------
   let roadTexZones = [], railTexZones = [], cliffTexZones = [];
   function pushZone(stack, start, end, tile=1){
@@ -782,6 +797,19 @@
     const v0 = (segPos % z.tile) * perSeg;
     const v1 = v0 + perSeg;
     return [v0, v1];
+  }
+
+  // ---------- Overlap (shared) ----------
+  const OVERLAP = { x: 0.75, y: 0.75 }; // screen-space pixels to overdraw
+
+  function padQuad(q, { padLeft=0, padRight=0, padTop=0, padBottom=0 } = {}) {
+    // Returns a new quad with edges expanded in screen space
+    return {
+      x1: q.x1 - padLeft,  y1: q.y1 - padTop,
+      x2: q.x2 + padRight, y2: q.y2 - padTop,
+      x3: q.x3 + padRight, y3: q.y3 + padBottom,
+      x4: q.x4 - padLeft,  y4: q.y4 + padBottom,
+    };
   }
 
   // ---------- Helpers / math ----------
@@ -939,12 +967,22 @@
         const k0 = -1 + 2 * (j / cols);
         const k1 = -1 + 2 * ((j + 1) / cols);
 
-        const quad = {
+        const quadBase = {
           x1: xa + wa * k0, y1: ya,
           x2: xa + wa * k1, y2: ya,
           x3: xb + wb * k1, y3: yb,
           x4: xb + wb * k0, y4: yb
         };
+
+        // Row overlap (tuck up/down) and column overlap (tuck left/right)
+        const colPadL = (j === 0)        ? OVERLAP.x : OVERLAP.x * 0.5;
+        const colPadR = (j === cols - 1) ? OVERLAP.x : OVERLAP.x * 0.5;
+        const quad = padQuad(quadBase, {
+          padLeft:  colPadL,
+          padRight: colPadR,
+          padTop:   OVERLAP.y,
+          padBottom:OVERLAP.y
+        });
         const uv = { u1:u0, v1:vv0, u2:u1, v2:vv0, u3:u1, v3:vv1, u4:u0, v4:vv1 };
         glr.drawQuadTextured(tex, quad, uv, DEFAULT_COLORS.road, [fA,fA,fB,fB]);
       }
@@ -1653,26 +1691,31 @@
 
         const cliffTex = textures.cliff || glr.whiteTex;
 
+        const L_A = padQuad(L.quadA, { padLeft:OVERLAP.x, padRight:OVERLAP.x, padTop:OVERLAP.y, padBottom:OVERLAP.y });
+        const L_B = padQuad(L.quadB, { padLeft:OVERLAP.x, padRight:OVERLAP.x, padTop:OVERLAP.y, padBottom:OVERLAP.y });
+        const R_A = padQuad(R.quadA, { padLeft:OVERLAP.x, padRight:OVERLAP.x, padTop:OVERLAP.y, padBottom:OVERLAP.y });
+        const R_B = padQuad(R.quadB, { padLeft:OVERLAP.x, padRight:OVERLAP.x, padTop:OVERLAP.y, padBottom:OVERLAP.y });
+
         const drawLeftCliffs = (solid=false) => {
           const uvA = {...L.uvA, v1:v0Cliff, v2:v0Cliff, v3:v1Cliff, v4:v1Cliff};
           const uvB = {...L.uvB, v1:v0Cliff, v2:v0Cliff, v3:v1Cliff, v4:v1Cliff};
           if (solid) {
-            glr.drawQuadSolid(L.quadA, tint, fogCliff);
-            glr.drawQuadSolid(L.quadB, tint, fogCliff);
+            glr.drawQuadSolid(L_A, tint, fogCliff);
+            glr.drawQuadSolid(L_B, tint, fogCliff);
           } else {
-            glr.drawQuadTextured(cliffTex, L.quadA, uvA, DEFAULT_COLORS.wall, fogCliff);
-            glr.drawQuadTextured(cliffTex, L.quadB, uvB, DEFAULT_COLORS.wall, fogCliff);
+            glr.drawQuadTextured(cliffTex, L_A, uvA, DEFAULT_COLORS.wall, fogCliff);
+            glr.drawQuadTextured(cliffTex, L_B, uvB, DEFAULT_COLORS.wall, fogCliff);
           }
         };
         const drawRightCliffs = (solid=false) => {
           const uvA = {...R.uvA, v1:v0Cliff, v2:v0Cliff, v3:v1Cliff, v4:v1Cliff};
           const uvB = {...R.uvB, v1:v0Cliff, v2:v0Cliff, v3:v1Cliff, v4:v1Cliff};
           if (solid) {
-            glr.drawQuadSolid(R.quadA, tint, fogCliff);
-            glr.drawQuadSolid(R.quadB, tint, fogCliff);
+            glr.drawQuadSolid(R_A, tint, fogCliff);
+            glr.drawQuadSolid(R_B, tint, fogCliff);
           } else {
-            glr.drawQuadTextured(cliffTex, R.quadA, uvA, DEFAULT_COLORS.wall, fogCliff);
-            glr.drawQuadTextured(cliffTex, R.quadB, uvB, DEFAULT_COLORS.wall, fogCliff);
+            glr.drawQuadTextured(cliffTex, R_A, uvA, DEFAULT_COLORS.wall, fogCliff);
+            glr.drawQuadTextured(cliffTex, R_B, uvB, DEFAULT_COLORS.wall, fogCliff);
           }
         };
 
@@ -1708,7 +1751,8 @@
           };
           const uvL = { u1:0, v1:v0Rail, u2:1, v2:v0Rail, u3:1, v3:v1Rail, u4:0, v4:v1Rail };
           const fLs1 = fogFactorFromZ(p1LS.camera.z), fLs2 = fogFactorFromZ(p2LS.camera.z);
-          glr.drawQuadTextured(texRail, quadL, uvL, DEFAULT_COLORS.rail, [fLs1,fLs1,fLs2,fLs2]);
+          const quadL_p = padQuad(quadL, { padLeft:OVERLAP.x, padRight:OVERLAP.x, padTop:OVERLAP.y, padBottom:OVERLAP.y });
+          glr.drawQuadTextured(texRail, quadL_p, uvL, DEFAULT_COLORS.rail, [fLs1,fLs1,fLs2,fLs2]);
 
           // Right rail
           const xR1 = x1 + w1 * TUNE_TRACK.railInset;
@@ -1722,7 +1766,8 @@
           };
           const uvR = { u1:0, v1:v0Rail, u2:1, v2:v0Rail, u3:1, v3:v1Rail, u4:0, v4:v1Rail };
           const fRs1 = fogFactorFromZ(p1RS.camera.z), fRs2 = fogFactorFromZ(p2RS.camera.z);
-          glr.drawQuadTextured(texRail, quadR, uvR, DEFAULT_COLORS.rail, [fRs1,fRs1,fRs2,fRs2]);
+          const quadR_p = padQuad(quadR, { padLeft:OVERLAP.x, padRight:OVERLAP.x, padTop:OVERLAP.y, padBottom:OVERLAP.y });
+          glr.drawQuadTextured(texRail, quadR_p, uvR, DEFAULT_COLORS.rail, [fRs1,fRs1,fRs2,fRs2]);
         }
 
       } else if (it.type==='npc' || it.type==='prop'){
@@ -1868,6 +1913,7 @@
     // NEW: prepare per-segment cliff arrays and load compact CSV
     initCliffSeriesWithDefaults();
     await buildCliffsFromCSV_Lite('tracks/cliffs.csv').catch(()=>{});
+    enforceCliffWrap(1); // make index 0 == index N-1 for each series
 
     // Default zones: whole track
     roadTexZones.length = railTexZones.length = cliffTexZones.length = 0;
