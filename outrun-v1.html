@@ -803,12 +803,29 @@
   const OVERLAP = { x: 0.75, y: 0.75 }; // screen-space pixels to overdraw
 
   function padQuad(q, { padLeft=0, padRight=0, padTop=0, padBottom=0 } = {}) {
-    // Returns a new quad with edges expanded in screen space
+    // Returns a new quad with edges expanded in screen space. Positive padding values
+    // enlarge the quad outward along each axis regardless of vertex winding/order.
+    const xs = [q.x1, q.x2, q.x3, q.x4];
+    const ys = [q.y1, q.y2, q.y3, q.y4];
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+
+    const adjustX = (x) => {
+      const dMin = Math.abs(x - minX);
+      const dMax = Math.abs(x - maxX);
+      return x + (dMin <= dMax ? -padLeft : padRight);
+    };
+    const adjustY = (y) => {
+      const dMin = Math.abs(y - minY);
+      const dMax = Math.abs(y - maxY);
+      return y + (dMin <= dMax ? -padTop : padBottom);
+    };
+
     return {
-      x1: q.x1 - padLeft,  y1: q.y1 - padTop,
-      x2: q.x2 + padRight, y2: q.y2 - padTop,
-      x3: q.x3 + padRight, y3: q.y3 + padBottom,
-      x4: q.x4 - padLeft,  y4: q.y4 + padBottom,
+      x1: adjustX(q.x1), y1: adjustY(q.y1),
+      x2: adjustX(q.x2), y2: adjustY(q.y2),
+      x3: adjustX(q.x3), y3: adjustY(q.y3),
+      x4: adjustX(q.x4), y4: adjustY(q.y4),
     };
   }
 
