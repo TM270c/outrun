@@ -540,8 +540,8 @@
       const start = Math.floor(Math.max(0, boostRangeRaw[0]));
       const end = Math.floor(Math.max(start, boostRangeRaw[1]));
       if (!(start === 0 && end === 0)) {
-        const fallbackStart = clampBoostLane(-2);
-        const fallbackEnd = clampBoostLane(2);
+        const fallbackStart = BOOST_LANE_LIMITS.MIN;
+        const fallbackEnd = BOOST_LANE_LIMITS.MAX;
         zoneSpecs = [{
           id: `legacy-${boostZoneIdCounter++}`,
           startOffset: start,
@@ -761,8 +761,8 @@
           const parsedType = parseBoostZoneType(boostTypeRaw) || BOOST_ZONE_TYPES.JUMP;
           const laneStart = parseBoostLaneValue(boostLaneStartRaw);
           const laneEnd = parseBoostLaneValue(boostLaneEndRaw);
-          const fallbackStart = clampBoostLane(-2);
-          const fallbackEnd = clampBoostLane(2);
+          const fallbackStart = BOOST_LANE_LIMITS.MIN;
+          const fallbackEnd = BOOST_LANE_LIMITS.MAX;
           const laneA = clampBoostLane((laneStart != null) ? laneStart : fallbackStart);
           const laneB = clampBoostLane((laneEnd != null) ? laneEnd : fallbackEnd);
           const nStart = Math.min(laneA, laneB);
@@ -982,8 +982,8 @@
   }
   function playerWithinBoostZone(zone, nNorm) {
     if (!zone) return false;
-    const fallbackStart = clampBoostLane(-2);
-    const fallbackEnd = clampBoostLane(2);
+    const fallbackStart = BOOST_LANE_LIMITS.MIN;
+    const fallbackEnd = BOOST_LANE_LIMITS.MAX;
     const start = (zone.nStart != null) ? zone.nStart : fallbackStart;
     const end = (zone.nEnd != null) ? zone.nEnd : fallbackEnd;
     const min = Math.min(start, end);
@@ -1191,8 +1191,8 @@
     if (!zones || !zones.length) return;
     for (const zone of zones){
       if (!zone || zone.visible === false) continue;
-      const fallbackStart = clampBoostLane(-2);
-      const fallbackEnd = clampBoostLane(2);
+      const fallbackStart = BOOST_LANE_LIMITS.MIN;
+      const fallbackEnd = BOOST_LANE_LIMITS.MAX;
       const startN = (zone.nStart != null) ? zone.nStart : fallbackStart;
       const endN = (zone.nEnd != null) ? zone.nEnd : fallbackEnd;
       const laneMin = Math.min(startN, endN);
@@ -2166,8 +2166,8 @@
     for (const zone of zones){
       if (zone && zone.visible === false) continue;
       const colors = BOOST_ZONE_COLORS[zone.type] || BOOST_ZONE_FALLBACK_COLOR;
-      const fallbackStart = clampBoostLane(-2);
-      const fallbackEnd = clampBoostLane(2);
+      const fallbackStart = BOOST_LANE_LIMITS.MIN;
+      const fallbackEnd = BOOST_LANE_LIMITS.MAX;
       const x1 = mapN(zone.nStart, fallbackStart);
       const x2 = mapN(zone.nEnd, fallbackEnd);
       const zx = Math.min(x1, x2);
