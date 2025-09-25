@@ -126,6 +126,10 @@
       solid: [33/255, 150/255, 243/255, 0.45],
     },
   };
+  const BOOST_ZONE_TEXTURE_KEYS = {
+    [BOOST_ZONE_TYPES.JUMP]: 'boostJump',
+    [BOOST_ZONE_TYPES.DRIVE]: 'boostDrive',
+  };
   const BOOST_LANE_LIMITS = { MIN: -1, MAX: 1 };
   const ROAD_LANE_LIMITS = { MIN: -2, MAX: 2 };
   const clampBoostLane = (v) => {
@@ -392,7 +396,8 @@
     road:      'tex/road-seg.png',
     rail:      'tex/guardrail.png',
     cliff:     'tex/cliff.png',
-    boost:     'tex/boost.png',
+    boostJump: 'tex/boost.png',
+    boostDrive:'tex/boost.png',
     horizon1:  'tex/paralax-1.png',
     horizon2:  'tex/paralax-2.png',
     horizon3:  'tex/paralax-3.png',
@@ -1219,7 +1224,14 @@
       });
       const colors = BOOST_ZONE_COLORS[zone.type] || BOOST_ZONE_FALLBACK_COLOR;
       const solid = Array.isArray(colors.solid) ? colors.solid : BOOST_ZONE_FALLBACK_COLOR.solid;
-      glr.drawQuadSolid(padded, solid, fogRoad);
+      const texKey = BOOST_ZONE_TEXTURE_KEYS[zone.type];
+      const tex = texKey ? textures[texKey] : null;
+      if (tex) {
+        const uv = { u1:0, v1:0, u2:1, v2:0, u3:1, v3:1, u4:0, v4:1 };
+        glr.drawQuadTextured(tex, padded, uv, solid, fogRoad);
+      } else {
+        glr.drawQuadSolid(padded, solid, fogRoad);
+      }
     }
   }
 
