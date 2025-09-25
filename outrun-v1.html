@@ -69,6 +69,7 @@
   };
 
   const CLIFF_PUSH = { distanceGain: 0.6, capPerFrame: 0.5 };
+  const CLIFF_CAMERA_FRACTION = 1 / 3;
   const FAILSAFE   = { belowRoadUnits: 600 };
 
   const FOG = {
@@ -1444,7 +1445,11 @@
 
     // camera Y smoothing
     const aY = 1 - Math.exp(-dt / TUNE_TRACK.camYTau);
-    const targetCamY = phys.y + TUNE_TRACK.cameraHeight;
+    let targetCamY = phys.y + TUNE_TRACK.cameraHeight;
+    if (phys.grounded) {
+      const floorY = floorElevationAt(phys.s, playerN);
+      targetCamY += (floorY - phys.y) * CLIFF_CAMERA_FRACTION;
+    }
     camYSmooth += aY * (targetCamY - camYSmooth);
 
     // lateral velocity for roll
