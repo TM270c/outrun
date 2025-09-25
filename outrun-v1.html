@@ -172,7 +172,7 @@
   const cfgTilt = { tiltMaxDeg: 45, tiltSens: -3, tiltCurveWeight: -.2, tiltEase: 0.08, tiltDir: 1 };
   let camRollDeg = 0, playerTiltDeg = 0, prevPlayerN = 0, lateralRate = 0;
 
-  const cfgTiltAdd = { tiltAddEnabled: true, tiltAddMaxDeg: 10 };
+  const cfgTiltAdd = { tiltAddEnabled: true, tiltAddMaxDeg: null };
 
   // ---------- Canvas / GL ----------
   const c3D   = document.getElementById('outrun');
@@ -1619,7 +1619,9 @@
       slope = slopeB;
     }
     const angleDeg = -(180 / Math.PI) * Math.atan(slope);
-    return clamp(cfgTilt.tiltDir * angleDeg, -cfgTiltAdd.tiltAddMaxDeg, cfgTiltAdd.tiltAddMaxDeg);
+    const tiltDeg = cfgTilt.tiltDir * angleDeg;
+    if (cfgTiltAdd.tiltAddMaxDeg == null) return tiltDeg;
+    return clamp(tiltDeg, -cfgTiltAdd.tiltAddMaxDeg, cfgTiltAdd.tiltAddMaxDeg);
   }
 
   // ---------- NPCs ----------
