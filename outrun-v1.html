@@ -431,6 +431,8 @@
   let boostZoneIdCounter = 0;
 
   // ---- Per-segment cliff series (filled after track build)
+  const CLIFF_SECTIONS_PER_SEG = 4;
+
   const CLIFF_SERIES = {
     leftA:  { dx: [], dy: [] },
     leftB:  { dx: [], dy: [] },
@@ -440,8 +442,8 @@
   let CLIFF_READY = false;
 
   function resetCliffSeries(){
-    const n = segments.length;
-    const clear = (arr)=>{ arr.length = n; for (let i=0;i<n;i++) arr[i] = 0; };
+    const total = segments.length * CLIFF_SECTIONS_PER_SEG;
+    const clear = (arr)=>{ arr.length = total; for (let i=0;i<total;i++) arr[i] = 0; };
 
     clear(CLIFF_SERIES.leftA.dx);  clear(CLIFF_SERIES.leftA.dy);
     clear(CLIFF_SERIES.leftB.dx);  clear(CLIFF_SERIES.leftB.dy);
@@ -809,7 +811,8 @@
     const toNum =(v,d=0)=> (v===''||v==null)?d: (Number.isNaN(parseFloat(v))?d:parseFloat(v));
     const normSide = (s)=> (s||'').trim().toUpperCase();
 
-    const N = segments.length;
+    const sectionsPerSeg = CLIFF_SECTIONS_PER_SEG;
+    const N = segments.length * sectionsPerSeg;
     const head = { L:0, R:0 };
     const state = {
       L: { Ax:0, Ay:0, Bx:0, By:0 },
@@ -825,7 +828,7 @@
       const sideTok = normSide(c[0]||'B');
       const sides = (sideTok==='L'||sideTok==='R') ? [sideTok] : (sideTok==='B' ? ['L','R'] : ['L','R']);
 
-      const len = Math.max(1, toInt(c[1], 1));
+      const lenSegments = Math.max(1, toInt(c[1], 1));
       const aEase = getEase01(c[2]||'smooth:io');
       const aDx   = toNum(c[3], 0), aDy = toNum(c[4], 0);
       const bEase = getEase01(c[5]||'smooth:io');
@@ -842,7 +845,7 @@
             { Ax:aDx, Ay:aDy, Bx:bDx, By:bDy } :
             { Ax: st.Ax + aDx, Ay: st.Ay + aDy, Bx: st.Bx + bDx, By: st.By + bDy };
 
-          const steps = Math.max(1, len);
+          const steps = Math.max(1, lenSegments * sectionsPerSeg);
           const denom = steps <= 1 ? 1 : (steps - 1);
 
           for (let i=0; i<steps; i++){
@@ -894,12 +897,15 @@
 
   function enforceCliffWrap(copySpan = 1){
     if (!CLIFF_READY || !segments.length) return;
-    const n = segments.length;
+    const sectionsPerSeg = CLIFF_SECTIONS_PER_SEG;
+    const n = segments.length * sectionsPerSeg;
+    if (n <= 0) return;
     const copyAt = (dst, src, side) => {
       side.dx[dst] = side.dx[src];
       side.dy[dst] = side.dy[src];
     };
-    for (let k = 0; k < copySpan; k++){
+    const totalCopy = Math.min(n, Math.max(0, copySpan|0) * sectionsPerSeg);
+    for (let k = 0; k < totalCopy; k++){
       const dst = k;           // beginning
       const src = (n - 1 - k + n) % n; // end
       copyAt(dst, src, CLIFF_SERIES.leftA);  copyAt(dst, src, CLIFF_SERIES.leftB);
@@ -1017,8 +1023,11 @@
 
   // ---------- Cliff params (per segment) ----------
   function cliffParamsAt(segIndex, t=0){
-    const n = segments.length;
-    if (n === 0) {
+    const segCount = segments.length;
+    const sectionsPerSeg = CLIFF_SECTIONS_PER_SEG;
+    const totalSections = segCount * sectionsPerSeg;
+
+    if (totalSections <= 0 || !CLIFF_READY) {
       return {
         leftA:  { dx:0, dy:0 },
         leftB:  { dx:0, dy:0 },
@@ -1027,26 +1036,31 @@
       };
     }
 
+    const segNorm = ((segIndex % segCount) + segCount) % segCount;
     const u = clamp01(t);
-    const i0 = ((segIndex % n) + n) % n;
-    const i1 = (i0 + 1) % n;
+    const total = totalSections;
+    const global = segNorm * sectionsPerSeg + u * sectionsPerSeg;
+    const base = Math.floor(global);
+    const frac = global - base;
+    const idx0 = ((base % total) + total) % total;
+    const idx1 = (idx0 + 1) % total;
 
-    const mix = (arr, a, b) => lerp(arr[a], arr[b], u);
-
-    if (!CLIFF_READY) {
+    const lerpSeries = (series) => {
+      const dx0 = series.dx[idx0] != null ? series.dx[idx0] : 0;
+      const dx1 = series.dx[idx1] != null ? series.dx[idx1] : dx0;
+      const dy0 = series.dy[idx0] != null ? series.dy[idx0] : 0;
+      const dy1 = series.dy[idx1] != null ? series.dy[idx1] : dy0;
       return {
-        leftA:  { dx:0, dy:0 },
-        leftB:  { dx:0, dy:0 },
-        rightA: { dx:0, dy:0 },
-        rightB: { dx:0, dy:0 },
+        dx: lerp(dx0, dx1, frac),
+        dy: lerp(dy0, dy1, frac),
       };
-    }
+    };
 
     return {
-      leftA:  { dx: mix(CLIFF_SERIES.leftA.dx,  i0, i1), dy: mix(CLIFF_SERIES.leftA.dy,  i0, i1) },
-      leftB:  { dx: mix(CLIFF_SERIES.leftB.dx,  i0, i1), dy: mix(CLIFF_SERIES.leftB.dy,  i0, i1) },
-      rightA: { dx: mix(CLIFF_SERIES.rightA.dx, i0, i1), dy: mix(CLIFF_SERIES.rightA.dy, i0, i1) },
-      rightB: { dx: mix(CLIFF_SERIES.rightB.dx, i0, i1), dy: mix(CLIFF_SERIES.rightB.dy, i0, i1) },
+      leftA:  lerpSeries(CLIFF_SERIES.leftA),
+      leftB:  lerpSeries(CLIFF_SERIES.leftB),
+      rightA: lerpSeries(CLIFF_SERIES.rightA),
+      rightB: lerpSeries(CLIFF_SERIES.rightB),
     };
   }
 
