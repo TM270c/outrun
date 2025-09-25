@@ -1484,12 +1484,22 @@
 
   // ---------- Cliff interaction helpers ----------
   function cliffSurfaceInfoAt(segIndex, nNorm, t = 0){
+    const zeroInfo = () => ({
+      heightOffset: 0,
+      slope: 0,
+      section: null,
+      slopeA: 0,
+      slopeB: 0,
+      coverageA: 0,
+      coverageB: 0,
+    });
+
     if (!CLIFF_READY || !segments.length) {
-      return { heightOffset: 0, slope: 0 };
+      return zeroInfo();
     }
 
     const absN = Math.abs(nNorm);
-    if (absN <= 1) return { heightOffset: 0, slope: 0 };
+    if (absN <= 1) return zeroInfo();
 
     const params = cliffParamsAt(segIndex, t);
     const left = nNorm < 0;
@@ -1510,36 +1520,47 @@
     const widthB = Math.max(0, dxB);
     const totalWidth = widthA + widthB;
 
+    const slopeA = (widthA > 1e-6) ? sign * (dyA / widthA) : 0;
+    const slopeB = (widthB > 1e-6) ? sign * (dyB / widthB) : 0;
+
     if (beyond <= 1e-6) {
-      return { heightOffset: 0, slope: 0 };
+      return { heightOffset: 0, slope: 0, section: null, slopeA, slopeB, coverageA: 0, coverageB: 0 };
     }
 
     if (totalWidth <= 1e-6) {
-      return { heightOffset: dyA + dyB, slope: 0 };
+      return { heightOffset: dyA + dyB, slope: 0, section: null, slopeA, slopeB, coverageA: 0, coverageB: 0 };
     }
 
     const distA = Math.min(beyond, widthA);
     const distB = Math.max(0, Math.min(beyond - widthA, widthB));
 
     let heightOffset = 0;
-    if (widthA > 1e-6) heightOffset += dyA * (distA / widthA);
-    if (widthB > 1e-6) heightOffset += dyB * (distB / widthB);
+    let coverageA = 0;
+    let coverageB = 0;
+    if (widthA > 1e-6) {
+      coverageA = distA / widthA;
+      heightOffset += dyA * coverageA;
+    }
+    if (widthB > 1e-6) {
+      coverageB = distB / widthB;
+      heightOffset += dyB * coverageB;
+    }
 
     if (beyond >= totalWidth - 1e-6) {
-      return { heightOffset: dyA + dyB, slope: 0 };
+      return { heightOffset: dyA + dyB, slope: 0, section: null, slopeA, slopeB, coverageA: 0, coverageB: 0 };
     }
 
     if (distB > 1e-6 && widthB > 1e-6) {
-      const slope = sign * (dyB / widthB);
-      return { heightOffset, slope };
+      const slope = slopeB;
+      return { heightOffset, slope, section: 'B', slopeA, slopeB, coverageA, coverageB };
     }
 
     if (distA > 1e-6 && widthA > 1e-6) {
-      const slope = sign * (dyA / widthA);
-      return { heightOffset, slope };
+      const slope = slopeA;
+      return { heightOffset, slope, section: 'A', slopeA, slopeB, coverageA, coverageB };
     }
 
-    return { heightOffset, slope: 0 };
+    return { heightOffset, slope: 0, section: null, slopeA, slopeB, coverageA, coverageB };
   }
   function floorElevationAt(s, nNorm){
     const base = elevationAt(s);
@@ -1574,7 +1595,26 @@
     const seg = segmentAtS(phys.s);
     if (!seg) return 0;
     const segT = clamp01((phys.s - seg.p1.world.z) / segmentLength);
-    const slope = cliffLateralSlopeAt(seg.index, playerN, segT);
+    const halfWidth = playerHalfWN();
+    const leftEdge = playerN - halfWidth;
+    const rightEdge = playerN + halfWidth;
+    const sampleN = (Math.abs(leftEdge) > Math.abs(rightEdge)) ? leftEdge : rightEdge;
+    const info = cliffSurfaceInfoAt(seg.index, sampleN, segT);
+    let slope = info.slope ?? 0;
+    if (info.section === 'A') {
+      slope = info.slopeA ?? slope;
+    } else if (info.section === 'B') {
+      slope = info.slopeB ?? slope;
+    } else {
+      const slopeA = info.slopeA ?? 0;
+      const slopeB = info.slopeB ?? 0;
+      const coverageA = info.coverageA ?? 0;
+      const coverageB = info.coverageB ?? 0;
+      const totalCoverage = coverageA + coverageB;
+      if (totalCoverage > 1e-6) {
+        slope = (coverageA * slopeA + coverageB * slopeB) / totalCoverage;
+      }
+    }
     const angleDeg = -(180 / Math.PI) * Math.atan(slope);
     return clamp(cfgTilt.tiltDir * angleDeg, -cfgTiltAdd.tiltAddMaxDeg, cfgTiltAdd.tiltAddMaxDeg);
   }
