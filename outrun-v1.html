@@ -1194,8 +1194,14 @@
 
   function drawBoostZonesOnStrip(zones, xNear, yNear, xFar, yFar, wNear, wFar, fogRoad){
     if (!zones || !zones.length) return;
+
+    const dy   = Math.abs(yNear - yFar);
+    const rows = Math.max(1, Math.min(ROW_MAX, Math.ceil(dy / ROW_PX_TARGET)));
+    const fNear = fogRoad[0], fFar = fogRoad[2];
+
     for (const zone of zones){
       if (!zone || zone.visible === false) continue;
+
       const fallbackStart = clampBoostLane(-2);
       const fallbackEnd = clampBoostLane(2);
       const startN = (zone.nStart != null) ? zone.nStart : fallbackStart;
@@ -1210,27 +1216,52 @@
       const farMin  = xFar  + wFar  * laneToCenterOffset(laneMinClamped, fallbackStart);
       const farMax  = xFar  + wFar  * laneToCenterOffset(laneMaxClamped, fallbackEnd);
 
-      const quad = {
-        x1: nearMin, y1: yNear,
-        x2: nearMax, y2: yNear,
-        x3: farMax,  y3: yFar,
-        x4: farMin,  y4: yFar,
-      };
-      const padded = padQuad(quad, {
-        padLeft:   OVERLAP.x,
-        padRight:  OVERLAP.x,
-        padTop:    OVERLAP.y,
-        padBottom: OVERLAP.y,
-      });
+      const nearWidth = Math.max(1e-6, nearMax - nearMin);
+      const farWidth  = Math.max(1e-6, farMax - farMin);
+      let cols = Math.max(1, Math.round(0.5 * (nearWidth + farWidth) / COL_PX_TARGET));
+      cols = clamp(cols, ROAD_COLS_FAR, ROAD_COLS_NEAR);
+
       const colors = BOOST_ZONE_COLORS[zone.type] || BOOST_ZONE_FALLBACK_COLOR;
       const solid = Array.isArray(colors.solid) ? colors.solid : BOOST_ZONE_FALLBACK_COLOR.solid;
       const texKey = BOOST_ZONE_TEXTURE_KEYS[zone.type];
       const tex = texKey ? textures[texKey] : null;
-      if (tex) {
-        const uv = { u1:0, v1:0, u2:1, v2:0, u3:1, v3:1, u4:0, v4:1 };
-        glr.drawQuadTextured(tex, padded, uv, solid, fogRoad);
-      } else {
-        glr.drawQuadSolid(padded, solid, fogRoad);
+
+      for (let i = 0; i < rows; i++){
+        const t0 = i / rows, t1 = (i + 1) / rows;
+        const y0 = lerp(yNear, yFar, t0);
+        const y1 = lerp(yNear, yFar, t1);
+        const leftNear  = lerp(nearMin, farMin, t0);
+        const rightNear = lerp(nearMax, farMax, t0);
+        const leftFar   = lerp(nearMin, farMin, t1);
+        const rightFar  = lerp(nearMax, farMax, t1);
+        const fA = lerp(fNear, fFar, t0);
+        const fB = lerp(fNear, fFar, t1);
+
+        for (let j = 0; j < cols; j++){
+          const u0 = j / cols, u1 = (j + 1) / cols;
+          const x1 = lerp(leftNear, rightNear, u0);
+          const x2 = lerp(leftNear, rightNear, u1);
+          const x3 = lerp(leftFar, rightFar, u1);
+          const x4 = lerp(leftFar, rightFar, u0);
+
+          const quadBase = { x1, y1:y0, x2, y2:y0, x3, y3:y1, x4, y4:y1 };
+          const colPadL = (j === 0) ? OVERLAP.x : OVERLAP.x * 0.5;
+          const colPadR = (j === cols - 1) ? OVERLAP.x : OVERLAP.x * 0.5;
+          const quad = padQuad(quadBase, {
+            padLeft:  colPadL,
+            padRight: colPadR,
+            padTop:   OVERLAP.y,
+            padBottom:OVERLAP.y,
+          });
+          const uv = { u1:u0, v1:t0, u2:u1, v2:t0, u3:u1, v3:t1, u4:u0, v4:t1 };
+          const fog = [fA, fA, fB, fB];
+
+          if (tex) {
+            glr.drawQuadTextured(tex, quad, uv, solid, fog);
+          } else {
+            glr.drawQuadSolid(quad, solid, fog);
+          }
+        }
       }
     }
   }
@@ -1276,13 +1307,30 @@
   let boostTimer=0;
   let activeDriveZoneId=null;
 
+  function jumpZoneForPlayer(){
+    const segNow = segmentAtS(phys.s);
+    const zonesHere = boostZonesForPlayer(segNow, playerN);
+    return zonesHere.find(zone => zone.type === BOOST_ZONE_TYPES.JUMP) || null;
+  }
+  function applyJumpZoneBoost(zone){
+    if (!zone) return;
+    boostTimer = Math.max(boostTimer, DRIFT.boostTime);
+    phys.boostFlashTimer = Math.max(phys.boostFlashTimer, 0.3);
+  }
+
   const input = { left:false,right:false,up:false,down:false, hop:false };
   addEventListener('keydown',e=>{
     if(e.code==='ArrowLeft'||e.code==='KeyA') input.left=true;
     if(e.code==='ArrowRight'||e.code==='KeyD') input.right=true;
     if(e.code==='ArrowUp'||e.code==='KeyW') input.up=true;
     if(e.code==='ArrowDown'||e.code==='KeyS') input.down=true;
-    if(e.code==='Space'){ if(!hopHeld){ input.hop=true; } hopHeld=true; }
+    if(e.code==='Space'){
+      if(!hopHeld){
+        if (phys.grounded && phys.t >= phys.nextHopTime) applyJumpZoneBoost(jumpZoneForPlayer());
+        input.hop=true;
+      }
+      hopHeld=true;
+    }
     if(e.code==='KeyR') queueReset();
   });
   addEventListener('keyup',e=>{
@@ -1299,9 +1347,7 @@
 
   function doHop(){
     if (!phys.grounded || phys.t < phys.nextHopTime) return false;
-    const segNow = segmentAtS(phys.s);
-    const zonesHere = boostZonesForPlayer(segNow, playerN);
-    const jumpZone = zonesHere.find(zone => zone.type === BOOST_ZONE_TYPES.JUMP);
+    const jumpZone = jumpZoneForPlayer();
     const { dy } = groundProfileAt(phys.s);
     const { tx, ty, nx, ny } = tangentNormalFromSlope(dy);
     const baseVx = phys.vtan * tx, baseVy = phys.vtan * ty;
@@ -1310,10 +1356,7 @@
     phys.vx=newVx; phys.vy=newVy;
     phys.grounded=false;
     phys.nextHopTime=phys.t+TUNE_PLAYER.hopCooldown;
-    if (jumpZone) {
-      boostTimer = Math.max(boostTimer, DRIFT.boostTime);
-      phys.boostFlashTimer = Math.max(phys.boostFlashTimer, 0.3);
-    }
+    applyJumpZoneBoost(jumpZone);
     return true;
   }
 
@@ -1430,13 +1473,6 @@
 
     // hop/boost state changes on landing
     if (!prevGrounded && phys.grounded) {
-      const landingSeg = segmentAtS(phys.s);
-      const landingZones = boostZonesForPlayer(landingSeg, playerN);
-      const landingJumpZone = landingZones.find(zone => zone.type === BOOST_ZONE_TYPES.JUMP);
-      if (landingJumpZone) {
-        boostTimer = Math.max(boostTimer, DRIFT.boostTime);
-        phys.boostFlashTimer = Math.max(phys.boostFlashTimer, 0.3);
-      }
       const steerAxis2 = (input.left&&input.right)?0:(input.left?-1:(input.right?+1:0));
       if (hopHeld) {
         const dir = (steerAxis2===0) ? 0 : steerAxis2;
