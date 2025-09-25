@@ -108,6 +108,10 @@
     boostLockAgainst: 0.25
   };
 
+  const BOOST_ZONE_EFFECT = {
+    speedAdd: 1500,
+  };
+
   const BOOST_ZONE_TYPES = { JUMP: 'jump', DRIVE: 'drive' };
   const BOOST_ZONE_FALLBACK_COLOR = {
     fill: 'rgb(255,255,255)',
@@ -1315,7 +1319,15 @@
   function applyJumpZoneBoost(zone){
     if (!zone) return;
     boostTimer = Math.max(boostTimer, DRIFT.boostTime);
+    applyBoostImpulse();
     phys.boostFlashTimer = Math.max(phys.boostFlashTimer, 0.3);
+  }
+
+  function applyBoostImpulse(){
+    const boostCap = TUNE_PLAYER.maxSpeed * DRIFT.boostMult;
+    const currentForward = Math.max(phys.vtan, 0);
+    const boosted = currentForward + BOOST_ZONE_EFFECT.speedAdd;
+    phys.vtan = clamp(boosted, 0, boostCap);
   }
 
   const input = { left:false,right:false,up:false,down:false, hop:false };
@@ -1427,6 +1439,7 @@
       if (driveZoneHere) {
         if (activeDriveZoneId !== driveZoneHere.id) {
           boostTimer = Math.max(boostTimer, DRIFT.boostTime);
+          applyBoostImpulse();
           activeDriveZoneId = driveZoneHere.id;
         }
       } else {
