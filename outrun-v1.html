@@ -110,20 +110,20 @@
 
   const BOOST_ZONE_TYPES = { JUMP: 'jump', DRIVE: 'drive' };
   const BOOST_ZONE_FALLBACK_COLOR = {
-    fill: 'rgba(255,255,255,0.2)',
+    fill: 'rgb(255,255,255)',
     stroke: '#fafafa',
-    solid: [1, 1, 1, 0.35],
+    solid: [1, 1, 1, 1],
   };
   const BOOST_ZONE_COLORS = {
     [BOOST_ZONE_TYPES.JUMP]: {
-      fill: 'rgba(255,152,0,0.45)',
+      fill: 'rgb(255,152,0)',
       stroke: '#ff9800',
-      solid: [1, 152/255, 0, 0.45],
+      solid: [1, 152/255, 0, 1],
     },
     [BOOST_ZONE_TYPES.DRIVE]: {
-      fill: 'rgba(33,150,243,0.45)',
+      fill: 'rgb(33,150,243)',
       stroke: '#2196f3',
-      solid: [33/255, 150/255, 243/255, 0.45],
+      solid: [33/255, 150/255, 243/255, 1],
     },
   };
   const BOOST_ZONE_TEXTURE_KEYS = {
@@ -1414,12 +1414,15 @@
     if (phys.grounded) {
       const { dy } = groundProfileAt(phys.s);
       const { tx, ty } = tangentNormalFromSlope(dy);
+      const boostedMaxSpeed = TUNE_PLAYER.maxSpeed * (boosting ? DRIFT.boostMult : 1);
+      const accel = TUNE_PLAYER.accel * (boosting ? DRIFT.boostMult : 1);
+      const brake = TUNE_PLAYER.brake * (boosting ? DRIFT.boostMult : 1);
       let a=0;
-      if(input.up) a+=TUNE_PLAYER.accel;
-      if(input.down) a-=TUNE_PLAYER.brake;
+      if(input.up) a+=accel;
+      if(input.down) a-=brake;
       a += -TUNE_PLAYER.gravity*ty;
       a += -TUNE_PLAYER.rollFriction*phys.vtan;
-      phys.vtan = clamp(phys.vtan + a*dt, -TUNE_PLAYER.maxSpeed, TUNE_PLAYER.maxSpeed);
+      phys.vtan = clamp(phys.vtan + a*dt, -boostedMaxSpeed, boostedMaxSpeed);
 
       if (driveZoneHere) {
         if (activeDriveZoneId !== driveZoneHere.id) {
@@ -1431,8 +1434,7 @@
       }
 
       const zoneMult = zoneMultBase;
-      const travelBase = boosting ? phys.vtan * DRIFT.boostMult : phys.vtan;
-      const travelV = travelBase * zoneMult;
+      const travelV = phys.vtan * zoneMult;
       phys.s += travelV * tx * dt;
       phys.y  = groundProfileAt(phys.s).y;
 
@@ -1465,7 +1467,8 @@
       if (phys.y <= gy && phys.vy <= phys.vx * dy) {
         const { tx, ty } = tangentNormalFromSlope(dy);
         const vtanNew = phys.vx * tx + phys.vy * ty;
-        phys.vtan = clamp(vtanNew, -TUNE_PLAYER.maxSpeed, TUNE_PLAYER.maxSpeed);
+        const landCap = boosting ? TUNE_PLAYER.maxSpeed * DRIFT.boostMult : TUNE_PLAYER.maxSpeed;
+        phys.vtan = clamp(vtanNew, -landCap, landCap);
         phys.y = gy;
         phys.grounded = true;
       }
