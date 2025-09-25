@@ -172,7 +172,7 @@
   const cfgTilt = { tiltMaxDeg: 45, tiltSens: -3, tiltCurveWeight: -.2, tiltEase: 0.08, tiltDir: 1 };
   let camRollDeg = 0, playerTiltDeg = 0, prevPlayerN = 0, lateralRate = 0;
 
-  const cfgTiltAdd = { tiltAddEnabled: true, tiltAddMaxDeg: 10, tiltAddSens: -0.0018 };
+  const cfgTiltAdd = { tiltAddEnabled: true, tiltAddMaxDeg: 10 };
 
   // ---------- Canvas / GL ----------
   const c3D   = document.getElementById('outrun');
@@ -1483,42 +1483,71 @@
   }
 
   // ---------- Cliff interaction helpers ----------
+  function cliffSurfaceInfoAt(segIndex, nNorm, t = 0){
+    if (!CLIFF_READY || !segments.length) {
+      return { heightOffset: 0, slope: 0 };
+    }
+
+    const absN = Math.abs(nNorm);
+    if (absN <= 1) return { heightOffset: 0, slope: 0 };
+
+    const params = cliffParamsAt(segIndex, t);
+    const left = nNorm < 0;
+    const sign = Math.sign(nNorm) || 1;
+
+    const dyA = left ? params.leftA.dy : params.rightA.dy;
+    const dyB = left ? params.leftB.dy : params.rightB.dy;
+    const dxA = Math.abs(left ? params.leftA.dx : params.rightA.dx);
+    const dxB = Math.abs(left ? params.leftB.dx : params.rightB.dx);
+
+    const idxNorm = ((segIndex % segments.length) + segments.length) % segments.length;
+    const segData = segments[idxNorm];
+    const baseZ = segData ? segData.p1.world.z : segIndex * segmentLength;
+    const roadW = roadWidthAt(baseZ + clamp01(t) * segmentLength);
+    const beyond = Math.max(0, (absN - 1) * roadW);
+
+    const widthA = dxA;
+    const widthB = dxB;
+    const totalWidth = widthA + widthB;
+
+    if (beyond <= 1e-6) {
+      return { heightOffset: 0, slope: 0 };
+    }
+
+    if (totalWidth <= 1e-6) {
+      return { heightOffset: dyA + dyB, slope: 0 };
+    }
+
+    const clampedDist = Math.min(beyond, totalWidth);
+
+    if (clampedDist >= totalWidth - 1e-6) {
+      return { heightOffset: dyA + dyB, slope: 0 };
+    }
+
+    if (clampedDist <= widthA || widthB <= 1e-6) {
+      const span = widthA > 1e-6 ? clampedDist / widthA : 0;
+      const heightOffset = dyA * span;
+      const slope = (widthA > 1e-6) ? sign * (dyA / widthA) : 0;
+      return { heightOffset, slope };
+    }
+
+    const distB = clampedDist - widthA;
+    const spanB = widthB > 1e-6 ? distB / widthB : 0;
+    const heightOffset = dyA + dyB * spanB;
+    const slope = (widthB > 1e-6) ? sign * (dyB / widthB) : 0;
+    return { heightOffset, slope };
+  }
   function floorElevationAt(s, nNorm){
     const base = elevationAt(s);
     const seg = segmentAtS(s);
-    const idx = seg ? seg.index : 0;
-    const segT = seg ? clamp01((s - seg.p1.world.z) / segmentLength) : 0;
-    const params = cliffParamsAt(idx, segT);
-    const left  = nNorm < 0;
-    const a = left ? params.leftA.dy  : params.rightA.dy;
-    const b = left ? params.leftB.dy  : params.rightB.dy;
-    const band = Math.max(0, Math.min(2, Math.abs(nNorm) - 1));
-    const aPart = Math.min(1, band);
-    const bPart = Math.max(0, band - 1);
-    return base + a * aPart + b * bPart;
+    if (!seg) return base;
+    const segT = clamp01((s - seg.p1.world.z) / segmentLength);
+    const info = cliffSurfaceInfoAt(seg.index, nNorm, segT);
+    return base + info.heightOffset;
   }
   function cliffLateralSlopeAt(segIndex, nNorm, t=0){
-    const ax = Math.abs(nNorm);
-    const s = Math.max(0, Math.min(2, ax - 1));
-    if (s <= 0) return 0;
-    const params = cliffParamsAt(segIndex, t);
-    const left = nNorm < 0;
-    const sideSign = Math.sign(nNorm) || 1;
-    const per =
-        (s <= 1)
-        ? (left ? params.leftA.dy  : params.rightA.dy)
-        : (left ? params.leftB.dy  : params.rightB.dy);
-    return sideSign * per;
-  }
-  function cliffDeltaYAt(segIndex, nNorm, t=0){
-    const ax = Math.abs(nNorm);
-    if (ax <= 1) return 0;
-    const params = cliffParamsAt(segIndex, t);
-    const left = nNorm < 0;
-    const s = Math.max(0, Math.min(2, ax - 1));
-    const useB = s > 1;
-    if (left)  return useB ? params.leftB.dy  : params.leftA.dy;
-    else       return useB ? params.rightB.dy : params.rightA.dy;
+    const info = cliffSurfaceInfoAt(segIndex, nNorm, t);
+    return info.slope;
   }
   function applyCliffPushForce(step){
     const ax = Math.abs(playerN);
@@ -1526,10 +1555,10 @@
     const seg = segmentAtS(phys.s);
     const idx = seg ? seg.index : 0;
     const segT = seg ? clamp01((phys.s - seg.p1.world.z) / segmentLength) : 0;
-    const dy = cliffDeltaYAt(idx, playerN, segT);
-    if (dy === 0) return;
-    const sign = Math.sign(playerN) || 1;
-    const dir  = (dy < 0) ?  sign : -sign;
+    const slope = cliffLateralSlopeAt(idx, playerN, segT);
+    if (Math.abs(slope) <= 1e-6) return;
+    const dir = -Math.sign(slope);
+    if (dir === 0) return;
     const s = Math.max(0, Math.min(1.5, ax - 1));
     const gain = 1 + CLIFF_PUSH.distanceGain * s;
     let delta = dir * step * TUNE_TRACK.cliffPush * gain;
@@ -1539,11 +1568,11 @@
   function getAdditiveTiltDeg(){
     if (!cfgTiltAdd.tiltAddEnabled) return 0;
     const seg = segmentAtS(phys.s);
-    const idx = seg ? seg.index : 0;
-    const segT = seg ? clamp01((phys.s - seg.p1.world.z) / segmentLength) : 0;
-    const slope = cliffLateralSlopeAt(idx, playerN, segT);
-    const norm  = clamp(slope * cfgTiltAdd.tiltAddSens, -1, 1);
-    return cfgTilt.tiltDir * norm * cfgTiltAdd.tiltAddMaxDeg;
+    if (!seg) return 0;
+    const segT = clamp01((phys.s - seg.p1.world.z) / segmentLength);
+    const slope = cliffLateralSlopeAt(seg.index, playerN, segT);
+    const angleDeg = (180 / Math.PI) * Math.atan(slope);
+    return clamp(cfgTilt.tiltDir * angleDeg, -cfgTiltAdd.tiltAddMaxDeg, cfgTiltAdd.tiltAddMaxDeg);
   }
 
   // ---------- NPCs ----------
