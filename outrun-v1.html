@@ -630,7 +630,7 @@
   }
 
   async function buildTrackFromCSV(url){
-    const res = await fetch(url);
+    const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) throw new Error('CSV load failed: ' + res.status);
     const text = await res.text();
 
@@ -796,7 +796,7 @@
 
     let text='';
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error('HTTP '+res.status);
       text = await res.text();
     } catch (e) {
