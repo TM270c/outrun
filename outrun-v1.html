@@ -1571,7 +1571,7 @@
     if (!seg) return 0;
     const segT = clamp01((phys.s - seg.p1.world.z) / segmentLength);
     const slope = cliffLateralSlopeAt(seg.index, playerN, segT);
-    const angleDeg = (180 / Math.PI) * Math.atan(slope);
+    const angleDeg = -(180 / Math.PI) * Math.atan(slope);
     return clamp(cfgTilt.tiltDir * angleDeg, -cfgTiltAdd.tiltAddMaxDeg, cfgTiltAdd.tiltAddMaxDeg);
   }
 
