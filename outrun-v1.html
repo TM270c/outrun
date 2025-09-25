@@ -1506,8 +1506,8 @@
     const roadW = roadWidthAt(baseZ + clamp01(t) * segmentLength);
     const beyond = Math.max(0, (absN - 1) * roadW);
 
-    const widthA = dxA;
-    const widthB = dxB;
+    const widthA = Math.max(0, dxA);
+    const widthB = Math.max(0, dxB);
     const totalWidth = widthA + widthB;
 
     if (beyond <= 1e-6) {
@@ -1518,24 +1518,28 @@
       return { heightOffset: dyA + dyB, slope: 0 };
     }
 
-    const clampedDist = Math.min(beyond, totalWidth);
+    const distA = Math.min(beyond, widthA);
+    const distB = Math.max(0, Math.min(beyond - widthA, widthB));
 
-    if (clampedDist >= totalWidth - 1e-6) {
+    let heightOffset = 0;
+    if (widthA > 1e-6) heightOffset += dyA * (distA / widthA);
+    if (widthB > 1e-6) heightOffset += dyB * (distB / widthB);
+
+    if (beyond >= totalWidth - 1e-6) {
       return { heightOffset: dyA + dyB, slope: 0 };
     }
 
-    if (clampedDist <= widthA || widthB <= 1e-6) {
-      const span = widthA > 1e-6 ? clampedDist / widthA : 0;
-      const heightOffset = dyA * span;
-      const slope = (widthA > 1e-6) ? sign * (dyA / widthA) : 0;
+    if (distB > 1e-6 && widthB > 1e-6) {
+      const slope = sign * (dyB / widthB);
       return { heightOffset, slope };
     }
 
-    const distB = clampedDist - widthA;
-    const spanB = widthB > 1e-6 ? distB / widthB : 0;
-    const heightOffset = dyA + dyB * spanB;
-    const slope = (widthB > 1e-6) ? sign * (dyB / widthB) : 0;
-    return { heightOffset, slope };
+    if (distA > 1e-6 && widthA > 1e-6) {
+      const slope = sign * (dyA / widthA);
+      return { heightOffset, slope };
+    }
+
+    return { heightOffset, slope: 0 };
   }
   function floorElevationAt(s, nNorm){
     const base = elevationAt(s);
