@@ -1612,12 +1612,11 @@
     const info = cliffSurfaceInfoAt(seg.index, playerN, segT);
     const slopeA = info.slopeA ?? 0;
     const slopeB = info.slopeB ?? 0;
-    const coverageA = info.coverageA ?? 0;
-    const coverageB = info.coverageB ?? 0;
     let slope = info.slope ?? 0;
-    const totalCoverage = coverageA + coverageB;
-    if (totalCoverage > 1e-6) {
-      slope = (coverageA * slopeA + coverageB * slopeB) / totalCoverage;
+    if (info.section === 'A') {
+      slope = slopeA;
+    } else if (info.section === 'B') {
+      slope = slopeB;
     }
     const angleDeg = -(180 / Math.PI) * Math.atan(slope);
     return clamp(cfgTilt.tiltDir * angleDeg, -cfgTiltAdd.tiltAddMaxDeg, cfgTiltAdd.tiltAddMaxDeg);
