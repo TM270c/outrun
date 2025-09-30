@@ -199,8 +199,6 @@
   let overlayOn = true;
   const setOverlay = v => { overlayOn = v; cSide.style.display = overlayOn ? 'block' : 'none'; };
   setOverlay(true);
-  addEventListener('keydown',e=>{ if(e.code==='KeyB') setOverlay(!overlayOn); });
-  addEventListener('keydown',e=>{ if(e.code==='KeyL') resetScene().catch(err=>console.error(err)); });
 
   class GLRenderer {
     constructor(canvas) {
@@ -1344,31 +1342,51 @@
   }
 
   const input = { left:false,right:false,up:false,down:false, hop:false };
-  addEventListener('keydown',e=>{
-    if(e.code==='ArrowLeft'||e.code==='KeyA') input.left=true;
-    if(e.code==='ArrowRight'||e.code==='KeyD') input.right=true;
-    if(e.code==='ArrowUp'||e.code==='KeyW') input.up=true;
-    if(e.code==='ArrowDown'||e.code==='KeyS') input.down=true;
-    if(e.code==='Space'){
-      if(!hopHeld){
+  const setInputFlag = (flag, value) => () => { input[flag] = value; };
+  const keydownActions = {
+    ArrowLeft: setInputFlag('left', true),
+    KeyA: setInputFlag('left', true),
+    ArrowRight: setInputFlag('right', true),
+    KeyD: setInputFlag('right', true),
+    ArrowUp: setInputFlag('up', true),
+    KeyW: setInputFlag('up', true),
+    ArrowDown: setInputFlag('down', true),
+    KeyS: setInputFlag('down', true),
+    Space: () => {
+      if (!hopHeld) {
         if (phys.grounded && phys.t >= phys.nextHopTime) applyJumpZoneBoost(jumpZoneForPlayer());
-        input.hop=true;
+        input.hop = true;
       }
-      hopHeld=true;
-    }
-    if(e.code==='KeyR') queueReset();
-  });
-  addEventListener('keyup',e=>{
-    if(e.code==='ArrowLeft'||e.code==='KeyA') input.left=false;
-    if(e.code==='ArrowRight'||e.code==='KeyD') input.right=false;
-    if(e.code==='ArrowUp'||e.code==='KeyW') input.up=false;
-    if(e.code==='ArrowDown'||e.code==='KeyS') input.down=false;
-    if(e.code==='Space'){
-      hopHeld=false;
+      hopHeld = true;
+    },
+    KeyR: () => queueReset(),
+    KeyB: () => setOverlay(!overlayOn),
+    KeyL: () => resetScene().catch(err => console.error(err)),
+  };
+  const keyupActions = {
+    ArrowLeft: setInputFlag('left', false),
+    KeyA: setInputFlag('left', false),
+    ArrowRight: setInputFlag('right', false),
+    KeyD: setInputFlag('right', false),
+    ArrowUp: setInputFlag('up', false),
+    KeyW: setInputFlag('up', false),
+    ArrowDown: setInputFlag('down', false),
+    KeyS: setInputFlag('down', false),
+    Space: () => {
+      hopHeld = false;
       if (allowedBoost) boostTimer = DRIFT.boostTime;
-      driftState='idle'; driftDirSnapshot=0; driftCharge=0; allowedBoost=false;
-    }
-  });
+      driftState = 'idle';
+      driftDirSnapshot = 0;
+      driftCharge = 0;
+      allowedBoost = false;
+    },
+  };
+  const createKeyHandler = (actions) => (e) => {
+    const handler = actions[e.code];
+    if (handler) handler(e);
+  };
+  addEventListener('keydown', createKeyHandler(keydownActions));
+  addEventListener('keyup', createKeyHandler(keyupActions));
 
   function doHop(){
     if (!phys.grounded || phys.t < phys.nextHopTime) return false;
