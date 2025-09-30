@@ -2387,16 +2387,48 @@
   function queueReset(){ resetMatte.start('reset'); }
   function queueRespawn(sAtFail){ const targetS = nearestSegmentCenter(sAtFail); resetMatte.start('respawn', targetS, 0); }
 
-  function respawnPlayerAt(sTarget, nNorm = 0) {
-    phys.s = (sTarget % trackLength + trackLength) % trackLength;
+  function resetPlayerState({
+    s = phys.s,
+    playerN: playerNOverride,
+    cameraHeight = TUNE_TRACK.cameraHeight,
+    timers = null,
+  } = {}) {
+    phys.s = s;
     phys.y = elevationAt(phys.s);
     phys.grounded = true;
-    phys.vx = 0; phys.vy = 0; phys.vtan = 0;
-    const segIdx = segmentAtS(phys.s).index;
+    phys.vx = 0;
+    phys.vy = 0;
+    phys.vtan = 0;
+
+    if (timers) {
+      if (timers.t != null) phys.t = timers.t;
+      if (timers.nextHopTime != null) phys.nextHopTime = timers.nextHopTime;
+      if (timers.boostFlashTimer != null) phys.boostFlashTimer = timers.boostFlashTimer;
+    }
+
+    const nextPlayerN = (playerNOverride != null) ? playerNOverride : playerN;
+    playerN = nextPlayerN;
+    camYSmooth = phys.y + cameraHeight;
+
+    hopHeld = false;
+    driftState = 'idle';
+    driftDirSnapshot = 0;
+    driftCharge = 0;
+    allowedBoost = false;
+    boostTimer = 0;
+
+    camRollDeg = 0;
+    playerTiltDeg = 0;
+    prevPlayerN = playerN;
+    lateralRate = 0;
+  }
+
+  function respawnPlayerAt(sTarget, nNorm = 0) {
+    const sWrapped = (sTarget % trackLength + trackLength) % trackLength;
+    const segIdx = segmentAtS(sWrapped).index;
     const bound = playerLateralLimit(segIdx);
-    playerN = clamp(nNorm, -bound, bound);
-    camYSmooth = phys.y + TUNE_TRACK.cameraHeight;
-    hopHeld = false; driftState = 'idle'; driftDirSnapshot = 0; driftCharge = 0; allowedBoost = false; boostTimer = 0;
+    const nextPlayerN = clamp(nNorm, -bound, bound);
+    resetPlayerState({ s: sWrapped, playerN: nextPlayerN });
   }
 
   // ---------- Reset & main loop ----------
@@ -2432,17 +2464,11 @@
     spawnCars();
     spawnPickups();
 
-    phys.s = TUNE_TRACK.camBackSegments*segmentLength;
-    phys.y = elevationAt(phys.s);
-    phys.vx = phys.vy = phys.vtan = 0;
-    phys.grounded = true;
-    phys.t = 0;
-    phys.nextHopTime = 0;
-    phys.boostFlashTimer = 0;
-    playerN = 0;
-    camYSmooth = phys.y + TUNE_TRACK.cameraHeight;
-    hopHeld=false; driftState='idle'; driftDirSnapshot=0; driftCharge=0; allowedBoost=false; boostTimer=0;
-    camRollDeg = 0; playerTiltDeg = 0; prevPlayerN = playerN; lateralRate = 0;
+    resetPlayerState({
+      s: TUNE_TRACK.camBackSegments * segmentLength,
+      playerN: 0,
+      timers: { t: 0, nextHopTime: 0, boostFlashTimer: 0 },
+    });
   }
 
   const fps = 60, step = 1/fps;
