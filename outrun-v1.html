@@ -1747,7 +1747,14 @@
     }
     return base;
   }
+  function clearSegmentCars(){
+    for (let i = 0; i < segments.length; i++){
+      const seg = segments[i];
+      if (seg && seg.cars) seg.cars.length = 0;
+    }
+  }
   function spawnCars(){
+    clearSegmentCars();
     cars.length = 0;
     for (let i=0;i<NPC.total;i++){
       const s = Math.floor(Math.random() * Math.max(1, segments.length)) * segmentLength;
@@ -2479,6 +2486,8 @@
       addRoad(25,25,25,0,0,'smooth');
       trackLength = segments.length * segmentLength;
     }
+
+    clearSegmentCars();
 
     // NEW: prepare per-segment cliff arrays and load compact CSV
     resetCliffSeries();
