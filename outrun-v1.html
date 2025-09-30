@@ -1079,7 +1079,7 @@
     p.camera.x = (p.world.x||0) - camX;
     p.camera.y = (p.world.y||0) - camY;
     p.camera.z = (p.world.z||0) - camS;
-    p.screen.scale = 1/Math.tan((TUNE_TRACK.fov/2)*Math.PI/180) / p.camera.z;
+    p.screen.scale = cameraDepth / p.camera.z;
     p.screen.x = (HALF_VIEW + p.screen.scale*p.camera.x*HALF_VIEW)|0;
     p.screen.y = ((H/2) - p.screen.scale*p.camera.y*(H/2))|0;
     const rw = roadWidthAt(p.world.z||0);
@@ -1298,9 +1298,22 @@
   const phys={ s:0,y:0,vx:0,vy:0,vtan:0, grounded:true, t:0, nextHopTime:0, boostFlashTimer:0 };
   let playerN=0; // lateral normalized [-2..2]
   let fieldOfView  = TUNE_TRACK.fov;
-  let cameraDepth  = 1/Math.tan((fieldOfView/2)*Math.PI/180);
-  let nearZ        = 1 / cameraDepth;
-  let playerZ      = TUNE_TRACK.cameraHeight*cameraDepth;
+  let cameraDepth  = 0;
+  let nearZ        = 0;
+  let playerZ      = 0;
+
+  function updateCameraFromFieldOfView(){
+    cameraDepth  = 1/Math.tan((fieldOfView/2)*Math.PI/180);
+    nearZ        = 1 / cameraDepth;
+    playerZ      = TUNE_TRACK.cameraHeight*cameraDepth;
+  }
+
+  function setFieldOfView(fov){
+    fieldOfView = fov;
+    updateCameraFromFieldOfView();
+  }
+
+  setFieldOfView(fieldOfView);
   let camYSmooth=0;
 
   let hopHeld=false;
@@ -2388,10 +2401,7 @@
 
   // ---------- Reset & main loop ----------
   async function resetScene(){
-    fieldOfView  = TUNE_TRACK.fov;
-    cameraDepth  = 1/Math.tan((fieldOfView/2)*Math.PI/180);
-    nearZ        = 1 / cameraDepth;
-    playerZ      = TUNE_TRACK.cameraHeight*cameraDepth;
+    setFieldOfView(TUNE_TRACK.fov);
 
     try {
       await buildTrackFromCSV('tracks/test-track.csv');
