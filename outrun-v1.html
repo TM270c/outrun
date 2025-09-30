@@ -157,6 +157,27 @@
     const clamped = clampRoadLane(n, fallback);
     return (clamped - ROAD_LANE_LIMITS.MIN) / (ROAD_LANE_LIMITS.MAX - ROAD_LANE_LIMITS.MIN);
   };
+  function getZoneLaneBounds(zone){
+    if (!zone || zone.visible === false) return null;
+    const fallbackStart = clampBoostLane(-2);
+    const fallbackEnd = clampBoostLane(2);
+    const rawStart = (zone.nStart != null) ? zone.nStart : fallbackStart;
+    const rawEnd = (zone.nEnd != null) ? zone.nEnd : fallbackEnd;
+    const start = clampBoostLane(rawStart);
+    const end = clampBoostLane(rawEnd);
+    const laneMin = Math.min(start, end);
+    const laneMax = Math.max(start, end);
+    return {
+      start,
+      end,
+      laneMin,
+      laneMax,
+      centerOffsetMin: laneToCenterOffset(laneMin, fallbackStart),
+      centerOffsetMax: laneToCenterOffset(laneMax, fallbackEnd),
+      roadRatioMin: laneToRoadRatio(laneMin, fallbackStart),
+      roadRatioMax: laneToRoadRatio(laneMax, fallbackEnd),
+    };
+  }
   function parseBoostZoneType(raw) {
     if (raw == null) return null;
     const norm = raw.toString().trim().toLowerCase();
@@ -1202,21 +1223,13 @@
     const fNear = fogRoad[0], fFar = fogRoad[2];
 
     for (const zone of zones){
-      if (!zone || zone.visible === false) continue;
+      const bounds = getZoneLaneBounds(zone);
+      if (!bounds) continue;
 
-      const fallbackStart = clampBoostLane(-2);
-      const fallbackEnd = clampBoostLane(2);
-      const startN = (zone.nStart != null) ? zone.nStart : fallbackStart;
-      const endN = (zone.nEnd != null) ? zone.nEnd : fallbackEnd;
-      const laneMin = Math.min(startN, endN);
-      const laneMax = Math.max(startN, endN);
-      const laneMinClamped = clampBoostLane(laneMin);
-      const laneMaxClamped = clampBoostLane(laneMax);
-
-      const nearMin = xNear + wNear * laneToCenterOffset(laneMinClamped, fallbackStart);
-      const nearMax = xNear + wNear * laneToCenterOffset(laneMaxClamped, fallbackEnd);
-      const farMin  = xFar  + wFar  * laneToCenterOffset(laneMinClamped, fallbackStart);
-      const farMax  = xFar  + wFar  * laneToCenterOffset(laneMaxClamped, fallbackEnd);
+      const nearMin = xNear + wNear * bounds.centerOffsetMin;
+      const nearMax = xNear + wNear * bounds.centerOffsetMax;
+      const farMin  = xFar  + wFar  * bounds.centerOffsetMin;
+      const farMax  = xFar  + wFar  * bounds.centerOffsetMax;
 
       const nearWidth = Math.max(1e-6, nearMax - nearMin);
       const farWidth  = Math.max(1e-6, farMax - farMin);
@@ -2290,14 +2303,14 @@
       const ratio = laneToRoadRatio(n, fallback);
       return roadX + ratio * roadW;
     };
+    const mapRatio = (ratio) => roadX + ratio * roadW;
 
     for (const zone of zones){
-      if (zone && zone.visible === false) continue;
+      const bounds = getZoneLaneBounds(zone);
+      if (!bounds) continue;
       const colors = BOOST_ZONE_COLORS[zone.type] || BOOST_ZONE_FALLBACK_COLOR;
-      const fallbackStart = clampBoostLane(-2);
-      const fallbackEnd = clampBoostLane(2);
-      const x1 = mapN(zone.nStart, fallbackStart);
-      const x2 = mapN(zone.nEnd, fallbackEnd);
+      const x1 = mapRatio(bounds.roadRatioMin);
+      const x2 = mapRatio(bounds.roadRatioMax);
       const zx = Math.min(x1, x2);
       const zw = Math.max(2, Math.abs(x2 - x1));
       ctx.fillStyle = colors.fill;
