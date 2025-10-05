@@ -35,6 +35,7 @@
 
   const {
     data,
+    getTrackLength,
     roadWidthAt,
     floorElevationAt,
     cliffSurfaceInfoAt,
@@ -52,7 +53,6 @@
 
   const segments = data.segments;
   const segmentLength = track.segmentSize;
-  const trackLengthRef = () => data.trackLength || 0;
 
   const hasSegments = () => segments.length > 0;
 
@@ -351,7 +351,7 @@
         if (overlap(state.playerN, pHalf, car.offset, carHalfWN(car), 1)) {
           const capped = car.speed / Math.max(1, Math.abs(phys.vtan));
           phys.vtan = car.speed * capped;
-          phys.s = wrapDistance(car.z, -2, trackLengthRef());
+          phys.s = wrapDistance(car.z, -2, getTrackLength());
           break;
         }
       }
@@ -490,7 +490,7 @@
 
     phys.t += dt;
 
-    const length = trackLengthRef();
+    const length = getTrackLength();
     if (length > 0) {
       phys.s = wrap(phys.s, length);
     }
@@ -611,7 +611,7 @@
       const oldSeg = segmentAtS(car.z);
       const avoidance = steerAvoidance(car, oldSeg, playerSeg, playerHalfWN());
       car.offset += avoidance;
-      car.z = wrapDistance(car.z, dt * car.speed, trackLengthRef());
+      car.z = wrapDistance(car.z, dt * car.speed, getTrackLength());
       const newSeg = segmentAtS(car.z);
       if (oldSeg && newSeg && oldSeg !== newSeg) {
         const idx = oldSeg.cars.indexOf(car);
@@ -785,7 +785,7 @@
   }
 
   function respawnPlayerAt(sTarget, nNorm = 0) {
-    const length = trackLengthRef();
+    const length = getTrackLength();
     const sWrapped = wrap(sTarget, length);
     const seg = segmentAtS(sWrapped);
     const segIdx = seg ? seg.index : 0;
