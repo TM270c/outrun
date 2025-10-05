@@ -219,9 +219,9 @@
   }
 
   // Apply guard-rail constraints to a lateral bound.
-  const clampToRailLimit = (segIndex, baseLimit, halfWidth, pad) => {
+  const clampToRailLimit = (segIndex, baseLimit, halfWidth, pad, forceRailInset = false) => {
     const seg = segmentAtIndex(segIndex);
-    if (hasRail(seg)) {
+    if (forceRailInset || hasRail(seg)) {
       const railInner = track.railInset - halfWidth - pad;
       return Math.min(baseLimit, railInner);
     }
@@ -280,9 +280,9 @@
   const RAD_TO_DEG = 180 / Math.PI;
 
   // Clamp the player against guard rails or steep cliff edges and bleed speed.
-  function applyGuardrailBrake(seg) {
+  function applyGuardrailBrake(seg, forceRailInset = false) {
     if (!seg) return false;
-    const bound = playerLateralLimit(seg.index);
+    const bound = playerLateralLimit(seg.index, forceRailInset);
     const preClamp = state.playerN;
     state.playerN = clamp(state.playerN, -bound, bound);
     const scraping = Math.abs(preClamp) > bound - EPS || Math.abs(state.playerN) >= bound - EPS;
@@ -319,7 +319,7 @@
     const slopeAngleDeg = Math.abs(Math.atan(slope) * RAD_TO_DEG);
     const limitDeg = cliffs.driveLimitDeg ?? 90;
     if (slopeAngleDeg >= limitDeg) {
-      applyGuardrailBrake(seg);
+      applyGuardrailBrake(seg, true);
       return;
     }
     if (Math.abs(slope) <= EPS) return;
@@ -357,11 +357,11 @@
   }
 
   // Player edge constraint based on road lanes and guard rails.
-  function playerLateralLimit(segIndex) {
+  function playerLateralLimit(segIndex, forceRailInset = false) {
     const halfW = playerHalfWN();
     const baseLimit = Math.min(Math.abs(lanes.road.min), Math.abs(lanes.road.max));
     const base = baseLimit - halfW - 0.015;
-    return clampToRailLimit(segIndex, base, halfW, 0.015);
+    return clampToRailLimit(segIndex, base, halfW, 0.015, forceRailInset);
   }
 
   function resolvePickupCollisionsInSeg(seg) {
