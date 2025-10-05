@@ -47,6 +47,27 @@
   const segmentLength = track.segmentSize;
   const trackLengthRef = () => data.trackLength || 0;
 
+  const hasSegments = () => segments.length > 0;
+
+  const wrapByLength = (value, length) => {
+    if (length <= 0) return value;
+    const mod = value % length;
+    return mod < 0 ? mod + length : mod;
+  };
+
+  const wrapSegmentIndex = (idx) => {
+    if (!hasSegments()) return idx;
+    const count = segments.length;
+    const mod = idx % count;
+    return mod < 0 ? mod + count : mod;
+  };
+
+  const ensureArray = (obj, key) => {
+    if (!obj) return [];
+    if (!Array.isArray(obj[key])) obj[key] = [];
+    return obj[key];
+  };
+
   const DEFAULT_SPRITE_META = {
     PLAYER: { wN: 0.16, aspect: 0.7, tint: [0.9, 0.22, 0.21, 1], tex: () => null },
     CAR:    { wN: 0.28, aspect: 0.7, tint: [0.2, 0.7, 1.0, 1], tex: () => null },
@@ -107,25 +128,21 @@
 
   function segmentAtS(s) {
     const length = trackLengthRef();
-    if (!segments.length || length <= 0) return null;
-    let wrapped = s % length;
-    if (wrapped < 0) wrapped += length;
+    if (!hasSegments() || length <= 0) return null;
+    const wrapped = wrapByLength(s, length);
     const idx = Math.floor(wrapped / segmentLength) % segments.length;
     return segments[idx];
   }
 
   function segmentAtIndex(idx) {
-    if (!segments.length) return null;
-    const count = segments.length;
-    const wrapped = ((idx % count) + count) % count;
-    return segments[wrapped];
+    if (!hasSegments()) return null;
+    return segments[wrapSegmentIndex(idx)];
   }
 
   function elevationAt(s) {
     const length = trackLengthRef();
-    if (!segments.length || length <= 0) return 0;
-    let ss = s % length;
-    if (ss < 0) ss += length;
+    if (!hasSegments() || length <= 0) return 0;
+    const ss = wrapByLength(s, length);
     const i = Math.floor(ss / segmentLength);
     const seg = segments[i % segments.length];
     const t = (ss - seg.p1.world.z) / segmentLength;
@@ -134,7 +151,7 @@
 
   function groundProfileAt(s) {
     const y = elevationAt(s);
-    if (!segments.length) return { y, dy: 0, d2y: 0 };
+    if (!hasSegments()) return { y, dy: 0, d2y: 0 };
     const h = Math.max(5, segmentLength * 0.1);
     const y1 = elevationAt(s - h);
     const y2 = elevationAt(s + h);
@@ -209,43 +226,31 @@
   }
 
   function wrapDistance(v, dv, max) {
-    let out = v + dv;
-    if (max <= 0) return out;
-    while (out >= max) out -= max;
-    while (out < 0) out += max;
-    return out;
+    return wrapByLength(v + dv, max);
   }
 
   function nearestSegmentCenter(s) {
     return Math.round(s / segmentLength) * segmentLength + segmentLength * 0.5;
   }
 
+  const cliffInfoDefaults = Object.freeze({
+    heightOffset: 0,
+    slope: 0,
+    section: null,
+    slopeA: 0,
+    slopeB: 0,
+    coverageA: 0,
+    coverageB: 0,
+  });
+
+  const createCliffInfo = (overrides = {}) => ({ ...cliffInfoDefaults, ...overrides });
+
   function cliffSurfaceInfoAt(segIndex, nNorm, t = 0) {
     const absN = Math.abs(nNorm);
-    if (absN <= 1) {
-      return {
-        heightOffset: 0,
-        slope: 0,
-        section: null,
-        slopeA: 0,
-        slopeB: 0,
-        coverageA: 0,
-        coverageB: 0,
-      };
-    }
+    if (absN <= 1) return createCliffInfo();
 
     const params = cliffParamsAt ? cliffParamsAt(segIndex, t) : null;
-    if (!params) {
-      return {
-        heightOffset: 0,
-        slope: 0,
-        section: null,
-        slopeA: 0,
-        slopeB: 0,
-        coverageA: 0,
-        coverageB: 0,
-      };
-    }
+    if (!params) return createCliffInfo();
 
     const left = nNorm < 0;
     const sign = Math.sign(nNorm) || 1;
@@ -255,9 +260,7 @@
     const dxA = Math.abs(left ? params.leftA.dx : params.rightA.dx);
     const dxB = Math.abs(left ? params.leftB.dx : params.rightB.dx);
 
-    const segCount = segments.length || 1;
-    const segNorm = ((segIndex % segCount) + segCount) % segCount;
-    const segData = segments[segNorm];
+    const segData = segmentAtIndex(segIndex);
     const baseZ = segData ? segData.p1.world.z : segIndex * segmentLength;
     const roadW = roadWidthAt ? roadWidthAt(baseZ + clamp01(t) * segmentLength) : track.roadWidth;
     const beyond = Math.max(0, (absN - 1) * roadW);
@@ -269,12 +272,10 @@
     const slopeA = widthA > 1e-6 ? sign * (dyA / widthA) : 0;
     const slopeB = widthB > 1e-6 ? sign * (dyB / widthB) : 0;
 
-    if (beyond <= 1e-6) {
-      return { heightOffset: 0, slope: 0, section: null, slopeA, slopeB, coverageA: 0, coverageB: 0 };
-    }
+    if (beyond <= 1e-6) return createCliffInfo({ slopeA, slopeB });
 
     if (totalWidth <= 1e-6) {
-      return { heightOffset: dyA + dyB, slope: 0, section: null, slopeA, slopeB, coverageA: 0, coverageB: 0 };
+      return createCliffInfo({ heightOffset: dyA + dyB, slopeA, slopeB });
     }
 
     const distA = Math.min(beyond, widthA);
@@ -293,20 +294,34 @@
     }
 
     if (beyond >= totalWidth - 1e-6) {
-      return { heightOffset: dyA + dyB, slope: 0, section: null, slopeA, slopeB, coverageA: 0, coverageB: 0 };
+      return createCliffInfo({ heightOffset: dyA + dyB, slopeA, slopeB });
     }
 
     if (distB > 1e-6 && widthB > 1e-6) {
-      const slope = slopeB;
-      return { heightOffset, slope, section: 'B', slopeA, slopeB, coverageA, coverageB };
+      return createCliffInfo({
+        heightOffset,
+        slope: slopeB,
+        section: 'B',
+        slopeA,
+        slopeB,
+        coverageA,
+        coverageB,
+      });
     }
 
     if (distA > 1e-6 && widthA > 1e-6) {
-      const slope = slopeA;
-      return { heightOffset, slope, section: 'A', slopeA, slopeB, coverageA, coverageB };
+      return createCliffInfo({
+        heightOffset,
+        slope: slopeA,
+        section: 'A',
+        slopeA,
+        slopeB,
+        coverageA,
+        coverageB,
+      });
     }
 
-    return { heightOffset, slope: 0, section: null, slopeA, slopeB, coverageA, coverageB };
+    return createCliffInfo({ heightOffset, slopeA, slopeB, coverageA, coverageB });
   }
 
   function cliffLateralSlopeAt(segIndex, nNorm, t = 0) {
@@ -434,17 +449,14 @@
       }
     }
 
-    if (!segments.length) return;
-    resolvePickupCollisionsInSeg(seg);
-    const nextSeg = segments[(seg.index + 1) % segments.length];
-    const prevSeg = segments[(seg.index - 1 + segments.length) % segments.length];
-    resolvePickupCollisionsInSeg(nextSeg);
-    resolvePickupCollisionsInSeg(prevSeg);
+    if (!hasSegments()) return;
+    const neighbors = [seg, segmentAtIndex(seg.index + 1), segmentAtIndex(seg.index - 1)];
+    neighbors.forEach(resolvePickupCollisionsInSeg);
   }
 
   function updatePhysics(dt) {
     const { phys, input } = state;
-    if (!segments.length) return;
+    if (!hasSegments()) return;
 
     if (input.hop) {
       doHop();
@@ -633,22 +645,22 @@
   }
 
   function clearSegmentCars() {
-    for (let i = 0; i < segments.length; i += 1) {
-      const seg = segments[i];
+    if (!hasSegments()) return;
+    for (const seg of segments) {
       if (seg && Array.isArray(seg.cars)) seg.cars.length = 0;
     }
   }
 
   function spawnCars() {
-    if (!segments.length) {
+    if (!hasSegments()) {
       state.cars.length = 0;
       return;
     }
     clearSegmentCars();
     state.cars.length = 0;
+    const segCount = segments.length;
     for (let i = 0; i < NPC.total; i += 1) {
-      const length = Math.max(1, segments.length);
-      const s = Math.floor(Math.random() * length) * segmentLength;
+      const s = Math.floor(Math.random() * segCount) * segmentLength;
       const type = CAR_TYPES[Math.random() < 0.75 ? 0 : 1];
       const meta = getSpriteMeta(type);
       const tmpCar = { type, meta };
@@ -660,8 +672,7 @@
       const isSemi = type === 'SEMI';
       const speed = (player.topSpeed / 6) + Math.random() * player.topSpeed / (isSemi ? 5 : 3);
       const car = { z: s, offset, type, meta, speed };
-      if (!Array.isArray(seg.cars)) seg.cars = [];
-      seg.cars.push(car);
+      ensureArray(seg, 'cars').push(car);
       state.cars.push(car);
     }
   }
@@ -675,7 +686,7 @@
       return 0;
     }
     for (let i = 1; i < lookahead; i += 1) {
-      const seg = segments[(carSeg.index + i) % segCount];
+      const seg = segmentAtIndex(carSeg.index + i);
       if (!seg) continue;
       if (seg === playerSeg && (car.speed > Math.abs(state.phys.vtan)) && overlap(state.playerN, playerW, car.offset, cHalf, 1)) {
         let dir;
@@ -703,7 +714,7 @@
   }
 
   function tickCars(dt) {
-    if (!segments.length || !state.cars.length) return;
+    if (!hasSegments() || !state.cars.length) return;
     const playerSeg = segmentAtS(state.phys.s);
     const segCount = segments.length;
     for (let n = 0; n < state.cars.length; n += 1) {
@@ -717,8 +728,7 @@
       if (oldSeg && newSeg && oldSeg !== newSeg) {
         const idx = oldSeg.cars.indexOf(car);
         if (idx >= 0) oldSeg.cars.splice(idx, 1);
-        if (!Array.isArray(newSeg.cars)) newSeg.cars = [];
-        newSeg.cars.push(car);
+        ensureArray(newSeg, 'cars').push(car);
       }
       if (newSeg) {
         const bNext = npcLateralLimit(newSeg.index, car);
@@ -728,16 +738,16 @@
   }
 
   function addProp(segIdx, kind, offset) {
-    if (!segments.length) return;
-    const seg = segments[((segIdx % segments.length) + segments.length) % segments.length];
+    if (!hasSegments()) return;
+    const seg = segmentAtIndex(segIdx);
     if (!seg) return;
-    if (!Array.isArray(seg.sprites)) seg.sprites = [];
-    seg.sprites.push({ kind, offset });
+    ensureArray(seg, 'sprites').push({ kind, offset });
   }
 
   function spawnProps() {
-    if (!segments.length) return;
-    for (let i = 8; i < segments.length; i += 6) {
+    if (!hasSegments()) return;
+    const segCount = segments.length;
+    for (let i = 8; i < segCount; i += 6) {
       addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', -1.25 - Math.random() * 0.15);
       addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', 1.25 + Math.random() * 0.15);
       if (i % 12 === 0) {
@@ -753,11 +763,10 @@
   }
 
   function addPickup(segIdx, offset = 0) {
-    if (!segments.length) return;
-    const seg = segments[((segIdx % segments.length) + segments.length) % segments.length];
+    if (!hasSegments()) return;
+    const seg = segmentAtIndex(segIdx);
     if (!seg) return;
-    if (!Array.isArray(seg.pickups)) seg.pickups = [];
-    seg.pickups.push({ offset, collected: false });
+    ensureArray(seg, 'pickups').push({ offset, collected: false });
   }
 
   function addPickupTrail(startSeg, count, spacing = 2, offset = 0) {
@@ -767,17 +776,18 @@
   }
 
   function spawnPickups() {
-    if (!segments.length) {
+    if (!hasSegments()) {
       state.pickupCollected = 0;
       state.pickupTotal = 0;
       return;
     }
     for (const seg of segments) {
-      if (Array.isArray(seg.pickups)) seg.pickups.length = 0;
-      else seg.pickups = [];
+      if (!seg) continue;
+      const list = ensureArray(seg, 'pickups');
+      list.length = 0;
     }
     state.pickupCollected = 0;
-    const boostSegments = segments.filter((seg) => seg && seg.features && seg.features.boost);
+    const boostSegments = segments.filter((seg) => seg?.features?.boost);
     if (boostSegments.length > 0) {
       for (const seg of boostSegments) {
         const offset = (seg.features && seg.features.boostPickupOffset != null)
