@@ -137,9 +137,10 @@
       gl.clearColor(clear[0],clear[1],clear[2],clear[3]); gl.clear(gl.COLOR_BUFFER_BIT);
       gl.uniform2f(this.u_pivot, gl.canvas.width*0.5, gl.canvas.height*0.82);
       // Fog uniforms only when changed
-      const en = (FOG.enabled?1:0);
+      const fogConfig = (window.Config && window.Config.fog) || { enabled: false, color: [0, 0, 0] };
+      const en = fogConfig.enabled ? 1 : 0;
       if (this._fogEnabled !== en) { this._fogEnabled = en; gl.uniform1i(this.u_fogEnabled, en); }
-      const [r,g,b]=FOG.color;
+      const [r = 0, g = 0, b = 0] = fogConfig.color || [];
       if (r!==this._fogColor[0] || g!==this._fogColor[1] || b!==this._fogColor[2]) {
         this._fogColor = [r,g,b];
         gl.uniform3f(this.u_fogColor, r, g, b);

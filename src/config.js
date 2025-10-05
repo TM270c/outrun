@@ -1,138 +1,157 @@
-const TUNE_PLAYER = {
-  accel: 3000,
-  brake: 3000,
-  maxSpeed: 7000,
-  gravity: 6400,
-  rollFriction: 0.3,
-  airDrag: 0,
-  steerBase: 2.0,
-  leanCentrifugal: 0.1,
-  hopImpulse: 1400,
-  hopCooldown: 0.25,
-  crestBoostMultiplier: 1.25,
-  playerScale: 1.00,
+// Core handling and tuning for the player car.
+const player = {
+  accelForce: 3000,     // forward push strength
+  brakeForce: 3000,     // braking strength
+  topSpeed: 7000,       // on-road speed cap
+  gravity: 6400,        // vertical pull amount
+  rollDrag: 0.3,        // sideways speed dampener
+  airDrag: 0,           // airborne drag factor
+  steerRate: 2.0,       // base steering response
+  curveLean: 0.1,       // curve lean contribution
+  hopImpulse: 1400,     // hop launch strength
+  hopCooldown: 0.25,    // seconds between hops
+  crestBoost: 1.25,     // crest boost multiplier
+  scale: 1.0,           // sprite scale factor
 };
 
-const ROAD_COLS_NEAR = 6;
-const ROAD_COLS_FAR  = 2;
-const COL_PX_TARGET  = 96;
-const ROW_PX_TARGET  = 18;
-const ROW_MAX        = 64;
+// Screen-space grid targets for drawing the road mesh.
+const grid = {
+  roadColsNear: 6,
+  roadColsFar: 2,
+  colWidthPx: 96,
+  rowHeightPx: 18,
+  maxRows: 64,
+};
 
-const TUNE_TRACK = {
-  segmentLength: 200,
+// Track geometry and texture sampling values.
+const track = {
+  segmentSize: 200,
   roadWidth: 2400,
   drawDistance: 200,
-  fov: 140,
-  cameraHeight: 700,
-  camBackSegments: 2,
-  camYTau: 0.1,
-  cliffPush: 0.5,
   railInset: 0.95,
-  wallShortLeft:  400,
-  wallShortRight: 400,
-  MPerPxX: 8,
-  MPerPxY: 40,
+  wallShort: { left: 400, right: 400 },
+  metersPerPixel: { x: 8, y: 40 },
 };
 
-const CLIFF_PUSH = { distanceGain: 0.6, capPerFrame: 0.5 };
-const CLIFF_CAMERA_FRACTION = 1 / 3;
-const FAILSAFE   = { belowRoadUnits: 600 };
+// Camera placement and smoothing while following the player.
+const camera = {
+  fovDeg: 140,
+  height: 700,
+  backSegments: 2,
+  heightEase: 0.1,
+};
 
-const FOG = {
+// Cliff behaviour and camera bias when approaching drops.
+const cliffs = {
+  pushStep: 0.5,
+  distanceGain: 0.6,
+  capPerFrame: 0.5,
+  cameraBlend: 1 / 3,
+};
+
+// Guard rails for falling through the world.
+const failsafe = {
+  dropUnits: 600,
+};
+
+// Atmospheric fog blending.
+const fog = {
   enabled: true,
-  nearSegs: 0,
-  farSegs: 160,
+  nearSegments: 0,
+  farSegments: 160,
   color: [0.1, 0.5, 0.8],
 };
 
-const DEFAULT_COLORS = {
+// Default fallback tint values for world primitives.
+const colors = {
   road: [0.5, 0.5, 0.5, 1],
   wall: [0.5, 0.5, 0.5, 1],
   rail: [0.5, 0.5, 0.5, 1],
 };
 
-const DEBUG = { mode: 'off', span: 3, colors: { a:[1,1,1,1], b:[0.82,0.90,1,1] } };
+// Debug overlay defaults for development builds.
+const debug = {
+  mode: 'off',
+  span: 3,
+  colors: { a: [1, 1, 1, 1], b: [0.82, 0.9, 1, 1] },
+};
 
-const SPRITE_FAR = { shrinkTo: 0.1, power: 0.4 };
+// Sprite rendering adjustments.
+const sprites = {
+  far: { shrinkTo: 0.1, power: 0.4 },
+  overlap: { x: 0.75, y: 0.75 },
+};
 
-const PARALLAX_LAYERS = [
-  { key:'horizon1', parallaxX: 0.05, uvSpanX: 1.0, uvSpanY: 1.0 },
-  { key:'horizon2', parallaxX: 0.10, uvSpanX: 1.0, uvSpanY: 1.0 },
-  { key:'horizon3', parallaxX: 0.18, uvSpanX: 1.0, uvSpanY: 1.0 },
+// Background parallax layers rendered behind the horizon.
+const parallaxLayers = [
+  { key: 'horizon1', parallaxX: 0.05, uvSpanX: 1.0, uvSpanY: 1.0 },
+  { key: 'horizon2', parallaxX: 0.1,  uvSpanX: 1.0, uvSpanY: 1.0 },
+  { key: 'horizon3', parallaxX: 0.18, uvSpanX: 1.0, uvSpanY: 1.0 },
 ];
 
-const DRIFT = {
-  boostChargeMin: 0.60,
+// Drift boost tuning.
+const drift = {
+  chargeMin: 0.6,
   boostTime: 0.35,
-  boostMult: 1.8,
-  boostSteerScale: 0.6,
-  boostLockBase: 0.75,
-  boostLockWith: 1.25,
-  boostLockAgainst: 0.25,
+  boostScale: 1.8,
+  steerScale: 0.6,
+  lockBase: 0.75,
+  lockWith: 1.25,
+  lockAgainst: 0.25,
 };
 
-const BOOST_ZONE_EFFECT = {
-  speedAdd: 1500,
-};
-
-const BOOST_ZONE_TYPES = { JUMP: 'jump', DRIVE: 'drive' };
-const BOOST_ZONE_FALLBACK_COLOR = {
-  fill: 'rgb(255,255,255)',
-  stroke: '#fafafa',
-  solid: [1, 1, 1, 1],
-};
-const BOOST_ZONE_COLORS = {
-  [BOOST_ZONE_TYPES.JUMP]: {
-    fill: 'rgb(255,152,0)',
-    stroke: '#ff9800',
-    solid: [1, 152/255, 0, 1],
+// Boost zone visuals and behaviour.
+const boost = {
+  speedGain: 1500,
+  types: { jump: 'jump', drive: 'drive' },
+  fallbackColor: {
+    fill: 'rgb(255,255,255)',
+    stroke: '#fafafa',
+    solid: [1, 1, 1, 1],
   },
-  [BOOST_ZONE_TYPES.DRIVE]: {
-    fill: 'rgb(33,150,243)',
-    stroke: '#2196f3',
-    solid: [33/255, 150/255, 243/255, 1],
+  colors: {
+    jump: {
+      fill: 'rgb(255,152,0)',
+      stroke: '#ff9800',
+      solid: [1, 152 / 255, 0, 1],
+    },
+    drive: {
+      fill: 'rgb(33,150,243)',
+      stroke: '#2196f3',
+      solid: [33 / 255, 150 / 255, 243 / 255, 1],
+    },
   },
+  textures: { jump: 'boostJump', drive: 'boostDrive' },
 };
-const BOOST_ZONE_TEXTURE_KEYS = {
-  [BOOST_ZONE_TYPES.JUMP]: 'boostJump',
-  [BOOST_ZONE_TYPES.DRIVE]: 'boostDrive',
+
+// Lane constraints for vehicles and boost strips.
+const lanes = {
+  road: { min: -2, max: 2 },
+  boost: { min: -1, max: 1 },
 };
-const BOOST_LANE_LIMITS = { MIN: -1, MAX: 1 };
-const ROAD_LANE_LIMITS = { MIN: -2, MAX: 2 };
 
-const cfgTilt = { tiltMaxDeg: 45, tiltSens: -3, tiltCurveWeight: -.2, tiltEase: 0.08, tiltDir: 1 };
-const cfgTiltAdd = { tiltAddEnabled: true, tiltAddMaxDeg: null };
-
-const OVERLAP = { x: 0.75, y: 0.75 };
+// Tilt behaviour used by the camera and UI.
+const tilt = {
+  base: { tiltMaxDeg: 45, tiltSens: -3, tiltCurveWeight: -0.2, tiltEase: 0.08, tiltDir: 1 },
+  additive: { tiltAddEnabled: true, tiltAddMaxDeg: null },
+};
 
 window.Config = {
-  TUNE_PLAYER,
-  ROAD_COLS_NEAR,
-  ROAD_COLS_FAR,
-  COL_PX_TARGET,
-  ROW_PX_TARGET,
-  ROW_MAX,
-  TUNE_TRACK,
-  CLIFF_PUSH,
-  CLIFF_CAMERA_FRACTION,
-  FAILSAFE,
-  FOG,
-  DEFAULT_COLORS,
-  DEBUG,
-  SPRITE_FAR,
-  PARALLAX_LAYERS,
-  DRIFT,
-  BOOST_ZONE_EFFECT,
-  BOOST_ZONE_TYPES,
-  BOOST_ZONE_FALLBACK_COLOR,
-  BOOST_ZONE_COLORS,
-  BOOST_ZONE_TEXTURE_KEYS,
-  BOOST_LANE_LIMITS,
-  ROAD_LANE_LIMITS,
-  cfgTilt,
-  cfgTiltAdd,
-  OVERLAP,
+  player,
+  grid,
+  track,
+  camera,
+  cliffs,
+  failsafe,
+  fog,
+  colors,
+  debug,
+  sprites,
+  parallaxLayers,
+  drift,
+  boost,
+  lanes,
+  tilt,
 };
 
 Object.freeze(window.Config);

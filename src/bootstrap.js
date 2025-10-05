@@ -36,7 +36,7 @@ Gameplay.spawnProps();
 Gameplay.spawnCars();
 Gameplay.spawnPickups();
 Gameplay.resetPlayerState({
-  s: Config.TUNE_TRACK.camBackSegments * Config.TUNE_TRACK.segmentLength,
+  s: Config.camera.backSegments * Config.track.segmentSize,
   playerN: 0,
   timers: { t: 0, nextHopTime: 0, boostFlashTimer: 0 },
 });

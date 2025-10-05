@@ -6,26 +6,24 @@
   }
 
   const {
-    TUNE_PLAYER,
-    TUNE_TRACK,
-    ROAD_COLS_NEAR,
-    ROAD_COLS_FAR,
-    COL_PX_TARGET,
-    ROW_PX_TARGET,
-    ROW_MAX,
-    FOG,
-    DEFAULT_COLORS,
-    DEBUG,
-    SPRITE_FAR,
-    PARALLAX_LAYERS,
-    BOOST_ZONE_COLORS,
-    BOOST_ZONE_FALLBACK_COLOR,
-    BOOST_ZONE_TEXTURE_KEYS,
-    DRIFT,
-    cfgTilt = { tiltMaxDeg: 0, tiltSens: 0, tiltCurveWeight: 0, tiltEase: 0, tiltDir: 1 },
-    cfgTiltAdd = { tiltAddEnabled: false, tiltAddMaxDeg: null },
-    OVERLAP,
+    player,
+    track,
+    camera,
+    grid,
+    fog,
+    colors,
+    debug,
+    sprites,
+    parallaxLayers,
+    boost,
+    drift,
+    tilt: tiltConfig = {},
   } = Config;
+
+  const {
+    base: tiltBase = { tiltMaxDeg: 0, tiltSens: 0, tiltCurveWeight: 0, tiltEase: 0, tiltDir: 1 },
+    additive: tiltAdd = { tiltAddEnabled: false, tiltAddMaxDeg: null },
+  } = tiltConfig;
 
   const {
     clamp,
@@ -55,7 +53,7 @@
   const state = Gameplay.state;
 
   const segments = data.segments;
-  const segmentLength = TUNE_TRACK.segmentLength;
+  const segmentLength = track.segmentSize;
 
   let glr = null;
   let canvas3D = null;
@@ -123,18 +121,18 @@
     return {quadA, uvA, quadB, uvB, x1_inner, x2_inner, x1_A, x2_A, x1_B, x2_B};
   }
 
-  const fogNear = () => FOG.nearSegs * segmentLength;
-  const fogFar  = () => FOG.farSegs  * segmentLength;
+  const fogNear = () => fog.nearSegments * segmentLength;
+  const fogFar  = () => fog.farSegments  * segmentLength;
   function fogFactorFromZ(z){
-    if (!FOG.enabled) return 0;
+    if (!fog.enabled) return 0;
     const n = fogNear(), f = fogFar();
     if (f <= n) return z >= f ? 1 : 0;
     return clamp((z - n) / (f - n), 0, 1);
   }
   function spriteFarScaleFromZ(z){
-    if (!FOG.enabled) return 1;
+    if (!fog.enabled) return 1;
     const f = fogFactorFromZ(z);
-    return 1 - (1 - SPRITE_FAR.shrinkTo) * Math.pow(f, SPRITE_FAR.power);
+    return 1 - (1 - sprites.far.shrinkTo) * Math.pow(f, sprites.far.power);
   }
 
   function drawParallaxLayer(tex, cfg){
@@ -145,7 +143,7 @@
     glr.drawQuadTextured(tex, quad, uv, [1,1,1,1], [0,0,0,0]);
   }
   function renderHorizon(){
-    for (const layer of PARALLAX_LAYERS){
+    for (const layer of parallaxLayers){
       drawParallaxLayer(textures[layer.key], layer);
     }
   }
@@ -155,11 +153,11 @@
     if (!tex) tex = glr.whiteTex;
 
     const dy   = Math.abs(y1 - y2);
-    const rows = Math.max(1, Math.min(ROW_MAX, Math.ceil(dy / ROW_PX_TARGET)));
+    const rows = Math.max(1, Math.min(grid.maxRows, Math.ceil(dy / grid.rowHeightPx)));
 
     const avgW = 0.5 * (w1 + w2);
-    let cols = Math.max(1, Math.round(avgW / COL_PX_TARGET));
-    cols = clamp(cols, ROAD_COLS_FAR, ROAD_COLS_NEAR);
+    let cols = Math.max(1, Math.round(avgW / grid.colWidthPx));
+    cols = clamp(cols, grid.roadColsFar, grid.roadColsNear);
 
     const fNear = fogRoad[0], fFar = fogRoad[2];
 
@@ -184,16 +182,16 @@
           x4: xb + wb * k0, y4: yb
         };
 
-        const colPadL = (j === 0)        ? OVERLAP.x : OVERLAP.x * 0.5;
-        const colPadR = (j === cols - 1) ? OVERLAP.x : OVERLAP.x * 0.5;
+        const colPadL = (j === 0)        ? sprites.overlap.x : sprites.overlap.x * 0.5;
+        const colPadR = (j === cols - 1) ? sprites.overlap.x : sprites.overlap.x * 0.5;
         const quad = padQuad(quadBase, {
           padLeft:  colPadL,
           padRight: colPadR,
-          padTop:   OVERLAP.y,
-          padBottom:OVERLAP.y
+          padTop:   sprites.overlap.y,
+          padBottom:sprites.overlap.y
         });
         const uv = { u1:u0, v1:vv0, u2:u1, v2:vv0, u3:u1, v3:vv1, u4:u0, v4:vv1 };
-        glr.drawQuadTextured(tex, quad, uv, DEFAULT_COLORS.road, [fA,fA,fB,fB]);
+        glr.drawQuadTextured(tex, quad, uv, colors.road, [fA,fA,fB,fB]);
       }
     }
   }
@@ -202,7 +200,7 @@
     if (!glr || !zones || !zones.length) return;
 
     const dy   = Math.abs(yNear - yFar);
-    const rows = Math.max(1, Math.min(ROW_MAX, Math.ceil(dy / ROW_PX_TARGET)));
+    const rows = Math.max(1, Math.min(grid.maxRows, Math.ceil(dy / grid.rowHeightPx)));
     const fNear = fogRoad[0], fFar = fogRoad[2];
 
     for (const zone of zones){
@@ -216,12 +214,12 @@
 
       const nearWidth = Math.max(1e-6, nearMax - nearMin);
       const farWidth  = Math.max(1e-6, farMax - farMin);
-      let cols = Math.max(1, Math.round(0.5 * (nearWidth + farWidth) / COL_PX_TARGET));
-      cols = clamp(cols, ROAD_COLS_FAR, ROAD_COLS_NEAR);
+      let cols = Math.max(1, Math.round(0.5 * (nearWidth + farWidth) / grid.colWidthPx));
+      cols = clamp(cols, grid.roadColsFar, grid.roadColsNear);
 
-      const colors = BOOST_ZONE_COLORS[zone.type] || BOOST_ZONE_FALLBACK_COLOR;
-      const solid = Array.isArray(colors.solid) ? colors.solid : BOOST_ZONE_FALLBACK_COLOR.solid;
-      const texKey = BOOST_ZONE_TEXTURE_KEYS[zone.type];
+      const zoneColors = boost.colors[zone.type] || boost.fallbackColor;
+      const solid = Array.isArray(zoneColors.solid) ? zoneColors.solid : boost.fallbackColor.solid;
+      const texKey = boost.textures[zone.type];
       const tex = texKey ? textures[texKey] : null;
 
       for (let i = 0; i < rows; i++){
@@ -243,13 +241,13 @@
           const x4 = lerp(leftFar, rightFar, u0);
 
           const quadBase = { x1, y1:y0, x2, y2:y0, x3, y3:y1, x4, y4:y1 };
-          const colPadL = (j === 0) ? OVERLAP.x : OVERLAP.x * 0.5;
-          const colPadR = (j === cols - 1) ? OVERLAP.x : OVERLAP.x * 0.5;
+          const colPadL = (j === 0) ? sprites.overlap.x : sprites.overlap.x * 0.5;
+          const colPadR = (j === cols - 1) ? sprites.overlap.x : sprites.overlap.x * 0.5;
           const quad = padQuad(quadBase, {
             padLeft:  colPadL,
             padRight: colPadR,
-            padTop:   OVERLAP.y,
-            padBottom:OVERLAP.y,
+            padTop:   sprites.overlap.y,
+            padBottom:sprites.overlap.y,
           });
           const uv = { u1:u0, v1:t0, u2:u1, v2:t0, u3:u1, v3:t1, u4:u0, v4:t1 };
           const fog = [fA, fA, fB, fB];
@@ -330,19 +328,19 @@
     const { phys } = state;
 
     const sCar = phys.s;
-    const sCam = sCar - TUNE_TRACK.camBackSegments*segmentLength;
+    const sCam = sCar - camera.backSegments*segmentLength;
     const camX = state.playerN*roadWidthAt(sCar);
     const camY = state.camYSmooth;
 
     {
       const bodyTmp = { world:{x:camX, y:phys.y, z:sCar}, camera:{}, screen:{} };
       projectPoint(bodyTmp, camX, camY, sCam);
-      const speedPct = clamp(Math.abs(phys.vtan)/TUNE_PLAYER.maxSpeed, 0, 1);
+      const speedPct = clamp(Math.abs(phys.vtan)/player.topSpeed, 0, 1);
       const segAhead = segmentAtS(phys.s + state.camera.playerZ) || { curve: 0 };
       const curveNorm = clamp((segAhead.curve || 0) / 6, -1, 1);
-      const combined = clamp(state.lateralRate * cfgTilt.tiltSens + curveNorm * cfgTilt.tiltCurveWeight, -1, 1);
-      const baseTargetDeg = cfgTilt.tiltDir * clamp(combined * speedPct, -1, 1) * cfgTilt.tiltMaxDeg;
-      state.camRollDeg += (baseTargetDeg - state.camRollDeg) * cfgTilt.tiltEase;
+      const combined = clamp(state.lateralRate * tiltBase.tiltSens + curveNorm * tiltBase.tiltCurveWeight, -1, 1);
+      const baseTargetDeg = tiltBase.tiltDir * clamp(combined * speedPct, -1, 1) * tiltBase.tiltMaxDeg;
+      state.camRollDeg += (baseTargetDeg - state.camRollDeg) * tiltBase.tiltEase;
       const pivotX = W * 0.5;
       const pivotY = Math.min(bodyTmp.screen.y + 12, H*0.95);
       glr.setRollPivot((state.camRollDeg * Math.PI/180), pivotX, pivotY);
@@ -366,7 +364,7 @@
     const drawList=[];
     let x=0, dx=-(baseSeg.curve*basePct);
 
-    for(let n=0;n<TUNE_TRACK.drawDistance;n++){
+    for(let n=0;n<track.drawDistance;n++){
       const idx=(baseSeg.index+n)%segments.length;
       const seg=segments[idx];
       const looped = seg.index < baseSeg.index;
@@ -427,10 +425,10 @@
       projectPoint(p1RB, camX - x,      camY, camSRef);
       projectPoint(p2RB, camX - x - dx, camY, camSRef);
 
-      const p1LS={world:{x:0,y:seg.p1.world.y + TUNE_TRACK.wallShortLeft  * yScale1, z:seg.p1.world.z},camera:{},screen:{}};
-      const p2LS={world:{x:0,y:seg.p2.world.y + TUNE_TRACK.wallShortLeft  * yScale2, z:seg.p2.world.z},camera:{},screen:{}};
-      const p1RS={world:{x:0,y:seg.p1.world.y + TUNE_TRACK.wallShortRight * yScale1, z:seg.p1.world.z},camera:{},screen:{}};
-      const p2RS={world:{x:0,y:seg.p2.world.y + TUNE_TRACK.wallShortRight * yScale2, z:seg.p2.world.z},camera:{},screen:{}};
+      const p1LS={world:{x:0,y:seg.p1.world.y + track.wallShort.left  * yScale1, z:seg.p1.world.z},camera:{},screen:{}};
+      const p2LS={world:{x:0,y:seg.p2.world.y + track.wallShort.left  * yScale2, z:seg.p2.world.z},camera:{},screen:{}};
+      const p1RS={world:{x:0,y:seg.p1.world.y + track.wallShort.right * yScale1, z:seg.p1.world.z},camera:{},screen:{}};
+      const p2RS={world:{x:0,y:seg.p2.world.y + track.wallShort.right * yScale2, z:seg.p2.world.z},camera:{},screen:{}};
       projectPoint(p1LS, camX - x,      camY, camSRef);
       projectPoint(p2LS, camX - x - dx, camY, camSRef);
       projectPoint(p1RS, camX - x,      camY, camSRef);
@@ -588,15 +586,15 @@
         const fFar  = fogFactorFromZ(p2.camera.z);
         const fogCliff = [fNear,fNear,fFar,fFar];
 
-        const group = ((segIndex/DEBUG.span)|0) % 2;
-        const tint  = group ? DEBUG.colors.a : DEBUG.colors.b;
+        const group = ((segIndex/debug.span)|0) % 2;
+        const tint  = group ? debug.colors.a : debug.colors.b;
 
         const cliffTex = textures.cliff || glr.whiteTex;
 
-        const L_A = padQuad(L.quadA, { padLeft:OVERLAP.x, padRight:OVERLAP.x, padTop:OVERLAP.y, padBottom:OVERLAP.y });
-        const L_B = padQuad(L.quadB, { padLeft:OVERLAP.x, padRight:OVERLAP.x, padTop:OVERLAP.y, padBottom:OVERLAP.y });
-        const R_A = padQuad(R.quadA, { padLeft:OVERLAP.x, padRight:OVERLAP.x, padTop:OVERLAP.y, padBottom:OVERLAP.y });
-        const R_B = padQuad(R.quadB, { padLeft:OVERLAP.x, padRight:OVERLAP.x, padTop:OVERLAP.y, padBottom:OVERLAP.y });
+        const L_A = padQuad(L.quadA, { padLeft:sprites.overlap.x, padRight:sprites.overlap.x, padTop:sprites.overlap.y, padBottom:sprites.overlap.y });
+        const L_B = padQuad(L.quadB, { padLeft:sprites.overlap.x, padRight:sprites.overlap.x, padTop:sprites.overlap.y, padBottom:sprites.overlap.y });
+        const R_A = padQuad(R.quadA, { padLeft:sprites.overlap.x, padRight:sprites.overlap.x, padTop:sprites.overlap.y, padBottom:sprites.overlap.y });
+        const R_B = padQuad(R.quadB, { padLeft:sprites.overlap.x, padRight:sprites.overlap.x, padTop:sprites.overlap.y, padBottom:sprites.overlap.y });
 
         const drawLeftCliffs = (solid=false) => {
           const uvA = {...L.uvA, v1:v0Cliff, v2:v0Cliff, v3:v1Cliff, v4:v1Cliff};
@@ -605,8 +603,8 @@
             glr.drawQuadSolid(L_A, tint, fogCliff);
             glr.drawQuadSolid(L_B, tint, fogCliff);
           } else {
-            glr.drawQuadTextured(cliffTex, L_A, uvA, DEFAULT_COLORS.wall, fogCliff);
-            glr.drawQuadTextured(cliffTex, L_B, uvB, DEFAULT_COLORS.wall, fogCliff);
+            glr.drawQuadTextured(cliffTex, L_A, uvA, colors.wall, fogCliff);
+            glr.drawQuadTextured(cliffTex, L_B, uvB, colors.wall, fogCliff);
           }
         };
         const drawRightCliffs = (solid=false) => {
@@ -616,12 +614,12 @@
             glr.drawQuadSolid(R_A, tint, fogCliff);
             glr.drawQuadSolid(R_B, tint, fogCliff);
           } else {
-            glr.drawQuadTextured(cliffTex, R_A, uvA, DEFAULT_COLORS.wall, fogCliff);
-            glr.drawQuadTextured(cliffTex, R_B, uvB, DEFAULT_COLORS.wall, fogCliff);
+            glr.drawQuadTextured(cliffTex, R_A, uvA, colors.wall, fogCliff);
+            glr.drawQuadTextured(cliffTex, R_B, uvB, colors.wall, fogCliff);
           }
         };
 
-        const debugFill = (DEBUG.mode === 'fill');
+        const debugFill = (debug.mode === 'fill');
 
         if (leftIsNegative)  drawLeftCliffs(debugFill);
         if (rightIsNegative) drawRightCliffs(debugFill);
@@ -641,8 +639,8 @@
         if (seg && seg.features && seg.features.rail) {
           const texRail = textures.rail || glr.whiteTex;
 
-          const xL1 = x1 - w1 * TUNE_TRACK.railInset;
-          const xL2 = x2 - w2 * TUNE_TRACK.railInset;
+          const xL1 = x1 - w1 * track.railInset;
+          const xL2 = x2 - w2 * track.railInset;
 
           const quadL = {
             x1: xL1, y1: p1LS.screen.y,
@@ -652,11 +650,11 @@
           };
           const uvL = { u1:0, v1:v0Rail, u2:1, v2:v0Rail, u3:1, v3:v1Rail, u4:0, v4:v1Rail };
           const fLs1 = fogFactorFromZ(p1LS.camera.z), fLs2 = fogFactorFromZ(p2LS.camera.z);
-          const quadL_p = padQuad(quadL, { padLeft:OVERLAP.x, padRight:OVERLAP.x, padTop:OVERLAP.y, padBottom:OVERLAP.y });
-          glr.drawQuadTextured(texRail, quadL_p, uvL, DEFAULT_COLORS.rail, [fLs1,fLs1,fLs2,fLs2]);
+          const quadL_p = padQuad(quadL, { padLeft:sprites.overlap.x, padRight:sprites.overlap.x, padTop:sprites.overlap.y, padBottom:sprites.overlap.y });
+          glr.drawQuadTextured(texRail, quadL_p, uvL, colors.rail, [fLs1,fLs1,fLs2,fLs2]);
 
-          const xR1 = x1 + w1 * TUNE_TRACK.railInset;
-          const xR2 = x2 + w2 * TUNE_TRACK.railInset;
+          const xR1 = x1 + w1 * track.railInset;
+          const xR2 = x2 + w2 * track.railInset;
 
           const quadR = {
             x1: xR1, y1: y1,
@@ -666,8 +664,8 @@
           };
           const uvR = { u1:0, v1:v0Rail, u2:1, v2:v0Rail, u3:1, v3:v1Rail, u4:0, v4:v1Rail };
           const fRs1 = fogFactorFromZ(p1RS.camera.z), fRs2 = fogFactorFromZ(p2RS.camera.z);
-          const quadR_p = padQuad(quadR, { padLeft:OVERLAP.x, padRight:OVERLAP.x, padTop:OVERLAP.y, padBottom:OVERLAP.y });
-          glr.drawQuadTextured(texRail, quadR_p, uvR, DEFAULT_COLORS.rail, [fRs1,fRs1,fRs2,fRs2]);
+          const quadR_p = padQuad(quadR, { padLeft:sprites.overlap.x, padRight:sprites.overlap.x, padTop:sprites.overlap.y, padBottom:sprites.overlap.y });
+          glr.drawQuadTextured(texRail, quadR_p, uvR, colors.rail, [fRs1,fRs1,fRs2,fRs2]);
         }
 
       } else if (it.type==='npc' || it.type==='prop'){
@@ -700,8 +698,8 @@
   }
   function worldToOverlay(s,y){
     return {
-      x:(s-state.phys.s)*(1/TUNE_TRACK.MPerPxX) + SW*0.5,
-      y: SH - y*(1/TUNE_TRACK.MPerPxY) - 60
+      x:(s-state.phys.s)*(1/track.metersPerPixel.x) + SW*0.5,
+      y: SH - y*(1/track.metersPerPixel.y) - 60
     };
   }
   function drawBoostCrossSection(ctx){
@@ -740,14 +738,14 @@
     for (const zone of zones){
       const bounds = getZoneLaneBounds(zone);
       if (!bounds) continue;
-      const colors = BOOST_ZONE_COLORS[zone.type] || BOOST_ZONE_FALLBACK_COLOR;
+      const zoneColors = boost.colors[zone.type] || boost.fallbackColor;
       const x1 = mapRatio(bounds.roadRatioMin);
       const x2 = mapRatio(bounds.roadRatioMax);
       const zx = Math.min(x1, x2);
       const zw = Math.max(2, Math.abs(x2 - x1));
-      ctx.fillStyle = colors.fill;
+      ctx.fillStyle = zoneColors.fill;
       ctx.fillRect(zx, roadY, zw, roadH);
-      ctx.strokeStyle = colors.stroke;
+      ctx.strokeStyle = zoneColors.stroke;
       ctx.lineWidth = 2;
       ctx.strokeRect(zx, roadY, zw, roadH);
     }
@@ -782,9 +780,9 @@
     ctxSide.lineWidth = 2;
     ctxSide.strokeStyle = state.phys.boostFlashTimer>0 ? '#d32f2f' : '#1976d2';
     ctxSide.beginPath();
-    const sStart = state.phys.s - SW*0.5*TUNE_TRACK.MPerPxX;
-    const sEnd   = state.phys.s + SW*0.5*TUNE_TRACK.MPerPxX;
-    const step   = Math.max(5, 2*TUNE_TRACK.MPerPxX);
+    const sStart = state.phys.s - SW*0.5*track.metersPerPixel.x;
+    const sEnd   = state.phys.s + SW*0.5*track.metersPerPixel.x;
+    const step   = Math.max(5, 2*track.metersPerPixel.x);
     let first = true;
     for (let s = sStart; s <= sEnd; s += step){
       const p = worldToOverlay(s, floorElevationAt(s, state.playerN));
@@ -801,7 +799,7 @@
     const { dy, d2y } = groundProfileAt(state.phys.s);
     const kap = computeCurvature(dy, d2y);
     const boostingHUD = (state.boostTimer>0) ? `boost:${state.boostTimer.toFixed(2)}s ` : '';
-    const driftHUD = `drift:${state.driftState}${state.driftState==='drifting'?' dir='+state.driftDirSnapshot:''} charge:${state.driftCharge.toFixed(2)}/${DRIFT.boostChargeMin} armed:${state.allowedBoost}`;
+    const driftHUD = `drift:${state.driftState}${state.driftState==='drifting'?' dir='+state.driftDirSnapshot:''} charge:${state.driftCharge.toFixed(2)}/${drift.chargeMin} armed:${state.allowedBoost}`;
     const hud = `${boostingHUD}${driftHUD}  vtan:${state.phys.vtan.toFixed(1)}  grounded:${state.phys.grounded}  kappa:${kap.toFixed(5)}  n:${state.playerN.toFixed(2)}  cars:${state.cars.length}  pickups:${state.pickupCollected}/${state.pickupTotal}`;
     ctxSide.fillStyle = '#fff';
     ctxSide.strokeStyle = '#000';
