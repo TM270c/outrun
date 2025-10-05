@@ -39,7 +39,6 @@
     roadWidthAt,
     floorElevationAt,
     cliffSurfaceInfoAt,
-    cliffLateralSlopeAt,
     segmentAtS,
     elevationAt,
     groundProfileAt,
@@ -278,6 +277,26 @@
   state.camera.updateFromFov = setFieldOfView;
   updateCameraFromFieldOfView();
 
+  const RAD_TO_DEG = 180 / Math.PI;
+
+  // Clamp the player against guard rails or steep cliff edges and bleed speed.
+  function applyGuardrailBrake(seg) {
+    if (!seg) return false;
+    const bound = playerLateralLimit(seg.index);
+    const preClamp = state.playerN;
+    state.playerN = clamp(state.playerN, -bound, bound);
+    const scraping = Math.abs(preClamp) > bound - EPS || Math.abs(state.playerN) >= bound - EPS;
+    if (!scraping) return false;
+
+    const { phys } = state;
+    const offRoadDecelLimit = player.topSpeed / 4;
+    if (Math.abs(phys.vtan) > offRoadDecelLimit) {
+      const sign = Math.sign(phys.vtan) || 1;
+      phys.vtan -= sign * (player.topSpeed * 0.8) * (1 / 60);
+    }
+    return true;
+  }
+
   function applyCliffPushForce(step) {
     const ax = Math.abs(state.playerN);
     if (ax <= 1) return;
@@ -285,7 +304,18 @@
     if (!seg) return;
     const idx = seg.index;
     const segT = clamp01((state.phys.s - seg.p1.world.z) / segmentLength);
-    const slope = cliffLateralSlopeAt(idx, state.playerN, segT);
+    const info = cliffSurfaceInfoAt(idx, state.playerN, segT);
+    const slope = info.section === 'B'
+      ? (info.slopeB ?? 0)
+      : info.section === 'A'
+        ? (info.slopeA ?? 0)
+        : (info.slope ?? 0);
+    const slopeAngleDeg = Math.abs(Math.atan(slope) * RAD_TO_DEG);
+    const limitDeg = cliffs.driveLimitDeg ?? 90;
+    if (slopeAngleDeg >= limitDeg) {
+      applyGuardrailBrake(seg);
+      return;
+    }
     if (Math.abs(slope) <= EPS) return;
     const dir = -Math.sign(slope);
     if (dir === 0) return;
@@ -506,17 +536,7 @@
 
     segNow = segmentAtS(phys.s);
     if (segNow) {
-      const bound = playerLateralLimit(segNow.index);
-      const preClamp = state.playerN;
-      state.playerN = clamp(state.playerN, -bound, bound);
-      const scraping = Math.abs(preClamp) > bound - EPS || Math.abs(state.playerN) >= bound - EPS;
-      if (scraping) {
-        const offRoadDecelLimit = player.topSpeed / 4;
-        if (Math.abs(phys.vtan) > offRoadDecelLimit) {
-          const sign = Math.sign(phys.vtan) || 1;
-          phys.vtan -= sign * (player.topSpeed * 0.8) * (1 / 60);
-        }
-      }
+      applyGuardrailBrake(segNow);
     }
 
     resolveCollisions();
