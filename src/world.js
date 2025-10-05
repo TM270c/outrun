@@ -784,6 +784,8 @@
     enforceCliffWrap,
     floorElevationAt,
     cliffParamsAt,
+    cliffSurfaceInfoAt,
+    cliffLateralSlopeAt,
     segmentAtS,
     elevationAt,
     groundProfileAt,
