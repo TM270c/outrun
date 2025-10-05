@@ -46,6 +46,7 @@ const cliffs = {
   pushStep: 0.5,
   distanceGain: 0.6,
   capPerFrame: 0.5,
+  driveLimitDeg: 60,  // maximum lateral slope angle before the car is forced back on-road
   cameraBlend: 1 / 3,
 };
 
