@@ -47,9 +47,7 @@
     lane = {},
   } = World;
 
-  const {
-    clampBoostLane = (v) => v,
-  } = lane;
+  const { getZoneLaneBounds = () => null } = lane;
 
   const segments = data.segments;
   const segmentLength = track.segmentSize;
@@ -176,10 +174,10 @@
   // Check whether the player lateral position falls inside a zone.
   function playerWithinBoostZone(zone, nNorm) {
     if (!zone) return false;
-    const { nStart = clampBoostLane(-2), nEnd = clampBoostLane(2) } = zone;
-    const min = Math.min(nStart, nEnd);
-    const max = Math.max(nStart, nEnd);
-    return nNorm >= min && nNorm <= max;
+    const bounds = getZoneLaneBounds(zone);
+    if (!bounds) return false;
+    const { laneMin, laneMax } = bounds;
+    return nNorm >= laneMin && nNorm <= laneMax;
   }
 
   // Return all zones intersecting the current player offset.
