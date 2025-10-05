@@ -119,6 +119,90 @@
     return padQuad(quad, { ...SPRITE_PAD, ...overrides });
   }
 
+  function forEachStripCell(params, visit){
+    if (!params || typeof visit !== 'function') return;
+
+    const {
+      nearLeft,
+      nearRight,
+      nearY,
+      farLeft,
+      farRight,
+      farY,
+      fogNear = 0,
+      fogFar = 0,
+      vTop = 0,
+      vBottom = 1,
+      colClamp = {},
+      colWidthHint = {},
+    } = params;
+
+    const dy = Math.abs((nearY ?? 0) - (farY ?? 0));
+    const rows = Math.max(1, Math.min(grid.maxRows, Math.ceil(dy / grid.rowHeightPx)));
+
+    const nearColWidth = colWidthHint && typeof colWidthHint.near === 'number'
+      ? Math.max(1e-6, colWidthHint.near)
+      : Math.max(1e-6, (nearRight ?? 0) - (nearLeft ?? 0));
+    const farColWidth = colWidthHint && typeof colWidthHint.far === 'number'
+      ? Math.max(1e-6, colWidthHint.far)
+      : Math.max(1e-6, (farRight ?? 0) - (farLeft ?? 0));
+
+    let cols = Math.max(1, Math.round(0.5 * (nearColWidth + farColWidth) / grid.colWidthPx));
+    const minCols = typeof colClamp.min === 'number' ? colClamp.min : grid.roadColsFar;
+    const maxCols = typeof colClamp.max === 'number' ? colClamp.max : grid.roadColsNear;
+    cols = clamp(cols, minCols, maxCols);
+
+    for (let rowIndex = 0; rowIndex < rows; rowIndex++){
+      const t0 = rowIndex / rows;
+      const t1 = (rowIndex + 1) / rows;
+
+      const yTop = lerp(nearY, farY, t0);
+      const yBottom = lerp(nearY, farY, t1);
+
+      const leftNear = lerp(nearLeft, farLeft, t0);
+      const rightNear = lerp(nearRight, farRight, t0);
+      const leftFar = lerp(nearLeft, farLeft, t1);
+      const rightFar = lerp(nearRight, farRight, t1);
+
+      const v0 = lerp(vTop, vBottom, t0);
+      const v1 = lerp(vTop, vBottom, t1);
+
+      const fog0 = lerp(fogNear, fogFar, t0);
+      const fog1 = lerp(fogNear, fogFar, t1);
+
+      for (let colIndex = 0; colIndex < cols; colIndex++){
+        const u0 = colIndex / cols;
+        const u1 = (colIndex + 1) / cols;
+
+        const x1 = lerp(leftNear, rightNear, u0);
+        const x2 = lerp(leftNear, rightNear, u1);
+        const x3 = lerp(leftFar, rightFar, u1);
+        const x4 = lerp(leftFar, rightFar, u0);
+
+        const quadBase = { x1, y1: yTop, x2, y2: yTop, x3, y3: yBottom, x4, y4: yBottom };
+        const colPadL = (colIndex === 0) ? sprites.overlap.x : sprites.overlap.x * 0.5;
+        const colPadR = (colIndex === cols - 1) ? sprites.overlap.x : sprites.overlap.x * 0.5;
+        const quad = padWithSpriteOverlap(quadBase, {
+          padLeft: colPadL,
+          padRight: colPadR,
+        });
+
+        const uv = { u1: u0, v1: v0, u2: u1, v2: v0, u3: u1, v3: v1, u4: u0, v4: v1 };
+        const fog = [fog0, fog0, fog1, fog1];
+
+        visit({
+          quad,
+          uv,
+          fog,
+          rowIndex,
+          colIndex,
+          rowCount: rows,
+          colCount: cols,
+        });
+      }
+    }
+  }
+
   function fogArray(zNear, zFar = zNear){
     const near = fogFactorFromZ(zNear);
     const far = fogFactorFromZ(typeof zFar === 'number' ? zFar : zNear);
@@ -197,56 +281,36 @@
 
   function drawRoadStrip(x1,y1,w1, x2,y2,w2, v0, v1, fogRoad, tex){
     if (!glr) return;
-    if (!tex) tex = glr.whiteTex;
+    const texture = tex || glr.whiteTex;
 
-    const dy   = Math.abs(y1 - y2);
-    const rows = Math.max(1, Math.min(grid.maxRows, Math.ceil(dy / grid.rowHeightPx)));
+    const colClamp = { min: grid.roadColsFar, max: grid.roadColsNear };
+    const fogNear = fogRoad[0];
+    const fogFar = fogRoad[2];
 
-    const avgW = 0.5 * (w1 + w2);
-    let cols = Math.max(1, Math.round(avgW / grid.colWidthPx));
-    cols = clamp(cols, grid.roadColsFar, grid.roadColsNear);
-
-    const fNear = fogRoad[0], fFar = fogRoad[2];
-
-    for (let i = 0; i < rows; i++){
-      const t0 = i / rows, t1 = (i + 1) / rows;
-
-      const xa = lerp(x1, x2, t0), ya = lerp(y1, y2, t0), wa = lerp(w1, w2, t0);
-      const xb = lerp(x1, x2, t1), yb = lerp(y1, y2, t1), wb = lerp(w1, w2, t1);
-
-      const vv0 = lerp(v0, v1, t0), vv1 = lerp(v0, v1, t1);
-      const fA  = lerp(fNear, fFar, t0), fB = lerp(fNear, fFar, t1);
-
-      for (let j = 0; j < cols; j++){
-        const u0 = j / cols, u1 = (j + 1) / cols;
-        const k0 = -1 + 2 * (j / cols);
-        const k1 = -1 + 2 * ((j + 1) / cols);
-
-        const quadBase = {
-          x1: xa + wa * k0, y1: ya,
-          x2: xa + wa * k1, y2: ya,
-          x3: xb + wb * k1, y3: yb,
-          x4: xb + wb * k0, y4: yb
-        };
-
-        const colPadL = (j === 0)        ? sprites.overlap.x : sprites.overlap.x * 0.5;
-        const colPadR = (j === cols - 1) ? sprites.overlap.x : sprites.overlap.x * 0.5;
-        const quad = padWithSpriteOverlap(quadBase, {
-          padLeft:  colPadL,
-          padRight: colPadR,
-        });
-        const uv = { u1:u0, v1:vv0, u2:u1, v2:vv0, u3:u1, v3:vv1, u4:u0, v4:vv1 };
-        glr.drawQuadTextured(tex, quad, uv, colors.road, [fA,fA,fB,fB]);
-      }
-    }
+    forEachStripCell({
+      nearLeft: x1 - w1,
+      nearRight: x1 + w1,
+      nearY: y1,
+      farLeft: x2 - w2,
+      farRight: x2 + w2,
+      farY: y2,
+      vTop: v0,
+      vBottom: v1,
+      fogNear,
+      fogFar,
+      colClamp,
+      colWidthHint: { near: w1, far: w2 },
+    }, ({ quad, uv, fog }) => {
+      glr.drawQuadTextured(texture, quad, uv, colors.road, fog);
+    });
   }
 
   function drawBoostZonesOnStrip(zones, xNear, yNear, xFar, yFar, wNear, wFar, fogRoad){
     if (!glr || !zones || !zones.length) return;
 
-    const dy   = Math.abs(yNear - yFar);
-    const rows = Math.max(1, Math.min(grid.maxRows, Math.ceil(dy / grid.rowHeightPx)));
-    const fNear = fogRoad[0], fFar = fogRoad[2];
+    const fogNear = fogRoad[0];
+    const fogFar = fogRoad[2];
+    const colClamp = { min: grid.roadColsFar, max: grid.roadColsNear };
 
     for (const zone of zones){
       const bounds = getZoneLaneBounds(zone);
@@ -257,51 +321,30 @@
       const farMin  = xFar  + wFar  * bounds.centerOffsetMin;
       const farMax  = xFar  + wFar  * bounds.centerOffsetMax;
 
-      const nearWidth = Math.max(1e-6, nearMax - nearMin);
-      const farWidth  = Math.max(1e-6, farMax - farMin);
-      let cols = Math.max(1, Math.round(0.5 * (nearWidth + farWidth) / grid.colWidthPx));
-      cols = clamp(cols, grid.roadColsFar, grid.roadColsNear);
-
       const zoneColors = boost.colors[zone.type] || boost.fallbackColor;
       const solid = Array.isArray(zoneColors.solid) ? zoneColors.solid : boost.fallbackColor.solid;
       const texKey = boost.textures[zone.type];
       const tex = texKey ? textures[texKey] : null;
 
-      for (let i = 0; i < rows; i++){
-        const t0 = i / rows, t1 = (i + 1) / rows;
-        const y0 = lerp(yNear, yFar, t0);
-        const y1 = lerp(yNear, yFar, t1);
-        const leftNear  = lerp(nearMin, farMin, t0);
-        const rightNear = lerp(nearMax, farMax, t0);
-        const leftFar   = lerp(nearMin, farMin, t1);
-        const rightFar  = lerp(nearMax, farMax, t1);
-        const fA = lerp(fNear, fFar, t0);
-        const fB = lerp(fNear, fFar, t1);
-
-        for (let j = 0; j < cols; j++){
-          const u0 = j / cols, u1 = (j + 1) / cols;
-          const x1 = lerp(leftNear, rightNear, u0);
-          const x2 = lerp(leftNear, rightNear, u1);
-          const x3 = lerp(leftFar, rightFar, u1);
-          const x4 = lerp(leftFar, rightFar, u0);
-
-          const quadBase = { x1, y1:y0, x2, y2:y0, x3, y3:y1, x4, y4:y1 };
-          const colPadL = (j === 0) ? sprites.overlap.x : sprites.overlap.x * 0.5;
-          const colPadR = (j === cols - 1) ? sprites.overlap.x : sprites.overlap.x * 0.5;
-          const quad = padWithSpriteOverlap(quadBase, {
-            padLeft:  colPadL,
-            padRight: colPadR,
-          });
-          const uv = { u1:u0, v1:t0, u2:u1, v2:t0, u3:u1, v3:t1, u4:u0, v4:t1 };
-          const fog = [fA, fA, fB, fB];
-
-          if (tex) {
-            glr.drawQuadTextured(tex, quad, uv, solid, fog);
-          } else {
-            glr.drawQuadSolid(quad, solid, fog);
-          }
+      forEachStripCell({
+        nearLeft: nearMin,
+        nearRight: nearMax,
+        nearY: yNear,
+        farLeft: farMin,
+        farRight: farMax,
+        farY: yFar,
+        vTop: 0,
+        vBottom: 1,
+        fogNear,
+        fogFar,
+        colClamp,
+      }, ({ quad, uv, fog }) => {
+        if (tex) {
+          glr.drawQuadTextured(tex, quad, uv, solid, fog);
+        } else {
+          glr.drawQuadSolid(quad, solid, fog);
         }
-      }
+      });
     }
   }
 
