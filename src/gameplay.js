@@ -305,6 +305,12 @@
     const idx = seg.index;
     const segT = clamp01((state.phys.s - seg.p1.world.z) / segmentLength);
     const info = cliffSurfaceInfoAt(idx, state.playerN, segT);
+    const { heightOffset = 0, coverageA = 0, coverageB = 0 } = info || {};
+    const sectionCoverage = info.section === 'B'
+      ? (coverageB ?? 0)
+      : info.section === 'A'
+        ? (coverageA ?? 0)
+        : Math.max(coverageA ?? 0, coverageB ?? 0);
     const slope = info.section === 'B'
       ? (info.slopeB ?? 0)
       : info.section === 'A'
@@ -321,7 +327,12 @@
     if (dir === 0) return;
     const s = Math.max(0, Math.min(1.5, ax - 1));
     const gain = 1 + cliffs.distanceGain * s;
-    const delta = clamp(dir * step * cliffs.pushStep * gain, -cliffs.capPerFrame, cliffs.capPerFrame);
+    const heightScale = Math.max(0, cliffs.heightPushScale ?? 0);
+    const heightSample = Math.abs(heightOffset) * clamp01(sectionCoverage || 0);
+    const heightMul = heightScale > 0
+      ? clamp(1 + heightSample * heightScale, 1, Math.max(1, cliffs.heightPushMax ?? 3))
+      : 1;
+    const delta = clamp(dir * step * cliffs.pushStep * gain * heightMul, -cliffs.capPerFrame, cliffs.capPerFrame);
     state.playerN += delta;
   }
 
