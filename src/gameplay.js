@@ -37,7 +37,8 @@
     data,
     roadWidthAt,
     floorElevationAt,
-    cliffParamsAt,
+    cliffSurfaceInfoAt,
+    cliffLateralSlopeAt,
     segmentAtS,
     elevationAt,
     groundProfileAt,
@@ -239,102 +240,6 @@
 
   function nearestSegmentCenter(s) {
     return Math.round(s / segmentLength) * segmentLength + segmentLength * 0.5;
-  }
-
-  const cliffInfoDefaults = Object.freeze({
-    heightOffset: 0,
-    slope: 0,
-    section: null,
-    slopeA: 0,
-    slopeB: 0,
-    coverageA: 0,
-    coverageB: 0,
-  });
-
-  const createCliffInfo = (overrides = {}) => ({ ...cliffInfoDefaults, ...overrides });
-
-  function cliffSurfaceInfoAt(segIndex, nNorm, t = 0) {
-    const absN = Math.abs(nNorm);
-    if (absN <= 1) return createCliffInfo();
-
-    const params = cliffParamsAt ? cliffParamsAt(segIndex, t) : null;
-    if (!params) return createCliffInfo();
-
-    const left = nNorm < 0;
-    const sign = Math.sign(nNorm) || 1;
-
-    const dyA = left ? params.leftA.dy : params.rightA.dy;
-    const dyB = left ? params.leftB.dy : params.rightB.dy;
-    const dxA = Math.abs(left ? params.leftA.dx : params.rightA.dx);
-    const dxB = Math.abs(left ? params.leftB.dx : params.rightB.dx);
-
-    const segData = segmentAtIndex(segIndex);
-    const baseZ = segData ? segData.p1.world.z : segIndex * segmentLength;
-    const roadW = roadWidthAt ? roadWidthAt(baseZ + clamp01(t) * segmentLength) : track.roadWidth;
-    const beyond = Math.max(0, (absN - 1) * roadW);
-
-    const widthA = Math.max(0, dxA);
-    const widthB = Math.max(0, dxB);
-    const totalWidth = widthA + widthB;
-
-    const slopeA = widthA > EPS ? sign * (dyA / widthA) : 0;
-    const slopeB = widthB > EPS ? sign * (dyB / widthB) : 0;
-
-    if (beyond <= EPS) return createCliffInfo({ slopeA, slopeB });
-
-    if (totalWidth <= EPS) {
-      return createCliffInfo({ heightOffset: dyA + dyB, slopeA, slopeB });
-    }
-
-    const distA = Math.min(beyond, widthA);
-    const distB = Math.max(0, Math.min(beyond - widthA, widthB));
-
-    let heightOffset = 0;
-    let coverageA = 0;
-    let coverageB = 0;
-    if (widthA > EPS) {
-      coverageA = distA / widthA;
-      heightOffset += dyA * coverageA;
-    }
-    if (widthB > EPS) {
-      coverageB = distB / widthB;
-      heightOffset += dyB * coverageB;
-    }
-
-    if (beyond >= totalWidth - EPS) {
-      return createCliffInfo({ heightOffset: dyA + dyB, slopeA, slopeB });
-    }
-
-    if (distB > EPS && widthB > EPS) {
-      return createCliffInfo({
-        heightOffset,
-        slope: slopeB,
-        section: 'B',
-        slopeA,
-        slopeB,
-        coverageA,
-        coverageB,
-      });
-    }
-
-    if (distA > EPS && widthA > EPS) {
-      return createCliffInfo({
-        heightOffset,
-        slope: slopeA,
-        section: 'A',
-        slopeA,
-        slopeB,
-        coverageA,
-        coverageB,
-      });
-    }
-
-    return createCliffInfo({ heightOffset, slopeA, slopeB, coverageA, coverageB });
-  }
-
-  function cliffLateralSlopeAt(segIndex, nNorm, t = 0) {
-    const info = cliffSurfaceInfoAt(segIndex, nNorm, t);
-    return info.slope;
   }
 
   function getAdditiveTiltDeg() {
