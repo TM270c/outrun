@@ -1,6 +1,10 @@
 # side,len,aEase,aDx,aDy,bEase,bDx,bDy,mode,repeats
-# Baseline geometry for each side
-L,40,linear:io, 8000,0,     linear:io, 0,0,  abs,1
-R,40,linear:io, 8000,0,  linear:io,0,0,    abs,1
-L,181,linear:io, 0,8000,     linear:io, 0,0,  abs,1
-R,181,linear:io, 0,8000,  linear:io,0,0,    abs,1
+# Demonstration of mixed cliff terraces, valleys, and wrap-safe resets.
+B,32,linear:io, 7000,0, linear:io,0,0, abs,1
+L,20,smooth:in, -2200,-3200, smooth:out, -2800,-5200, rel,1
+L,12,sharp:io, 1200,2800, smooth:io, 1800,4200, rel,1
+R,16,sharp:in, 2400,5000, sharp:out, 2600,6200, rel,1
+R,12,smooth:out, -3600,-7000, smooth:in, -2200,-4800, rel,1
+B,10,smooth:io, -1800,-1500, smooth:io, 1600,1500, rel,2
+B,18,sharp:io, 0,4000, sharp:io,0,3200, rel,1
+B,8,linear:io, 7000,0, linear:io,0,0, abs,1
