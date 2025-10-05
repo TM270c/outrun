@@ -57,6 +57,9 @@
       this.u_fogEnabled = gl.getUniformLocation(prog, 'u_fogEnabled');
       this.u_fogColor   = gl.getUniformLocation(prog, 'u_fogColor');
 
+      this._canvasWidth = canvas.width;
+      this._canvasHeight = canvas.height;
+
       // streaming slab
       this.vbo = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
@@ -134,6 +137,13 @@
     begin(clear=[0.9,0.95,1.0,1]){
       const gl=this.gl;
       gl.viewport(0,0,gl.canvas.width,gl.canvas.height);
+      const width = gl.canvas.width;
+      const height = gl.canvas.height;
+      if (width !== this._canvasWidth || height !== this._canvasHeight) {
+        this._canvasWidth = width;
+        this._canvasHeight = height;
+        gl.uniform2f(this.u_viewSize, width, height);
+      }
       gl.clearColor(clear[0],clear[1],clear[2],clear[3]); gl.clear(gl.COLOR_BUFFER_BIT);
       gl.uniform2f(this.u_pivot, gl.canvas.width*0.5, gl.canvas.height*0.82);
       // Fog uniforms only when changed
