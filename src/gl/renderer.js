@@ -1,4 +1,16 @@
 (function(){
+  // Shared immutable defaults reused whenever optional parameters are omitted.
+  const DEFAULT_CLEAR_COLOR = Object.freeze([0.9, 0.95, 1.0, 1]);
+  const DEFAULT_TINT = Object.freeze([1, 1, 1, 1]);
+  const DEFAULT_FOG = Object.freeze([0, 0, 0, 0]);
+  const DEFAULT_SOLID_COLOR = Object.freeze([1, 0, 0, 1]);
+  const UNIT_UV = Object.freeze({
+    u1: 0, v1: 0,
+    u2: 1, v2: 0,
+    u3: 1, v3: 1,
+    u4: 0, v4: 1,
+  });
+
   class GLRenderer {
     constructor(canvas) {
       const gl = canvas.getContext('webgl', { alpha:false, antialias:false, premultipliedAlpha:false });
@@ -134,7 +146,8 @@
         img.src=url;
       });
     }
-    begin(clear=[0.9,0.95,1.0,1]){
+    begin(clear){
+      const clearColor = clear === undefined ? DEFAULT_CLEAR_COLOR : clear;
       const gl=this.gl;
       gl.viewport(0,0,gl.canvas.width,gl.canvas.height);
       const width = gl.canvas.width;
@@ -144,7 +157,7 @@
         this._canvasHeight = height;
         gl.uniform2f(this.u_viewSize, width, height);
       }
-      gl.clearColor(clear[0],clear[1],clear[2],clear[3]); gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.clearColor(clearColor[0],clearColor[1],clearColor[2],clearColor[3]); gl.clear(gl.COLOR_BUFFER_BIT);
       gl.uniform2f(this.u_pivot, gl.canvas.width*0.5, gl.canvas.height*0.82);
       // Fog uniforms only when changed
       const fogConfig = (window.Config && window.Config.fog) || { enabled: false, color: [0, 0, 0] };
@@ -157,17 +170,19 @@
       }
     }
     setRollPivot(rad, px, py){ const gl=this.gl; gl.uniform1f(this.u_roll, rad); gl.uniform2f(this.u_pivot, px, py); }
-    drawQuadTextured(tex, quad, uv, tint=[1,1,1,1], fog=[0,0,0,0]){
+    drawQuadTextured(tex, quad, uv, tint, fog){
+      const tintArray = tint === undefined ? DEFAULT_TINT : tint;
+      const fogArray = fog === undefined ? DEFAULT_FOG : fog;
       const v = this.slab;
       let i=0;
       // tri 1
-      v[i++]=quad.x1; v[i++]=quad.y1; v[i++]=uv.u1; v[i++]=uv.v1; v[i++]=tint[0]; v[i++]=tint[1]; v[i++]=tint[2]; v[i++]=tint[3]; v[i++]=fog[0];
-      v[i++]=quad.x2; v[i++]=quad.y2; v[i++]=uv.u2; v[i++]=uv.v2; v[i++]=tint[0]; v[i++]=tint[1]; v[i++]=tint[2]; v[i++]=tint[3]; v[i++]=fog[1];
-      v[i++]=quad.x3; v[i++]=quad.y3; v[i++]=uv.u3; v[i++]=uv.v3; v[i++]=tint[0]; v[i++]=tint[1]; v[i++]=tint[2]; v[i++]=tint[3]; v[i++]=fog[2];
+      v[i++]=quad.x1; v[i++]=quad.y1; v[i++]=uv.u1; v[i++]=uv.v1; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[0];
+      v[i++]=quad.x2; v[i++]=quad.y2; v[i++]=uv.u2; v[i++]=uv.v2; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[1];
+      v[i++]=quad.x3; v[i++]=quad.y3; v[i++]=uv.u3; v[i++]=uv.v3; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[2];
       // tri 2
-      v[i++]=quad.x1; v[i++]=quad.y1; v[i++]=uv.u1; v[i++]=uv.v1; v[i++]=tint[0]; v[i++]=tint[1]; v[i++]=tint[2]; v[i++]=tint[3]; v[i++]=fog[0];
-      v[i++]=quad.x3; v[i++]=quad.y3; v[i++]=uv.u3; v[i++]=uv.v3; v[i++]=tint[0]; v[i++]=tint[1]; v[i++]=tint[2]; v[i++]=tint[3]; v[i++]=fog[2];
-      v[i++]=quad.x4; v[i++]=quad.y4; v[i++]=uv.u4; v[i++]=uv.v4; v[i++]=tint[0]; v[i++]=tint[1]; v[i++]=tint[2]; v[i++]=tint[3]; v[i++]=fog[3];
+      v[i++]=quad.x1; v[i++]=quad.y1; v[i++]=uv.u1; v[i++]=uv.v1; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[0];
+      v[i++]=quad.x3; v[i++]=quad.y3; v[i++]=uv.u3; v[i++]=uv.v3; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[2];
+      v[i++]=quad.x4; v[i++]=quad.y4; v[i++]=uv.u4; v[i++]=uv.v4; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[3];
       const gl=this.gl;
       gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
       gl.bufferSubData(gl.ARRAY_BUFFER, 0, v);
@@ -176,9 +191,10 @@
       gl.uniform1i(this.u_useTex, tex ? 1 : 0);
       gl.drawArrays(gl.TRIANGLES,0,6);
     }
-    drawQuadSolid(quad, color=[1,0,0,1], fog=[0,0,0,0]){
-      const uv={u1:0,v1:0,u2:1,v2:0,u3:1,v3:1,u4:0,v4:1};
-      this.drawQuadTextured(this.whiteTex, quad, uv, color, fog);
+    drawQuadSolid(quad, color, fog){
+      const colorArray = color === undefined ? DEFAULT_SOLID_COLOR : color;
+      const fogArray = fog === undefined ? DEFAULT_FOG : fog;
+      this.drawQuadTextured(this.whiteTex, quad, UNIT_UV, colorArray, fogArray);
     }
     makeCircleTex(size=64){
       const cvs=document.createElement('canvas'); cvs.width=size; cvs.height=size;

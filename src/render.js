@@ -140,7 +140,7 @@
     const uOffset = state.playerN * cfg.parallaxX;
     const quad = { x1:0, y1:0, x2:W, y2:0, x3:W, y3:H, x4:0, y4:H };
     const uv = {u1: uOffset, v1: 0, u2: uOffset+cfg.uvSpanX, v2: 0, u3: uOffset+cfg.uvSpanX, v3: cfg.uvSpanY, u4: uOffset, v4: cfg.uvSpanY};
-    glr.drawQuadTextured(tex, quad, uv, [1,1,1,1], [0,0,0,0]);
+    glr.drawQuadTextured(tex, quad, uv);
   }
   function renderHorizon(){
     for (const layer of parallaxLayers){
