@@ -38,6 +38,7 @@
     getTrackLength,
     roadWidthAt,
     floorElevationAt,
+    cliffParamsAt,
     cliffSurfaceInfoAt,
     segmentAtS,
     elevationAt,
@@ -280,12 +281,43 @@
   const RAD_TO_DEG = 180 / Math.PI;
 
   // Clamp the player against guard rails or steep cliff edges and bleed speed.
-  function applyGuardrailBrake(seg, forceRailInset = false) {
+  function applyGuardrailBrake(seg, forceRailInset = false, customBound = null) {
     if (!seg) return false;
-    const bound = playerLateralLimit(seg.index, forceRailInset);
+    const baseBound = playerLateralLimit(seg.index, forceRailInset);
+    let leftBound = baseBound;
+    let rightBound = baseBound;
+
+    if (customBound != null) {
+      if (typeof customBound === 'number') {
+        const safe = Math.max(0, Math.abs(customBound));
+        leftBound = Math.max(leftBound, safe);
+        rightBound = Math.max(rightBound, safe);
+      } else if (typeof customBound === 'object') {
+        if (customBound.left != null) {
+          const safeLeft = Math.max(0, Math.abs(customBound.left));
+          leftBound = Math.max(leftBound, safeLeft);
+        }
+        if (customBound.right != null) {
+          const safeRight = Math.max(0, Math.abs(customBound.right));
+          rightBound = Math.max(rightBound, safeRight);
+        }
+        if (customBound.both != null) {
+          const safeBoth = Math.max(0, Math.abs(customBound.both));
+          leftBound = Math.max(leftBound, safeBoth);
+          rightBound = Math.max(rightBound, safeBoth);
+        }
+      }
+    }
+
     const preClamp = state.playerN;
-    state.playerN = clamp(state.playerN, -bound, bound);
-    const scraping = Math.abs(preClamp) > bound - EPS || Math.abs(state.playerN) >= bound - EPS;
+    let clamped = preClamp;
+    if (clamped < -leftBound) clamped = -leftBound;
+    if (clamped > rightBound) clamped = rightBound;
+    state.playerN = clamp(clamped, -leftBound, rightBound);
+
+    const leftScrape = leftBound >= 0 && state.playerN <= -leftBound + EPS;
+    const rightScrape = rightBound >= 0 && state.playerN >= rightBound - EPS;
+    const scraping = Math.abs(preClamp - state.playerN) > EPS || leftScrape || rightScrape;
     if (!scraping) return false;
 
     const { phys } = state;
@@ -297,6 +329,68 @@
     return true;
   }
 
+  function applyCliffGuardrailLimits(seg, segT) {
+    if (!seg || typeof cliffParamsAt !== 'function' || typeof roadWidthAt !== 'function') {
+      return false;
+    }
+
+    const threshold = Math.max(0, cliffs.guardrailHeight ?? 0);
+    if (threshold <= 0) return false;
+
+    const params = cliffParamsAt(seg.index, segT);
+    if (!params) return false;
+
+    const baseZ = seg.p1 && seg.p1.world ? seg.p1.world.z : seg.index * segmentLength;
+    const roadZ = baseZ + clamp01(segT) * segmentLength;
+    const roadW = roadWidthAt(roadZ);
+    if (!Number.isFinite(roadW) || roadW <= 0) return false;
+
+    const half = playerHalfWN();
+    const limitFromDistance = (distance) => {
+      if (!Number.isFinite(distance)) return null;
+      const dist = Math.max(0, distance);
+      const normalized = 1 + (dist / roadW);
+      const limit = normalized - half;
+      if (!Number.isFinite(limit)) return null;
+      return Math.max(0, limit);
+    };
+
+    const makeBoundForSide = (sections = []) => {
+      let accum = 0;
+      let bestLimit = null;
+      for (const section of sections) {
+        if (!section) continue;
+        const width = Math.max(0, Math.abs(section.dx ?? 0));
+        accum += width;
+        const drop = Math.abs(section.dy ?? 0);
+        if (drop >= threshold) {
+          const limit = limitFromDistance(accum);
+          if (limit != null) {
+            bestLimit = bestLimit == null ? limit : Math.min(bestLimit, limit);
+          }
+        }
+      }
+      return bestLimit;
+    };
+
+    const leftLimit = makeBoundForSide([params.leftA, params.leftB]);
+    const rightLimit = makeBoundForSide([params.rightA, params.rightB]);
+
+    const customBounds = {};
+    let hasBound = false;
+    if (leftLimit != null) {
+      customBounds.left = leftLimit;
+      hasBound = true;
+    }
+    if (rightLimit != null) {
+      customBounds.right = rightLimit;
+      hasBound = true;
+    }
+
+    if (!hasBound) return false;
+    return applyGuardrailBrake(seg, false, customBounds);
+  }
+
   function applyCliffPushForce(step) {
     const ax = Math.abs(state.playerN);
     if (ax <= 1) return;
@@ -304,6 +398,7 @@
     if (!seg) return;
     const idx = seg.index;
     const segT = clamp01((state.phys.s - seg.p1.world.z) / segmentLength);
+    if (applyCliffGuardrailLimits(seg, segT)) return;
     const info = cliffSurfaceInfoAt(idx, state.playerN, segT);
     const { heightOffset = 0, coverageA = 0, coverageB = 0 } = info || {};
     const sectionCoverage = info.section === 'B'
