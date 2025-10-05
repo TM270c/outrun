@@ -26,7 +26,6 @@
   const {
     clamp,
     clamp01,
-    lerp,
     computeCurvature,
     tangentNormalFromSlope,
     wrap,
@@ -39,6 +38,10 @@
     roadWidthAt,
     floorElevationAt,
     cliffParamsAt,
+    segmentAtS,
+    elevationAt,
+    groundProfileAt,
+    boostZonesOnSegment,
     lane = {},
   } = World;
 
@@ -164,44 +167,9 @@
     return metaStack[kind] || DEFAULT_SPRITE_META[kind] || { wN: 0.2, aspect: 1, tint: [1, 1, 1, 1], tex: () => null };
   }
 
-  function segmentAtS(s) {
-    const length = trackLengthRef();
-    if (!hasSegments() || length <= 0) return null;
-    const wrapped = wrap(s, length);
-    const idx = wrapIndex(Math.floor(wrapped / segmentLength), segments.length);
-    return segments[idx];
-  }
-
   function segmentAtIndex(idx) {
     if (!hasSegments()) return null;
     return segments[wrapIndex(idx, segments.length)];
-  }
-
-  function elevationAt(s) {
-    const length = trackLengthRef();
-    if (!hasSegments() || length <= 0) return 0;
-    const ss = wrap(s, length);
-    const i = Math.floor(ss / segmentLength);
-    const seg = segments[wrapIndex(i, segments.length)];
-    const t = (ss - seg.p1.world.z) / segmentLength;
-    return lerp(seg.p1.world.y, seg.p2.world.y, t);
-  }
-
-  function groundProfileAt(s) {
-    const y = elevationAt(s);
-    if (!hasSegments()) return { y, dy: 0, d2y: 0 };
-    const h = Math.max(5, segmentLength * 0.1);
-    const y1 = elevationAt(s - h);
-    const y2 = elevationAt(s + h);
-    const dy = (y2 - y1) / (2 * h);
-    const d2y = (y2 - 2 * y + y1) / (h * h);
-    return { y, dy, d2y };
-  }
-
-  // Collect boost lane metadata for a segment.
-  function boostZonesOnSegment(seg) {
-    const zones = seg && seg.features ? seg.features.boostZones : null;
-    return Array.isArray(zones) ? zones : [];
   }
 
   // Check whether the player lateral position falls inside a zone.

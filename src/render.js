@@ -39,6 +39,10 @@
     floorElevationAt,
     cliffParamsAt,
     vSpanForSeg,
+    segmentAtS,
+    elevationAt,
+    groundProfileAt,
+    boostZonesOnSegment,
     lane = {},
   } = World;
 
@@ -317,43 +321,6 @@
     const shadowH = Math.max(2, hPx*0.06);
     const shQuad = {x1:x1, y1:y2-shadowH, x2:x2, y2:y2-shadowH, x3:x2, y3:y2, x4:x1, y4:y2};
     glr.drawQuadSolid(shQuad, [0,0,0,0.25], fog);
-  }
-
-  function segmentAtS(s) {
-    const length = getTrackLength();
-    if (!segments.length || length <= 0) return null;
-    let wrapped = s % length;
-    if (wrapped < 0) wrapped += length;
-    const idx = Math.floor(wrapped / segmentLength) % segments.length;
-    return segments[idx];
-  }
-
-  function elevationAt(s) {
-    const length = getTrackLength();
-    if (!segments.length || length <= 0) return 0;
-    let ss = s % length;
-    if (ss < 0) ss += length;
-    const i = Math.floor(ss / segmentLength);
-    const seg = segments[i % segments.length];
-    const t = (ss - seg.p1.world.z) / segmentLength;
-    return lerp(seg.p1.world.y, seg.p2.world.y, t);
-  }
-
-  function groundProfileAt(s) {
-    const y = elevationAt(s);
-    if (!segments.length) return { y, dy: 0, d2y: 0 };
-    const h = Math.max(5, segmentLength * 0.1);
-    const y1 = elevationAt(s - h);
-    const y2 = elevationAt(s + h);
-    const dy = (y2 - y1) / (2 * h);
-    const d2y = (y2 - 2 * y + y1) / (h * h);
-    return { y, dy, d2y };
-  }
-
-  function boostZonesOnSegment(seg) {
-    if (!seg || !seg.features) return [];
-    const zones = seg.features.boostZones;
-    return Array.isArray(zones) ? zones : [];
   }
 
   function zonesFor(key){

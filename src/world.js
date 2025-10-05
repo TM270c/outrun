@@ -617,6 +617,22 @@
     return lerp(seg.p1.world.y, seg.p2.world.y, t);
   }
 
+  function groundProfileAt(s){
+    const y = elevationAt(s);
+    if (trackLength <= 0 || !segments.length) return { y, dy: 0, d2y: 0 };
+    const h = Math.max(5, segmentLength * 0.1);
+    const y1 = elevationAt(s - h);
+    const y2 = elevationAt(s + h);
+    const dy = (y2 - y1) / (2 * h);
+    const d2y = (y2 - 2 * y + y1) / (h * h);
+    return { y, dy, d2y };
+  }
+
+  function boostZonesOnSegment(seg){
+    const zones = seg && seg.features ? seg.features.boostZones : null;
+    return Array.isArray(zones) ? zones : [];
+  }
+
   function cliffParamsAt(segIndex, t = 0){
     const segCount = segments.length;
     const sectionsPerSeg = CLIFF_SECTIONS_PER_SEG;
@@ -768,6 +784,10 @@
     enforceCliffWrap,
     floorElevationAt,
     cliffParamsAt,
+    segmentAtS,
+    elevationAt,
+    groundProfileAt,
+    boostZonesOnSegment,
     lane: {
       clampBoostLane,
       clampRoadLane,
