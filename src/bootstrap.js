@@ -1,10 +1,10 @@
 const dom = {
-  c3D: document.getElementById('outrun'),
-  cSide: document.getElementById('sideOverlay'),
-  cHUD: document.getElementById('hudMatte'),
+  canvas: document.getElementById('outrun'),
+  overlay: document.getElementById('sideOverlay'),
+  hud: document.getElementById('hudMatte'),
 };
 
-const glr = new RenderGL.GLRenderer(dom.c3D);
+const glr = new RenderGL.GLRenderer(dom.canvas);
 
 await (async function loadAssets() {
   await Promise.all(
