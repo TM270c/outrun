@@ -29,6 +29,9 @@
     lerp,
     computeCurvature,
     tangentNormalFromSlope,
+    wrap,
+    wrapIndex,
+    wrapDistance,
   } = MathUtil;
 
   const {
@@ -49,20 +52,10 @@
 
   const hasSegments = () => segments.length > 0;
 
-  const wrapByLength = (value, length) => {
-    if (length <= 0) return value;
-    const mod = value % length;
-    return mod < 0 ? mod + length : mod;
-  };
-
-  const wrapSegmentIndex = (idx) => {
-    if (!hasSegments()) return idx;
-    const count = segments.length;
-    const mod = idx % count;
-    return mod < 0 ? mod + count : mod;
-  };
-
   const EPS = 1e-6; // Small epsilon to avoid repeated literals.
+
+  const BASE_SPRITE_META = { wN: 0.2, aspect: 1, tint: [1, 1, 1, 1], tex: () => null };
+  const createSpriteMeta = (overrides = {}) => ({ ...BASE_SPRITE_META, ...overrides });
 
   // Detect if a segment carries guard rails.
   const hasRail = (seg) => Boolean(seg && seg.features && seg.features.rail);
@@ -103,17 +96,28 @@
   };
 
   const DEFAULT_SPRITE_META = {
-    PLAYER: { wN: 0.16, aspect: 0.7, tint: [0.9, 0.22, 0.21, 1], tex: () => null },
-    CAR:    { wN: 0.28, aspect: 0.7, tint: [0.2, 0.7, 1.0, 1], tex: () => null },
-    SEMI:   { wN: 0.34, aspect: 1.6, tint: [0.85, 0.85, 0.85, 1], tex: () => null },
-    TREE:   { wN: 0.5,  aspect: 3.0, tint: [0.22, 0.7, 0.22, 1], tex: () => null },
-    SIGN:   { wN: 0.55, aspect: 1.0, tint: [1, 1, 1, 1], tex: () => null },
-    PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
-    PICKUP: { wN: 0.10, aspect: 1.0, tint: [1, 0.92, 0.2, 1], tex: () => null },
+    PLAYER: createSpriteMeta({ wN: 0.16, aspect: 0.7, tint: [0.9, 0.22, 0.21, 1] }),
+    CAR:    createSpriteMeta({ wN: 0.28, aspect: 0.7, tint: [0.2, 0.7, 1.0, 1] }),
+    SEMI:   createSpriteMeta({ wN: 0.34, aspect: 1.6, tint: [0.85, 0.85, 0.85, 1] }),
+    TREE:   createSpriteMeta({ wN: 0.5,  aspect: 3.0, tint: [0.22, 0.7, 0.22, 1] }),
+    SIGN:   createSpriteMeta({ wN: 0.55, aspect: 1.0, tint: [1, 1, 1, 1] }),
+    PALM:   createSpriteMeta({ wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1] }),
+    PICKUP: createSpriteMeta({ wN: 0.10, aspect: 1.0, tint: [1, 0.92, 0.2, 1] }),
   };
 
   const NPC = { total: 20, edgePad: 0.02, avoidLookaheadSegs: 20 };
   const CAR_TYPES = ['CAR', 'SEMI'];
+
+  const randomChoice = (list) => {
+    if (!Array.isArray(list) || list.length === 0) return undefined;
+    const index = Math.floor(Math.random() * list.length);
+    return list[index];
+  };
+
+  const randomSign = () => (Math.random() < 0.5 ? -1 : 1);
+  const chooseCarType = () => (Math.random() < 0.75 ? CAR_TYPES[0] : CAR_TYPES[1]);
+  const PROP_KIND_CHOICES = ['TREE', 'PALM'];
+  const randomPropKind = () => randomChoice(PROP_KIND_CHOICES);
 
   const defaultGetKindScale = (kind) => (kind === 'PLAYER' ? player.scale : 1);
 
@@ -163,22 +167,22 @@
   function segmentAtS(s) {
     const length = trackLengthRef();
     if (!hasSegments() || length <= 0) return null;
-    const wrapped = wrapByLength(s, length);
-    const idx = Math.floor(wrapped / segmentLength) % segments.length;
+    const wrapped = wrap(s, length);
+    const idx = wrapIndex(Math.floor(wrapped / segmentLength), segments.length);
     return segments[idx];
   }
 
   function segmentAtIndex(idx) {
     if (!hasSegments()) return null;
-    return segments[wrapSegmentIndex(idx)];
+    return segments[wrapIndex(idx, segments.length)];
   }
 
   function elevationAt(s) {
     const length = trackLengthRef();
     if (!hasSegments() || length <= 0) return 0;
-    const ss = wrapByLength(s, length);
+    const ss = wrap(s, length);
     const i = Math.floor(ss / segmentLength);
-    const seg = segments[i % segments.length];
+    const seg = segments[wrapIndex(i, segments.length)];
     const t = (ss - seg.p1.world.z) / segmentLength;
     return lerp(seg.p1.world.y, seg.p2.world.y, t);
   }
@@ -263,10 +267,6 @@
     const half = carHalfWN(car);
     const base = 1 - half - NPC.edgePad;
     return clampToRailLimit(segIndex, base, half, NPC.edgePad);
-  }
-
-  function wrapDistance(v, dv, max) {
-    return wrapByLength(v + dv, max);
   }
 
   function nearestSegmentCenter(s) {
@@ -619,7 +619,7 @@
 
     const length = trackLengthRef();
     if (length > 0) {
-      phys.s = wrapByLength(phys.s, length);
+      phys.s = wrap(phys.s, length);
     }
 
     const aY = 1 - Math.exp(-dt / camera.heightEase);
@@ -676,13 +676,13 @@
     const segCount = segments.length;
     for (let i = 0; i < NPC.total; i += 1) {
       const s = Math.floor(Math.random() * segCount) * segmentLength;
-      const type = CAR_TYPES[Math.random() < 0.75 ? 0 : 1];
+      const type = chooseCarType();
       const meta = getSpriteMeta(type);
       const tmpCar = { type, meta };
       const seg = segmentAtS(s);
       if (!seg) continue;
       const b = npcLateralLimit(seg.index, tmpCar);
-      const side = Math.random() < 0.5 ? -1 : 1;
+      const side = randomSign();
       const offset = side * (Math.random() * (b * 0.9));
       const isSemi = type === 'SEMI';
       const speed = (player.topSpeed / 6) + Math.random() * player.topSpeed / (isSemi ? 5 : 3);
@@ -763,16 +763,16 @@
     if (!hasSegments()) return;
     const segCount = segments.length;
     for (let i = 8; i < segCount; i += 6) {
-      addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', -1.25 - Math.random() * 0.15);
-      addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', 1.25 + Math.random() * 0.15);
+      addProp(i, randomPropKind(), -1.25 - Math.random() * 0.15);
+      addProp(i, randomPropKind(), 1.25 + Math.random() * 0.15);
       if (i % 12 === 0) {
         addProp(i, 'SIGN', -1.05);
         addProp(i, 'SIGN', 1.05);
       }
       if (i % 18 === 0) {
         const extra = 1.6 + Math.random() * 1.6;
-        addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', -extra);
-        addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', extra);
+        addProp(i, randomPropKind(), -extra);
+        addProp(i, randomPropKind(), extra);
       }
     }
   }
@@ -823,15 +823,23 @@
     return () => { state.input[flag] = value; };
   }
 
+  const KEY_DIRECTION_CODES = {
+    left: ['ArrowLeft', 'KeyA'],
+    right: ['ArrowRight', 'KeyD'],
+    up: ['ArrowUp', 'KeyW'],
+    down: ['ArrowDown', 'KeyS'],
+  };
+
+  function applyDirectionalBindings(actions, value) {
+    Object.entries(KEY_DIRECTION_CODES).forEach(([flag, codes]) => {
+      const action = keyActionFromFlag(flag, value);
+      codes.forEach((code) => {
+        actions[code] = action;
+      });
+    });
+  }
+
   const keydownActions = {
-    ArrowLeft: keyActionFromFlag('left', true),
-    KeyA: keyActionFromFlag('left', true),
-    ArrowRight: keyActionFromFlag('right', true),
-    KeyD: keyActionFromFlag('right', true),
-    ArrowUp: keyActionFromFlag('up', true),
-    KeyW: keyActionFromFlag('up', true),
-    ArrowDown: keyActionFromFlag('down', true),
-    KeyS: keyActionFromFlag('down', true),
     Space: () => {
       if (!state.hopHeld) {
         if (state.phys.grounded && state.phys.t >= state.phys.nextHopTime) {
@@ -846,21 +854,17 @@
     KeyL: () => { if (typeof state.callbacks.onResetScene === 'function') state.callbacks.onResetScene(); },
   };
 
+  applyDirectionalBindings(keydownActions, true);
+
   const keyupActions = {
-    ArrowLeft: keyActionFromFlag('left', false),
-    KeyA: keyActionFromFlag('left', false),
-    ArrowRight: keyActionFromFlag('right', false),
-    KeyD: keyActionFromFlag('right', false),
-    ArrowUp: keyActionFromFlag('up', false),
-    KeyW: keyActionFromFlag('up', false),
-    ArrowDown: keyActionFromFlag('down', false),
-    KeyS: keyActionFromFlag('down', false),
     Space: () => {
       state.hopHeld = false;
       if (state.allowedBoost) state.boostTimer = drift.boostTime;
       resetDriftState();
     },
   };
+
+  applyDirectionalBindings(keyupActions, false);
 
   function createKeyHandler(actions) {
     return (e) => {
@@ -909,7 +913,7 @@
 
   function respawnPlayerAt(sTarget, nNorm = 0) {
     const length = trackLengthRef();
-    const sWrapped = length > 0 ? ((sTarget % length) + length) % length : sTarget;
+    const sWrapped = wrap(sTarget, length);
     const seg = segmentAtS(sWrapped);
     const segIdx = seg ? seg.index : 0;
     const bound = playerLateralLimit(segIdx);
