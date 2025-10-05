@@ -4,6 +4,20 @@ const clamp01 = (value) => clamp(value, 0, 1);
 const lerp = (start, end, t) => start + (end - start) * t;
 const pctRem = (value, total) => (value % total) / total;
 
+const wrap = (value, length) => {
+  if (length <= 0) return value;
+  const mod = value % length;
+  return mod < 0 ? mod + length : mod;
+};
+
+const wrapIndex = (index, count) => {
+  if (count <= 0) return index;
+  const mod = index % count;
+  return mod < 0 ? mod + count : mod;
+};
+
+const wrapDistance = (value, delta, length) => wrap(value + delta, length);
+
 const createEaseIn = (power) => (t) => Math.pow(clamp01(t), power);
 const createEaseOut = (power) => (t) => 1 - Math.pow(1 - clamp01(t), power);
 const createEaseInOut = (power) => (t) => {
@@ -65,6 +79,9 @@ window.MathUtil = {
   clamp01,
   lerp,
   pctRem,
+  wrap,
+  wrapIndex,
+  wrapDistance,
   easeLinear,
   easeInQuad,
   easeOutQuad,

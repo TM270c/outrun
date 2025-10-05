@@ -12,10 +12,13 @@
   } = Config;
 
   const {
+    clamp,
     clamp01,
     lerp,
     getEase01,
     CURVE_EASE,
+    wrap,
+    wrapIndex,
   } = MathUtil;
 
   const assetManifest = {
@@ -34,11 +37,6 @@
   };
 
   const textures = {};
-
-  const clamp = (value, min, max) => {
-    if (value == null) return value;
-    return Math.min(Math.max(value, min), max);
-  };
 
   const parseNumber = (value, parser, fallback = 0) => {
     if (value === '' || value == null) return fallback;
@@ -605,17 +603,16 @@
 
   const segmentAtS = (s) => {
     if (!segments.length || trackLength <= 0) return null;
-    const wrapped = ((s % trackLength) + trackLength) % trackLength;
-    const idx = Math.floor(wrapped / segmentLength) % segments.length;
+    const wrapped = wrap(s, trackLength);
+    const idx = wrapIndex(Math.floor(wrapped / segmentLength), segments.length);
     return segments[idx];
   };
 
   function elevationAt(s){
     if (trackLength <= 0 || !segments.length) return 0;
-    let ss = s % trackLength;
-    if (ss < 0) ss += trackLength;
+    const ss = wrap(s, trackLength);
     const i = Math.floor(ss / segmentLength);
-    const seg = segments[i % segments.length];
+    const seg = segments[wrapIndex(i, segments.length)];
     const t = (ss - seg.p1.world.z) / segmentLength;
     return lerp(seg.p1.world.y, seg.p2.world.y, t);
   }
@@ -634,7 +631,7 @@
       };
     }
 
-    const segNorm = ((segIndex % segCount) + segCount) % segCount;
+    const segNorm = wrapIndex(segIndex, segCount);
     const u = clamp01(t);
     const total = totalSections;
     const global = segNorm * sectionsPerSeg + u * sectionsPerSeg;
