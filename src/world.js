@@ -35,6 +35,40 @@
 
   const textures = {};
 
+  const clamp = (value, min, max) => {
+    if (value == null) return value;
+    return Math.min(Math.max(value, min), max);
+  };
+
+  const parseNumber = (value, parser, fallback = 0) => {
+    if (value === '' || value == null) return fallback;
+    const parsed = parser(value);
+    return Number.isNaN(parsed) ? fallback : parsed;
+  };
+
+  const parseIntSafe = (value, fallback = 0) => parseNumber(value, v => parseInt(v, 10), fallback);
+  const parseFloatSafe = (value, fallback = 0) => parseNumber(value, v => parseFloat(v), fallback);
+
+  const BOOL_TOKEN_SETS = {
+    true: new Set(['1', 'true', 'yes', 'y', 'on']),
+    false: new Set(['0', 'false', 'no', 'n', 'off']),
+  };
+
+  const BOOL_TOKENS = new Set([...BOOL_TOKEN_SETS.true, ...BOOL_TOKEN_SETS.false]);
+
+  const parseBoolSafe = (value, fallback = true) => {
+    if (value === '' || value == null) return fallback;
+    const norm = value.toString().toLowerCase();
+    if (BOOL_TOKEN_SETS.true.has(norm)) return true;
+    if (BOOL_TOKEN_SETS.false.has(norm)) return false;
+    return fallback;
+  };
+
+  const isBoolToken = (value) => {
+    if (value === '' || value == null) return false;
+    return BOOL_TOKENS.has(value.toString().toLowerCase());
+  };
+
   async function loadImage(url){
     return await new Promise((resolve, reject) => {
       const img = new Image();
@@ -123,8 +157,70 @@
     return segments.length ? segments[segments.length - 1].p2.world.y : 0;
   }
 
+  const clampBoostLane = (v) => clamp(v, lanes.boost.min, lanes.boost.max);
+
+  const clampRoadLane = (v, fallback = 0) => {
+    if (v == null) return fallback;
+    return clamp(v, lanes.road.min, lanes.road.max);
+  };
+
+  const laneToCenterOffset = (n, fallback = 0) => clampRoadLane(n, fallback) * 0.5;
+  const laneToRoadRatio = (n, fallback = 0) => {
+    const clamped = clampRoadLane(n, fallback);
+    return (clamped - lanes.road.min) / (lanes.road.max - lanes.road.min);
+  };
+
+  function getZoneLaneBounds(zone){
+    if (!zone || zone.visible === false) return null;
+    const fallbackStart = clampBoostLane(-2);
+    const fallbackEnd = clampBoostLane(2);
+    const rawStart = (zone.nStart != null) ? zone.nStart : fallbackStart;
+    const rawEnd = (zone.nEnd != null) ? zone.nEnd : fallbackEnd;
+    const start = clampBoostLane(rawStart);
+    const end = clampBoostLane(rawEnd);
+    const laneMin = Math.min(start, end);
+    const laneMax = Math.max(start, end);
+    return {
+      start,
+      end,
+      laneMin,
+      laneMax,
+      centerOffsetMin: laneToCenterOffset(laneMin, fallbackStart),
+      centerOffsetMax: laneToCenterOffset(laneMax, fallbackEnd),
+      roadRatioMin: laneToRoadRatio(laneMin, fallbackStart),
+      roadRatioMax: laneToRoadRatio(laneMax, fallbackEnd),
+    };
+  }
+
+  const createLegacyZone = (range) => {
+    if (!Array.isArray(range) || range.length < 2) return null;
+    const start = Math.floor(Math.max(0, range[0] | 0));
+    const end = Math.floor(Math.max(start, range[1] | 0));
+    if (start === 0 && end === 0) return null;
+    const fallbackStart = clampBoostLane(-2);
+    const fallbackEnd = clampBoostLane(2);
+    return [{
+      id: `legacy-${boostZoneIdCounter++}`,
+      startOffset: start,
+      endOffset: end,
+      type: boost.types.jump,
+      nStart: fallbackStart,
+      nEnd: fallbackEnd,
+      visible: true,
+    }];
+  };
+
+  const normaliseZoneSpecs = (zoneSpecsRaw, boostRangeRaw) => {
+    if (Array.isArray(zoneSpecsRaw) && zoneSpecsRaw.length) {
+      return zoneSpecsRaw.map(zone => ({ ...zone }));
+    }
+    return createLegacyZone(boostRangeRaw);
+  };
+
   function addRoad(enter, hold, leave, curve, dyInSegments = 0, elevationProfile = 'smooth', featurePayload = {}){
-    const e = Math.max(0, enter | 0), h = Math.max(0, hold | 0), l = Math.max(0, leave | 0);
+    const e = Math.max(0, enter | 0);
+    const h = Math.max(0, hold | 0);
+    const l = Math.max(0, leave | 0);
     const total = e + h + l;
     if (total <= 0) return;
 
@@ -139,50 +235,32 @@
     const extras = { ...featurePayload };
     const railPresent = ('rail' in extras) ? !!extras.rail : true;
     const boostRangeRaw = Array.isArray(extras.boostRange) ? extras.boostRange : null;
-    const boostZonesRaw = Array.isArray(extras.boostZones)
-      ? extras.boostZones.map(zone => ({ ...zone }))
-      : null;
+    const zoneSpecs = normaliseZoneSpecs(extras.boostZones, boostRangeRaw);
     delete extras.rail;
     delete extras.boostRange;
     delete extras.boostZones;
 
-    let zoneSpecs = boostZonesRaw && boostZonesRaw.length ? boostZonesRaw : null;
-    if ((!zoneSpecs || zoneSpecs.length === 0) && boostRangeRaw && boostRangeRaw.length >= 2) {
-      const start = Math.floor(Math.max(0, boostRangeRaw[0]));
-      const end = Math.floor(Math.max(start, boostRangeRaw[1]));
-      if (!(start === 0 && end === 0)) {
-        const fallbackStart = clampBoostLane(-2);
-        const fallbackEnd = clampBoostLane(2);
-        zoneSpecs = [{
-          id: `legacy-${boostZoneIdCounter++}`,
-          startOffset: start,
-          endOffset: end,
-          type: boost.types.jump,
-          nStart: fallbackStart,
-          nEnd: fallbackEnd,
-          visible: true,
-        }];
-      }
-    }
-
     const buildFeatures = (segOffset) => {
       const segFeatures = { ...extras, rail: railPresent };
-      if (zoneSpecs && zoneSpecs.length) {
-        const zonesForSeg = zoneSpecs
-          .filter(zone => segOffset >= zone.startOffset && segOffset <= zone.endOffset)
-          .map(zone => ({ ...zone }));
-        if (zonesForSeg.length) {
-          segFeatures.boostZones = zonesForSeg;
-          const minStart = zonesForSeg.reduce((acc, zone) => Math.min(acc, zone.startOffset), Number.POSITIVE_INFINITY);
-          const maxEnd = zonesForSeg.reduce((acc, zone) => Math.max(acc, zone.endOffset), Number.NEGATIVE_INFINITY);
-          segFeatures.boostRange = [minStart, maxEnd];
-          segFeatures.boost = true;
-        } else {
-          segFeatures.boost = false;
-        }
-      } else {
+      if (!zoneSpecs || !zoneSpecs.length) {
         segFeatures.boost = false;
+        return segFeatures;
       }
+
+      const zonesForSeg = zoneSpecs
+        .filter(zone => segOffset >= zone.startOffset && segOffset <= zone.endOffset)
+        .map(zone => ({ ...zone }));
+
+      if (!zonesForSeg.length) {
+        segFeatures.boost = false;
+        return segFeatures;
+      }
+
+      const minStart = zonesForSeg.reduce((acc, zone) => Math.min(acc, zone.startOffset), Number.POSITIVE_INFINITY);
+      const maxEnd = zonesForSeg.reduce((acc, zone) => Math.max(acc, zone.endOffset), Number.NEGATIVE_INFINITY);
+      segFeatures.boostZones = zonesForSeg;
+      segFeatures.boostRange = [minStart, maxEnd];
+      segFeatures.boost = true;
       return segFeatures;
     };
 
@@ -205,66 +283,29 @@
       return lerp(startY, endY, shaped01);
     };
 
-    for (let n = 0; n < e; n++){
-      const tCurve = e > 0 ? n / e : 1;
-      addSegment(
-        CURVE_EASE[profile].in(0, curve, tCurve),
-        computeY((0 + n) / total),
-        buildFeatures(segOffset),
-      );
-      segOffset++;
-    }
+    const runPhase = (count, resolveCurve, progressBase) => {
+      for (let n = 0; n < count; n++){
+        const phaseT = count > 0 ? n / count : 1;
+        addSegment(
+          resolveCurve(phaseT),
+          computeY((progressBase + n) / total),
+          buildFeatures(segOffset),
+        );
+        segOffset++;
+      }
+      return progressBase + count;
+    };
 
-    for (let n = 0; n < h; n++){
-      addSegment(
-        curve,
-        computeY((e + n) / total),
-        buildFeatures(segOffset),
-      );
-      segOffset++;
-    }
-
-    for (let n = 0; n < l; n++){
-      const tCurve = l > 0 ? n / l : 1;
-      addSegment(
-        CURVE_EASE[profile].out(curve, 0, tCurve),
-        computeY((e + h + n) / total),
-        buildFeatures(segOffset),
-      );
-      segOffset++;
-    }
+    let progressBase = 0;
+    progressBase = runPhase(e, tCurve => CURVE_EASE[profile].in(0, curve, tCurve), progressBase);
+    progressBase = runPhase(h, () => curve, progressBase);
+    runPhase(l, tCurve => CURVE_EASE[profile].out(curve, 0, tCurve), progressBase);
   }
 
   async function buildTrackFromCSV(url){
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) throw new Error('CSV load failed: ' + res.status);
     const text = await res.text();
-
-    const toInt = (v, d = 0) => {
-      if (v === '' || v == null) return d;
-      const n = parseInt(v, 10);
-      return Number.isNaN(n) ? d : n;
-    };
-    const toFloat = (v, d = 0) => {
-      if (v === '' || v == null) return d;
-      const n = parseFloat(v);
-      return Number.isNaN(n) ? d : n;
-    };
-    const boolTrueTokens = ['1', 'true', 'yes', 'y', 'on'];
-    const boolFalseTokens = ['0', 'false', 'no', 'n', 'off'];
-    const boolWordTokens = ['true', 'yes', 'y', 'on', 'false', 'no', 'n', 'off'];
-    const toBool = (v, d = true) => {
-      if (v === '' || v == null) return d;
-      const norm = v.toLowerCase();
-      if (boolTrueTokens.includes(norm)) return true;
-      if (boolFalseTokens.includes(norm)) return false;
-      return d;
-    };
-    const isBoolToken = (v) => {
-      if (v === '' || v == null) return false;
-      const norm = v.toLowerCase();
-      return boolWordTokens.includes(norm);
-    };
 
     const typeAliases = {
       road: 'road', r: 'road',
@@ -303,9 +344,9 @@
       };
 
       const type = (typeAliases[typeRaw?.toLowerCase()] || typeRaw || '').toLowerCase();
-      const e = toInt(enter, 0);
-      const h = toInt(hold, 0);
-      const l = toInt(leave, 0);
+      const e = parseIntSafe(enter, 0);
+      const h = parseIntSafe(hold, 0);
+      const l = parseIntSafe(leave, 0);
 
       const findAfter = (keyword) => {
         const idx = findIndex(keyword);
@@ -331,11 +372,11 @@
         dyRaw = findAfter('dy');
       }
 
-      const curve = toFloat(curveRaw, 0);
-      const dySegments = toFloat(dyRaw, 0);
-      const rail = !isBoolToken(railRaw) ? true : toBool(railRaw, true);
-      const boostStart = toInt(boostStartRaw, null);
-      const boostEnd = toInt(boostEndRaw, null);
+      const curve = parseFloatSafe(curveRaw, 0);
+      const dySegments = parseFloatSafe(dyRaw, 0);
+      const rail = !isBoolToken(railRaw) ? true : parseBoolSafe(railRaw, true);
+      const boostStart = parseIntSafe(boostStartRaw, null);
+      const boostEnd = parseIntSafe(boostEndRaw, null);
       const boostTypeRaw = findAfter('boostType') ?? findAfter('boost');
       const boostLaneStartRaw = findAfter('boostLaneStart');
       const boostLaneEndRaw = findAfter('boostLaneEnd');
@@ -345,7 +386,7 @@
       if (repeatsKeywordIdx != null) {
         repeatsIdx = repeatsKeywordIdx + 1;
       }
-      const repeats = repeatsIdx != null ? toInt(cells[repeatsIdx], 1) : toInt(repeatsRaw, 1);
+      const repeats = repeatsIdx != null ? parseIntSafe(cells[repeatsIdx], 1) : parseIntSafe(repeatsRaw, 1);
       const reps = Math.max(1, repeats);
 
       let elevationProfile = 'smooth';
@@ -376,7 +417,7 @@
           const laneB = clampBoostLane((laneEnd != null) ? laneEnd : fallbackEnd);
           const nStart = Math.min(laneA, laneB);
           const nEnd = Math.max(laneA, laneB);
-          const zoneVisible = toBool(boostVisibleRaw, true);
+          const zoneVisible = parseBoolSafe(boostVisibleRaw, true);
           const zone = {
             id: `csv-${boostZoneIdCounter++}`,
             startOffset: start,
@@ -415,9 +456,12 @@
       return;
     }
 
-    const toInt =(v,d=0)=> (v===''||v==null)?d: (Number.isNaN(parseInt(v,10))?d:parseInt(v,10));
-    const toNum =(v,d=0)=> (v===''||v==null)?d: (Number.isNaN(parseFloat(v))?d:parseFloat(v));
     const normSide = (s)=> (s||'').trim().toUpperCase();
+    const resolveSides = (token) => {
+      const side = normSide(token || 'B');
+      if (side === 'L' || side === 'R') return [side];
+      return ['L', 'R'];
+    };
 
     const sectionsPerSeg = CLIFF_SECTIONS_PER_SEG;
     const N = segments.length * sectionsPerSeg;
@@ -433,16 +477,15 @@
       if (!line || line.startsWith('#') || line.startsWith('//')) continue;
 
       const c = line.split(',').map(s => (s??'').trim());
-      const sideTok = normSide(c[0]||'B');
-      const sides = (sideTok==='L'||sideTok==='R') ? [sideTok] : (sideTok==='B' ? ['L','R'] : ['L','R']);
+      const sides = resolveSides(c[0]);
 
-      const lenSegments = Math.max(1, toInt(c[1], 1));
+      const lenSegments = Math.max(1, parseIntSafe(c[1], 1));
       const aEase = getEase01(c[2]||'smooth:io');
-      const aDx   = toNum(c[3], 0), aDy = toNum(c[4], 0);
+      const aDx   = parseFloatSafe(c[3], 0), aDy = parseFloatSafe(c[4], 0);
       const bEase = getEase01(c[5]||'smooth:io');
-      const bDx   = toNum(c[6], 0), bDy = toNum(c[7], 0);
+      const bDx   = parseFloatSafe(c[6], 0), bDy = parseFloatSafe(c[7], 0);
       const mode  = (c[8]||'rel').toLowerCase()==='abs' ? 'abs' : 'rel';
-      const reps  = Math.max(1, toInt(c[9], 1));
+      const reps  = Math.max(1, parseIntSafe(c[9], 1));
 
       for (let r=0; r<reps; r++){
         for (const S of sides){
@@ -544,52 +587,6 @@
     return [v0, v1];
   }
 
-  const clampBoostLane = (v) => {
-    if (v == null) return v;
-    const min = lanes.boost.min;
-    const max = lanes.boost.max;
-    if (v < min) return min;
-    if (v > max) return max;
-    return v;
-  };
-
-  const clampRoadLane = (v, fallback = 0) => {
-    if (v == null) return fallback;
-    const min = lanes.road.min;
-    const max = lanes.road.max;
-    if (v < min) return min;
-    if (v > max) return max;
-    return v;
-  };
-
-  const laneToCenterOffset = (n, fallback = 0) => clampRoadLane(n, fallback) * 0.5;
-  const laneToRoadRatio = (n, fallback = 0) => {
-    const clamped = clampRoadLane(n, fallback);
-    return (clamped - lanes.road.min) / (lanes.road.max - lanes.road.min);
-  };
-
-  function getZoneLaneBounds(zone){
-    if (!zone || zone.visible === false) return null;
-    const fallbackStart = clampBoostLane(-2);
-    const fallbackEnd = clampBoostLane(2);
-    const rawStart = (zone.nStart != null) ? zone.nStart : fallbackStart;
-    const rawEnd = (zone.nEnd != null) ? zone.nEnd : fallbackEnd;
-    const start = clampBoostLane(rawStart);
-    const end = clampBoostLane(rawEnd);
-    const laneMin = Math.min(start, end);
-    const laneMax = Math.max(start, end);
-    return {
-      start,
-      end,
-      laneMin,
-      laneMax,
-      centerOffsetMin: laneToCenterOffset(laneMin, fallbackStart),
-      centerOffsetMax: laneToCenterOffset(laneMax, fallbackEnd),
-      roadRatioMin: laneToRoadRatio(laneMin, fallbackStart),
-      roadRatioMax: laneToRoadRatio(laneMax, fallbackEnd),
-    };
-  }
-
   function parseBoostZoneType(raw) {
     if (raw == null) return null;
     const norm = raw.toString().trim().toLowerCase();
@@ -603,11 +600,7 @@
     if (raw == null || raw === '') return null;
     const num = Number.parseFloat(raw);
     if (!Number.isFinite(num)) return null;
-    const min = lanes.boost.min;
-    const max = lanes.boost.max;
-    if (num < min) return min;
-    if (num > max) return max;
-    return num;
+    return clamp(num, lanes.boost.min, lanes.boost.max);
   }
 
   const segmentAtS = (s) => {
