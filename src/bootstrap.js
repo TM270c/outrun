@@ -58,7 +58,15 @@ Renderer.frame((dt) => {
 const callbacks = Gameplay?.state?.callbacks;
 if (callbacks) {
   callbacks.onQueueReset = () => {
-    if (Renderer?.matte?.startReset) Renderer.matte.startReset();
+    const matte = Renderer?.matte;
+    if (matte?.startReset) {
+      matte.startReset();
+      if (!Gameplay?.state?.resetMatteActive) {
+        resetRace();
+      }
+    } else {
+      resetRace();
+    }
   };
   callbacks.onResetScene = () => {
     resetRace();
