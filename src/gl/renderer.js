@@ -221,27 +221,38 @@
   function padQuad(q, { padLeft=0, padRight=0, padTop=0, padBottom=0 } = {}) {
     // Returns a new quad with edges expanded in screen space. Positive padding values
     // enlarge the quad outward along each axis regardless of vertex winding/order.
-    const xs = [q.x1, q.x2, q.x3, q.x4];
-    const ys = [q.y1, q.y2, q.y3, q.y4];
-    const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const { x1, x2, x3, x4, y1, y2, y3, y4 } = q;
 
-    const adjustX = (x) => {
-      const dMin = Math.abs(x - minX);
-      const dMax = Math.abs(x - maxX);
-      return x + (dMin <= dMax ? -padLeft : padRight);
-    };
-    const adjustY = (y) => {
-      const dMin = Math.abs(y - minY);
-      const dMax = Math.abs(y - maxY);
-      return y + (dMin <= dMax ? -padTop : padBottom);
-    };
+    let minX = x1, maxX = x1;
+    if (x2 < minX) minX = x2;
+    if (x2 > maxX) maxX = x2;
+    if (x3 < minX) minX = x3;
+    if (x3 > maxX) maxX = x3;
+    if (x4 < minX) minX = x4;
+    if (x4 > maxX) maxX = x4;
+
+    let minY = y1, maxY = y1;
+    if (y2 < minY) minY = y2;
+    if (y2 > maxY) maxY = y2;
+    if (y3 < minY) minY = y3;
+    if (y3 > maxY) maxY = y3;
+    if (y4 < minY) minY = y4;
+    if (y4 > maxY) maxY = y4;
+
+    const adjX1 = x1 + (Math.abs(x1 - minX) <= Math.abs(x1 - maxX) ? -padLeft : padRight);
+    const adjY1 = y1 + (Math.abs(y1 - minY) <= Math.abs(y1 - maxY) ? -padTop : padBottom);
+    const adjX2 = x2 + (Math.abs(x2 - minX) <= Math.abs(x2 - maxX) ? -padLeft : padRight);
+    const adjY2 = y2 + (Math.abs(y2 - minY) <= Math.abs(y2 - maxY) ? -padTop : padBottom);
+    const adjX3 = x3 + (Math.abs(x3 - minX) <= Math.abs(x3 - maxX) ? -padLeft : padRight);
+    const adjY3 = y3 + (Math.abs(y3 - minY) <= Math.abs(y3 - maxY) ? -padTop : padBottom);
+    const adjX4 = x4 + (Math.abs(x4 - minX) <= Math.abs(x4 - maxX) ? -padLeft : padRight);
+    const adjY4 = y4 + (Math.abs(y4 - minY) <= Math.abs(y4 - maxY) ? -padTop : padBottom);
 
     return {
-      x1: adjustX(q.x1), y1: adjustY(q.y1),
-      x2: adjustX(q.x2), y2: adjustY(q.y2),
-      x3: adjustX(q.x3), y3: adjustY(q.y3),
-      x4: adjustX(q.x4), y4: adjustY(q.y4),
+      x1: adjX1, y1: adjY1,
+      x2: adjX2, y2: adjY2,
+      x3: adjX3, y3: adjY3,
+      x4: adjX4, y4: adjY4,
     };
   }
 
