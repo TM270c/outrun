@@ -307,6 +307,21 @@
           const safeBoth = Math.max(0, Math.abs(customBound.both));
           leftBound = Math.min(leftBound, safeBoth);
           rightBound = Math.min(rightBound, safeBoth);
+        leftBound = Math.max(leftBound, safe);
+        rightBound = Math.max(rightBound, safe);
+      } else if (typeof customBound === 'object') {
+        if (customBound.left != null) {
+          const safeLeft = Math.max(0, Math.abs(customBound.left));
+          leftBound = Math.max(leftBound, safeLeft);
+        }
+        if (customBound.right != null) {
+          const safeRight = Math.max(0, Math.abs(customBound.right));
+          rightBound = Math.max(rightBound, safeRight);
+        }
+        if (customBound.both != null) {
+          const safeBoth = Math.max(0, Math.abs(customBound.both));
+          leftBound = Math.max(leftBound, safeBoth);
+          rightBound = Math.max(rightBound, safeBoth);
         }
       }
     }
@@ -359,6 +374,11 @@
         ? Math.min(roadEdgeInset, 1)
         : 1 + (dist / roadW);
       const limit = inset - half - pad;
+    const limitFromDistance = (distance) => {
+      if (!Number.isFinite(distance)) return null;
+      const dist = Math.max(0, distance);
+      const normalized = 1 + (dist / roadW);
+      const limit = normalized - half;
       if (!Number.isFinite(limit)) return null;
       return Math.max(0, limit);
     };
@@ -369,6 +389,7 @@
       for (const section of sections) {
         if (!section) continue;
         const width = Math.max(0, Math.abs(section.dx ?? 0));
+        accum += width;
         const drop = Math.abs(section.dy ?? 0);
         if (drop >= threshold) {
           const limit = limitFromDistance(accum);
