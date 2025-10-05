@@ -328,7 +328,7 @@
     const s = Math.max(0, Math.min(1.5, ax - 1));
     const gain = 1 + cliffs.distanceGain * s;
     const heightScale = Math.max(0, cliffs.heightPushScale ?? 0);
-    const heightSample = Math.abs(heightOffset) * clamp01(sectionCoverage || 0);
+    const heightSample = Math.abs(heightOffset);
     const heightMul = heightScale > 0
       ? clamp(1 + heightSample * heightScale, 1, Math.max(1, cliffs.heightPushMax ?? 3))
       : 1;
