@@ -1,6 +1,6 @@
 # side,len,aEase,aDx,aDy,bEase,bDx,bDy,mode,repeats
 # Baseline geometry for each side
-L,40,linear:io, 3000,000,     linear:io, 60000,0,  abs,1
-R,40,linear:io, 3000,1000,  linear:io,60000,0,    abs,1
-L,41,linear:io, 0,3000,     linear:io, -2500,0,  abs,1
-R,41,linear:io, 0,3000,  linear:io,-2500,0,    abs,1
+L,40,linear:io, 8000,0,     linear:io, 0,0,  abs,1
+R,40,linear:io, 8000,0,  linear:io,0,0,    abs,1
+L,181,linear:io, 0,8000,     linear:io, 0,0,  abs,1
+R,181,linear:io, 0,8000,  linear:io,0,0,    abs,1
