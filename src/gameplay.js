@@ -212,6 +212,8 @@
     return getSpriteMeta('PLAYER').wN * state.getKindScale('PLAYER') * 0.5;
   }
 
+  const PLAYER_EDGE_PAD = 0.015;
+
   // Half-width in normalized space for an NPC car sprite.
   function carHalfWN(car) {
     const type = car && car.type ? car.type : 'CAR';
@@ -290,6 +292,21 @@
     if (customBound != null) {
       if (typeof customBound === 'number') {
         const safe = Math.max(0, Math.abs(customBound));
+        leftBound = Math.min(leftBound, safe);
+        rightBound = Math.min(rightBound, safe);
+      } else if (typeof customBound === 'object') {
+        if (customBound.left != null) {
+          const safeLeft = Math.max(0, Math.abs(customBound.left));
+          leftBound = Math.min(leftBound, safeLeft);
+        }
+        if (customBound.right != null) {
+          const safeRight = Math.max(0, Math.abs(customBound.right));
+          rightBound = Math.min(rightBound, safeRight);
+        }
+        if (customBound.both != null) {
+          const safeBoth = Math.max(0, Math.abs(customBound.both));
+          leftBound = Math.min(leftBound, safeBoth);
+          rightBound = Math.min(rightBound, safeBoth);
         leftBound = Math.max(leftBound, safe);
         rightBound = Math.max(rightBound, safe);
       } else if (typeof customBound === 'object') {
@@ -346,6 +363,17 @@
     if (!Number.isFinite(roadW) || roadW <= 0) return false;
 
     const half = playerHalfWN();
+    const pad = PLAYER_EDGE_PAD;
+    const roadEdgeInset = typeof track.railInset === 'number' ? track.railInset : 1;
+    const EPS_DIST = 1e-6;
+
+    const limitFromDistance = (distance) => {
+      if (!Number.isFinite(distance)) return null;
+      const dist = Math.max(0, distance);
+      const inset = dist <= EPS_DIST
+        ? Math.min(roadEdgeInset, 1)
+        : 1 + (dist / roadW);
+      const limit = inset - half - pad;
     const limitFromDistance = (distance) => {
       if (!Number.isFinite(distance)) return null;
       const dist = Math.max(0, distance);
@@ -369,6 +397,7 @@
             bestLimit = bestLimit == null ? limit : Math.min(bestLimit, limit);
           }
         }
+        accum += width;
       }
       return bestLimit;
     };
@@ -455,8 +484,8 @@
   function playerLateralLimit(segIndex, forceRailInset = false) {
     const halfW = playerHalfWN();
     const baseLimit = Math.min(Math.abs(lanes.road.min), Math.abs(lanes.road.max));
-    const base = baseLimit - halfW - 0.015;
-    return clampToRailLimit(segIndex, base, halfW, 0.015, forceRailInset);
+    const base = baseLimit - halfW - PLAYER_EDGE_PAD;
+    return clampToRailLimit(segIndex, base, halfW, PLAYER_EDGE_PAD, forceRailInset);
   }
 
   function resolvePickupCollisionsInSeg(seg) {
