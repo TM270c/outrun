@@ -33,13 +33,19 @@ World.data.railTexZones = railTexZones;
 World.data.cliffTexZones = cliffTexZones;
 
 Gameplay.spawnProps();
-Gameplay.spawnCars();
-Gameplay.spawnPickups();
-Gameplay.resetPlayerState({
-  s: Config.camera.backSegments * Config.track.segmentSize,
-  playerN: 0,
-  timers: { t: 0, nextHopTime: 0, boostFlashTimer: 0 },
-});
+const START_S = Config.camera.backSegments * Config.track.segmentSize;
+
+function resetRace() {
+  Gameplay.spawnCars();
+  Gameplay.spawnPickups();
+  Gameplay.resetPlayerState({
+    s: START_S,
+    playerN: 0,
+    timers: { t: 0, nextHopTime: 0, boostFlashTimer: 0 },
+  });
+}
+
+resetRace();
 
 addEventListener('keydown', Gameplay.keydownHandler);
 addEventListener('keyup', Gameplay.keyupHandler);
@@ -48,3 +54,18 @@ Renderer.attach(glr, dom);
 Renderer.frame((dt) => {
   Gameplay.step(dt);
 });
+
+const callbacks = Gameplay?.state?.callbacks;
+if (callbacks) {
+  callbacks.onQueueReset = () => {
+    if (Renderer?.matte?.startReset) Renderer.matte.startReset();
+  };
+  callbacks.onResetScene = () => {
+    resetRace();
+  };
+  callbacks.onQueueRespawn = ({ targetS, targetN } = {}) => {
+    if (Renderer?.matte?.startRespawn) {
+      Renderer.matte.startRespawn(targetS, targetN ?? 0);
+    }
+  };
+}
