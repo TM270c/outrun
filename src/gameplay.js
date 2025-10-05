@@ -7,17 +7,21 @@
   }
 
   const {
-    TUNE_PLAYER,
-    TUNE_TRACK,
-    CLIFF_PUSH,
-    CLIFF_CAMERA_FRACTION,
-    FAILSAFE,
-    DRIFT,
-    BOOST_ZONE_EFFECT,
-    BOOST_ZONE_TYPES,
-    cfgTilt = { tiltDir: 1, tiltCurveWeight: 0, tiltEase: 0.1, tiltSens: 0 },
-    cfgTiltAdd = { tiltAddEnabled: false, tiltAddMaxDeg: null },
+    player,
+    track,
+    camera,
+    cliffs,
+    failsafe,
+    drift,
+    boost,
+    lanes,
+    tilt: tiltConfig = {},
   } = Config;
+
+  const {
+    base: tiltBase = { tiltDir: 1, tiltCurveWeight: 0, tiltEase: 0.1, tiltSens: 0, tiltMaxDeg: 0 },
+    additive: tiltAdd = { tiltAddEnabled: false, tiltAddMaxDeg: null },
+  } = tiltConfig;
 
   const {
     clamp,
@@ -40,7 +44,7 @@
   } = lane;
 
   const segments = data.segments;
-  const segmentLength = TUNE_TRACK.segmentLength;
+  const segmentLength = track.segmentSize;
   const trackLengthRef = () => data.trackLength || 0;
 
   const DEFAULT_SPRITE_META = {
@@ -56,7 +60,7 @@
   const NPC = { total: 20, edgePad: 0.02, avoidLookaheadSegs: 20 };
   const CAR_TYPES = ['CAR', 'SEMI'];
 
-  const defaultGetKindScale = (kind) => (kind === 'PLAYER' ? TUNE_PLAYER.playerScale : 1);
+  const defaultGetKindScale = (kind) => (kind === 'PLAYER' ? player.scale : 1);
 
   const state = {
     phys: { s: 0, y: 0, vx: 0, vy: 0, vtan: 0, grounded: true, t: 0, nextHopTime: 0, boostFlashTimer: 0 },
@@ -88,7 +92,7 @@
       onQueueRespawn: null,
     },
     camera: {
-      fieldOfView: TUNE_TRACK.fov,
+      fieldOfView: camera.fovDeg,
       cameraDepth: 0,
       nearZ: 0,
       playerZ: 0,
@@ -166,20 +170,20 @@
     const segNow = segmentAtS(state.phys.s);
     if (!segNow) return null;
     const zonesHere = boostZonesForPlayer(segNow, state.playerN);
-    return zonesHere.find((zone) => zone.type === BOOST_ZONE_TYPES.JUMP) || null;
+    return zonesHere.find((zone) => zone.type === boost.types.jump) || null;
   }
 
   function applyBoostImpulse() {
     const { phys } = state;
-    const boostCap = TUNE_PLAYER.maxSpeed * DRIFT.boostMult;
+    const boostCap = player.topSpeed * drift.boostScale;
     const currentForward = Math.max(phys.vtan, 0);
-    const boosted = currentForward + BOOST_ZONE_EFFECT.speedAdd;
+    const boosted = currentForward + boost.speedGain;
     phys.vtan = clamp(boosted, 0, boostCap);
   }
 
   function applyJumpZoneBoost(zone) {
     if (!zone) return;
-    state.boostTimer = Math.max(state.boostTimer, DRIFT.boostTime);
+    state.boostTimer = Math.max(state.boostTimer, drift.boostTime);
     applyBoostImpulse();
     state.phys.boostFlashTimer = Math.max(state.phys.boostFlashTimer, 0.3);
   }
@@ -198,7 +202,7 @@
     const base = 1 - half - NPC.edgePad;
     const seg = segmentAtIndex(segIndex);
     if (seg && seg.features && seg.features.rail) {
-      const railInner = TUNE_TRACK.railInset - half - NPC.edgePad;
+      const railInner = track.railInset - half - NPC.edgePad;
       return Math.min(base, railInner);
     }
     return base;
@@ -255,7 +259,7 @@
     const segNorm = ((segIndex % segCount) + segCount) % segCount;
     const segData = segments[segNorm];
     const baseZ = segData ? segData.p1.world.z : segIndex * segmentLength;
-    const roadW = roadWidthAt ? roadWidthAt(baseZ + clamp01(t) * segmentLength) : TUNE_TRACK.roadWidth;
+    const roadW = roadWidthAt ? roadWidthAt(baseZ + clamp01(t) * segmentLength) : track.roadWidth;
     const beyond = Math.max(0, (absN - 1) * roadW);
 
     const widthA = Math.max(0, dxA);
@@ -311,7 +315,7 @@
   }
 
   function getAdditiveTiltDeg() {
-    if (!cfgTiltAdd.tiltAddEnabled) return 0;
+    if (!tiltAdd.tiltAddEnabled) return 0;
     const seg = segmentAtS(state.phys.s);
     if (!seg) return 0;
     const segT = clamp01((state.phys.s - seg.p1.world.z) / segmentLength);
@@ -325,9 +329,9 @@
       slope = slopeB;
     }
     const angleDeg = -(180 / Math.PI) * Math.atan(slope);
-    const tiltDeg = cfgTilt.tiltDir * angleDeg;
-    if (cfgTiltAdd.tiltAddMaxDeg == null) return tiltDeg;
-    return clamp(tiltDeg, -cfgTiltAdd.tiltAddMaxDeg, cfgTiltAdd.tiltAddMaxDeg);
+    const tiltDeg = tiltBase.tiltDir * angleDeg;
+    if (tiltAdd.tiltAddMaxDeg == null) return tiltDeg;
+    return clamp(tiltDeg, -tiltAdd.tiltAddMaxDeg, tiltAdd.tiltAddMaxDeg);
   }
 
   state.getAdditiveTiltDeg = getAdditiveTiltDeg;
@@ -337,7 +341,7 @@
     const cameraDepth = 1 / Math.tan(halfRad);
     state.camera.cameraDepth = cameraDepth;
     state.camera.nearZ = 1 / cameraDepth;
-    state.camera.playerZ = TUNE_TRACK.cameraHeight * cameraDepth;
+    state.camera.playerZ = camera.height * cameraDepth;
   }
 
   function setFieldOfView(fov) {
@@ -360,9 +364,9 @@
     const dir = -Math.sign(slope);
     if (dir === 0) return;
     const s = Math.max(0, Math.min(1.5, ax - 1));
-    const gain = 1 + CLIFF_PUSH.distanceGain * s;
-    let delta = dir * step * TUNE_TRACK.cliffPush * gain;
-    delta = Math.max(-CLIFF_PUSH.capPerFrame, Math.min(CLIFF_PUSH.capPerFrame, delta));
+    const gain = 1 + cliffs.distanceGain * s;
+    let delta = dir * step * cliffs.pushStep * gain;
+    delta = Math.max(-cliffs.capPerFrame, Math.min(cliffs.capPerFrame, delta));
     state.playerN += delta;
   }
 
@@ -376,22 +380,23 @@
     const { tx, ty, nx, ny } = tangentNormalFromSlope(dy);
     const baseVx = phys.vtan * tx;
     const baseVy = phys.vtan * ty;
-    const newVx = baseVx + nx * TUNE_PLAYER.hopImpulse;
-    const newVy = baseVy + ny * TUNE_PLAYER.hopImpulse;
+    const newVx = baseVx + nx * player.hopImpulse;
+    const newVy = baseVy + ny * player.hopImpulse;
     phys.vx = newVx;
     phys.vy = newVy;
     phys.grounded = false;
-    phys.nextHopTime = phys.t + TUNE_PLAYER.hopCooldown;
+    phys.nextHopTime = phys.t + player.hopCooldown;
     applyJumpZoneBoost(jumpZone);
     return true;
   }
 
   function playerLateralLimit(segIndex) {
     const halfW = playerHalfWN();
-    const base = 2 - halfW - 0.015;
+    const baseLimit = Math.min(Math.abs(lanes.road.min), Math.abs(lanes.road.max));
+    const base = baseLimit - halfW - 0.015;
     const seg = segmentAtIndex(segIndex);
     if (seg && seg.features && seg.features.rail) {
-      const railInner = TUNE_TRACK.railInset - halfW - 0.015;
+      const railInner = track.railInset - halfW - 0.015;
       return Math.min(base, railInner);
     }
     return base;
@@ -449,14 +454,14 @@
     const steerAxis = (input.left && input.right) ? 0 : (input.left ? -1 : (input.right ? 1 : 0));
     const boosting = state.boostTimer > 0;
     if (boosting) state.boostTimer = Math.max(0, state.boostTimer - dt);
-    const speed01 = clamp(Math.abs(phys.vtan) / TUNE_PLAYER.maxSpeed, 0, 1);
-    let steerDx = dt * TUNE_PLAYER.steerBase * speed01;
-    if (boosting) steerDx *= DRIFT.boostSteerScale;
+    const speed01 = clamp(Math.abs(phys.vtan) / player.topSpeed, 0, 1);
+    let steerDx = dt * player.steerRate * speed01;
+    if (boosting) steerDx *= drift.steerScale;
 
     if (state.driftState === 'drifting') {
-      let k = DRIFT.boostLockBase;
-      if (steerAxis === state.driftDirSnapshot) k = DRIFT.boostLockWith;
-      else if (steerAxis === -state.driftDirSnapshot) k = DRIFT.boostLockAgainst;
+      let k = drift.lockBase;
+      if (steerAxis === state.driftDirSnapshot) k = drift.lockWith;
+      else if (steerAxis === -state.driftDirSnapshot) k = drift.lockAgainst;
       state.playerN += steerDx * k * state.driftDirSnapshot;
     } else if (steerAxis !== 0) {
       state.playerN += steerDx * steerAxis;
@@ -464,38 +469,38 @@
 
     const segAhead = segmentAtS(phys.s + state.camera.playerZ);
     if (segAhead) {
-      state.playerN -= steerDx * speed01 * segAhead.curve * TUNE_PLAYER.leanCentrifugal;
+      state.playerN -= steerDx * speed01 * segAhead.curve * player.curveLean;
     }
 
     applyCliffPushForce(steerDx);
-    state.playerN = clamp(state.playerN, -2, 2);
+    state.playerN = clamp(state.playerN, lanes.road.min, lanes.road.max);
 
     let segNow = segmentAtS(phys.s);
     const segFeatures = segNow ? segNow.features : null;
     const zonesHere = boostZonesForPlayer(segNow, state.playerN);
     const hasZonesHere = zonesHere.length > 0;
-    const driveZoneHere = zonesHere.find((zone) => zone.type === BOOST_ZONE_TYPES.DRIVE) || null;
+    const driveZoneHere = zonesHere.find((zone) => zone.type === boost.types.drive) || null;
     const zoneMultBase = hasZonesHere
-      ? ((segFeatures && segFeatures.boostMultiplier != null) ? segFeatures.boostMultiplier : TUNE_PLAYER.crestBoostMultiplier)
+      ? ((segFeatures && segFeatures.boostMultiplier != null) ? segFeatures.boostMultiplier : player.crestBoost)
       : 1;
 
     const prevGrounded = phys.grounded;
     if (phys.grounded) {
       const { dy } = groundProfileAt(phys.s);
       const { tx, ty } = tangentNormalFromSlope(dy);
-      const boostedMaxSpeed = TUNE_PLAYER.maxSpeed * (boosting ? DRIFT.boostMult : 1);
-      const accel = TUNE_PLAYER.accel * (boosting ? DRIFT.boostMult : 1);
-      const brake = TUNE_PLAYER.brake * (boosting ? DRIFT.boostMult : 1);
+      const boostedMaxSpeed = player.topSpeed * (boosting ? drift.boostScale : 1);
+      const accel = player.accelForce * (boosting ? drift.boostScale : 1);
+      const brake = player.brakeForce * (boosting ? drift.boostScale : 1);
       let a = 0;
       if (input.up) a += accel;
       if (input.down) a -= brake;
-      a += -TUNE_PLAYER.gravity * ty;
-      a += -TUNE_PLAYER.rollFriction * phys.vtan;
+      a += -player.gravity * ty;
+      a += -player.rollDrag * phys.vtan;
       phys.vtan = clamp(phys.vtan + a * dt, -boostedMaxSpeed, boostedMaxSpeed);
 
       if (driveZoneHere) {
         if (state.activeDriveZoneId !== driveZoneHere.id) {
-          state.boostTimer = Math.max(state.boostTimer, DRIFT.boostTime);
+          state.boostTimer = Math.max(state.boostTimer, drift.boostTime);
           applyBoostImpulse();
           state.activeDriveZoneId = driveZoneHere.id;
         }
@@ -512,7 +517,7 @@
       const kap = computeCurvature(ndy, d2y);
       if (kap < 0) {
         const need = phys.vtan * phys.vtan * -kap;
-        const support = TUNE_PLAYER.gravity * tangentNormalFromSlope(ndy).ny;
+        const support = player.gravity * tangentNormalFromSlope(ndy).ny;
         if (need > support) {
           phys.grounded = false;
           const tn = tangentNormalFromSlope(ndy);
@@ -521,10 +526,10 @@
         }
       }
     } else {
-      phys.vy -= TUNE_PLAYER.gravity * dt;
-      if (TUNE_PLAYER.airDrag) {
-        phys.vx -= TUNE_PLAYER.airDrag * phys.vx * dt;
-        phys.vy -= TUNE_PLAYER.airDrag * phys.vy * dt;
+      phys.vy -= player.gravity * dt;
+      if (player.airDrag) {
+        phys.vx -= player.airDrag * phys.vx * dt;
+        phys.vy -= player.airDrag * phys.vy * dt;
       }
       phys.s += phys.vx * dt;
       phys.y += phys.vy * dt;
@@ -536,7 +541,7 @@
       if (phys.y <= gy && phys.vy <= phys.vx * dy) {
         const tn = tangentNormalFromSlope(dy);
         const vtanNew = phys.vx * tn.tx + phys.vy * tn.ty;
-        const landCap = boosting ? TUNE_PLAYER.maxSpeed * DRIFT.boostMult : TUNE_PLAYER.maxSpeed;
+        const landCap = boosting ? player.topSpeed * drift.boostScale : player.topSpeed;
         phys.vtan = clamp(vtanNew, -landCap, landCap);
         phys.y = gy;
         phys.grounded = true;
@@ -570,8 +575,8 @@
       if (state.hopHeld) {
         if (!state.allowedBoost) {
           state.driftCharge += dt;
-          if (state.driftCharge >= DRIFT.boostChargeMin) {
-            state.driftCharge = DRIFT.boostChargeMin;
+          if (state.driftCharge >= drift.chargeMin) {
+            state.driftCharge = drift.chargeMin;
             state.allowedBoost = true;
           }
         }
@@ -590,11 +595,11 @@
       phys.s = ((phys.s % length) + length) % length;
     }
 
-    const aY = 1 - Math.exp(-dt / TUNE_TRACK.camYTau);
-    let targetCamY = phys.y + TUNE_TRACK.cameraHeight;
+    const aY = 1 - Math.exp(-dt / camera.heightEase);
+    let targetCamY = phys.y + camera.height;
     if (phys.grounded) {
       const floorY = floorElevationAt ? floorElevationAt(phys.s, state.playerN) : phys.y;
-      targetCamY += (floorY - phys.y) * CLIFF_CAMERA_FRACTION;
+      targetCamY += (floorY - phys.y) * cliffs.cameraBlend;
     }
     state.camYSmooth += aY * (targetCamY - state.camYSmooth);
 
@@ -608,10 +613,10 @@
       state.playerN = clamp(state.playerN, -bound, bound);
       const scraping = Math.abs(preClamp) > bound - 1e-6 || Math.abs(state.playerN) >= bound - 1e-6;
       if (scraping) {
-        const offRoadDecelLimit = TUNE_PLAYER.maxSpeed / 4;
+        const offRoadDecelLimit = player.topSpeed / 4;
         if (Math.abs(phys.vtan) > offRoadDecelLimit) {
           const sign = Math.sign(phys.vtan) || 1;
-          phys.vtan -= sign * (TUNE_PLAYER.maxSpeed * 0.8) * (1 / 60);
+          phys.vtan -= sign * (player.topSpeed * 0.8) * (1 / 60);
         }
       }
     }
@@ -621,7 +626,7 @@
     if (!state.resetMatteActive) {
       const roadY = elevationAt(phys.s);
       const bodyY = phys.grounded ? (floorElevationAt ? floorElevationAt(phys.s, state.playerN) : phys.y) : phys.y;
-      if (bodyY != null && (roadY - bodyY) > FAILSAFE.belowRoadUnits) {
+      if (bodyY != null && (roadY - bodyY) > failsafe.dropUnits) {
         queueRespawn(phys.s);
       }
     }
@@ -653,7 +658,7 @@
       const side = Math.random() < 0.5 ? -1 : 1;
       const offset = side * (Math.random() * (b * 0.9));
       const isSemi = type === 'SEMI';
-      const speed = (TUNE_PLAYER.maxSpeed / 6) + Math.random() * TUNE_PLAYER.maxSpeed / (isSemi ? 5 : 3);
+      const speed = (player.topSpeed / 6) + Math.random() * player.topSpeed / (isSemi ? 5 : 3);
       const car = { z: s, offset, type, meta, speed };
       if (!Array.isArray(seg.cars)) seg.cars = [];
       seg.cars.push(car);
@@ -666,7 +671,7 @@
     const cHalf = carHalfWN(car);
     const lookahead = NPC.avoidLookaheadSegs;
     const segCount = segments.length || 1;
-    if (((carSeg.index - playerSeg.index + segCount) % segCount) > TUNE_TRACK.drawDistance) {
+    if (((carSeg.index - playerSeg.index + segCount) % segCount) > track.drawDistance) {
       return 0;
     }
     for (let i = 1; i < lookahead; i += 1) {
@@ -677,7 +682,7 @@
         if (state.playerN > 0.5) dir = -1;
         else if (state.playerN < -0.5) dir = 1;
         else dir = (car.offset > state.playerN) ? 1 : -1;
-        return dir * (1 / i) * (car.speed - Math.abs(state.phys.vtan)) / TUNE_PLAYER.maxSpeed;
+        return dir * (1 / i) * (car.speed - Math.abs(state.phys.vtan)) / player.topSpeed;
       }
       for (let j = 0; j < seg.cars.length; j += 1) {
         const other = seg.cars[j];
@@ -687,7 +692,7 @@
           if (other.offset > 0.5) dir = -1;
           else if (other.offset < -0.5) dir = 1;
           else dir = (car.offset > other.offset) ? 1 : -1;
-          return dir * (1 / i) * (car.speed - other.speed) / TUNE_PLAYER.maxSpeed;
+          return dir * (1 / i) * (car.speed - other.speed) / player.topSpeed;
         }
       }
     }
@@ -827,7 +832,7 @@
     KeyS: keyActionFromFlag('down', false),
     Space: () => {
       state.hopHeld = false;
-      if (state.allowedBoost) state.boostTimer = DRIFT.boostTime;
+      if (state.allowedBoost) state.boostTimer = drift.boostTime;
       state.driftState = 'idle';
       state.driftDirSnapshot = 0;
       state.driftCharge = 0;
@@ -848,7 +853,7 @@
   function resetPlayerState({
     s = state.phys.s,
     playerN: playerNOverride,
-    cameraHeight = TUNE_TRACK.cameraHeight,
+    cameraHeight = camera.height,
     timers = null,
   } = {}) {
     const { phys } = state;

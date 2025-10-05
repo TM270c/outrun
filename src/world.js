@@ -6,10 +6,9 @@
   }
 
   const {
-    TUNE_TRACK,
-    BOOST_LANE_LIMITS,
-    ROAD_LANE_LIMITS,
-    BOOST_ZONE_TYPES,
+    track,
+    lanes,
+    boost,
   } = Config;
 
   const {
@@ -62,8 +61,8 @@
     return textures;
   }
 
-  const segmentLength = TUNE_TRACK.segmentLength;
-  const roadWidthAt = () => TUNE_TRACK.roadWidth;
+  const segmentLength = track.segmentSize;
+  const roadWidthAt = () => track.roadWidth;
 
   const segments = [];
   let trackLength = 0;
@@ -158,7 +157,7 @@
           id: `legacy-${boostZoneIdCounter++}`,
           startOffset: start,
           endOffset: end,
-          type: BOOST_ZONE_TYPES.JUMP,
+          type: boost.types.jump,
           nStart: fallbackStart,
           nEnd: fallbackEnd,
           visible: true,
@@ -368,7 +367,7 @@
         const start = Math.max(0, boostStart | 0);
         const end = Math.max(start, boostEnd | 0);
         if (!(start === 0 && end === 0)) {
-          const parsedType = parseBoostZoneType(boostTypeRaw) || BOOST_ZONE_TYPES.JUMP;
+          const parsedType = parseBoostZoneType(boostTypeRaw) || boost.types.jump;
           const laneStart = parseBoostLaneValue(boostLaneStartRaw);
           const laneEnd = parseBoostLaneValue(boostLaneEndRaw);
           const fallbackStart = clampBoostLane(-2);
@@ -547,8 +546,8 @@
 
   const clampBoostLane = (v) => {
     if (v == null) return v;
-    const min = BOOST_LANE_LIMITS.MIN;
-    const max = BOOST_LANE_LIMITS.MAX;
+    const min = lanes.boost.min;
+    const max = lanes.boost.max;
     if (v < min) return min;
     if (v > max) return max;
     return v;
@@ -556,8 +555,8 @@
 
   const clampRoadLane = (v, fallback = 0) => {
     if (v == null) return fallback;
-    const min = ROAD_LANE_LIMITS.MIN;
-    const max = ROAD_LANE_LIMITS.MAX;
+    const min = lanes.road.min;
+    const max = lanes.road.max;
     if (v < min) return min;
     if (v > max) return max;
     return v;
@@ -566,7 +565,7 @@
   const laneToCenterOffset = (n, fallback = 0) => clampRoadLane(n, fallback) * 0.5;
   const laneToRoadRatio = (n, fallback = 0) => {
     const clamped = clampRoadLane(n, fallback);
-    return (clamped - ROAD_LANE_LIMITS.MIN) / (ROAD_LANE_LIMITS.MAX - ROAD_LANE_LIMITS.MIN);
+    return (clamped - lanes.road.min) / (lanes.road.max - lanes.road.min);
   };
 
   function getZoneLaneBounds(zone){
@@ -595,8 +594,8 @@
     if (raw == null) return null;
     const norm = raw.toString().trim().toLowerCase();
     if (!norm) return null;
-    if (['jump', 'orange', 'crest', 'air'].includes(norm)) return BOOST_ZONE_TYPES.JUMP;
-    if (['drive', 'ground', 'auto', 'blue'].includes(norm)) return BOOST_ZONE_TYPES.DRIVE;
+    if (['jump', 'orange', 'crest', 'air'].includes(norm)) return boost.types.jump;
+    if (['drive', 'ground', 'auto', 'blue'].includes(norm)) return boost.types.drive;
     return null;
   }
 
@@ -604,8 +603,8 @@
     if (raw == null || raw === '') return null;
     const num = Number.parseFloat(raw);
     if (!Number.isFinite(num)) return null;
-    const min = BOOST_LANE_LIMITS.MIN;
-    const max = BOOST_LANE_LIMITS.MAX;
+    const min = lanes.boost.min;
+    const max = lanes.boost.max;
     if (num < min) return min;
     if (num > max) return max;
     return num;
