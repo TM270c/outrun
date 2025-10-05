@@ -329,6 +329,10 @@
       forEachStripCell({
         nearLeft: nearMin,
         nearRight: nearMax,
+        nearY: yNear,
+        farLeft: farMin,
+        farRight: farMax,
+        farY: yFar,
         nearY,
         farLeft: farMin,
         farRight: farMax,
