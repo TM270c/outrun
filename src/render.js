@@ -34,6 +34,7 @@
 
   const {
     data,
+    getTrackLength,
     assets,
     roadWidthAt,
     floorElevationAt,
@@ -122,11 +123,6 @@
     const near = fogFactorFromZ(zNear);
     const far = fogFactorFromZ(typeof zFar === 'number' ? zFar : zNear);
     return [near, near, far, far];
-  }
-
-  function getTrackLength(){
-    const raw = data.trackLength;
-    return typeof raw === 'number' ? raw : (typeof raw === 'function' ? raw() : (raw || 0));
   }
 
   function projectPoint(p, camX, camY, camS){

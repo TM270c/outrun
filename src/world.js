@@ -98,6 +98,7 @@
 
   const segments = [];
   let trackLength = 0;
+  const getTrackLength = () => trackLength;
   let boostZoneIdCounter = 0;
 
   const CLIFF_SECTIONS_PER_SEG = 4;
@@ -774,6 +775,7 @@
       segments,
       get trackLength(){ return trackLength; },
     },
+    getTrackLength,
     assets: { manifest: assetManifest, textures },
     loadTexturesWith,
     roadWidthAt,
