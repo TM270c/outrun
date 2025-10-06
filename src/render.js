@@ -861,6 +861,7 @@
       y: SH - y*(1/track.metersPerPixel.y) - 60
     };
   }
+
   function drawBoostCrossSection(ctx){
     const panelX = 24;
     const panelY = 24;
@@ -943,15 +944,17 @@
     const sEnd   = state.phys.s + SW*0.5*track.metersPerPixel.x;
     const step   = Math.max(5, 2*track.metersPerPixel.x);
     let first = true;
+    const sampleRoad = (s) => elevationAt(s);
     for (let s = sStart; s <= sEnd; s += step){
-      const p = worldToOverlay(s, floorElevationAt(s, state.playerN));
+      const p = worldToOverlay(s, sampleRoad(s));
       if (first){ ctxSide.moveTo(p.x,p.y); first=false; } else { ctxSide.lineTo(p.x,p.y); }
     }
     ctxSide.stroke();
 
     drawBoostCrossSection(ctxSide);
 
-    const p = worldToOverlay(state.phys.s, state.phys.y);
+    const roadY = elevationAt(state.phys.s);
+    const p = worldToOverlay(state.phys.s, roadY);
     ctxSide.fillStyle = '#2e7d32';
     ctxSide.beginPath(); ctxSide.arc(p.x, p.y, 6, 0, Math.PI*2); ctxSide.fill();
 
