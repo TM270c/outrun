@@ -756,18 +756,8 @@
     return { heightOffset, slope: 0, section: null, slopeA, slopeB, coverageA, coverageB };
   }
 
-  function floorElevationAt(s, nNorm){
-    const base = elevationAt(s);
-    const seg = segmentAtS(s);
-    if (!seg) return base;
-    const segT = clamp01((s - seg.p1.world.z) / segmentLength);
-    const info = cliffSurfaceInfoAt(seg.index, nNorm, segT);
-    return base + info.heightOffset;
-  }
-
-  function cliffLateralSlopeAt(segIndex, nNorm, t = 0){
-    const info = cliffSurfaceInfoAt(segIndex, nNorm, t);
-    return info.slope;
+  function floorElevationAt(s){
+    return elevationAt(s);
   }
 
   global.World = {
@@ -787,7 +777,6 @@
     floorElevationAt,
     cliffParamsAt,
     cliffSurfaceInfoAt,
-    cliffLateralSlopeAt,
     segmentAtS,
     elevationAt,
     groundProfileAt,

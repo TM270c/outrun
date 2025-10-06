@@ -41,14 +41,6 @@ const camera = {
   heightEase: 0.1,
 };
 
-// Cliff behaviour and camera bias when approaching drops.
-const cliffs = {
-  pushStep: 0.5,
-  distanceGain: 0.6,
-  capPerFrame: 0.5,
-  cameraBlend: 1 / 3,
-};
-
 // Guard rails for falling through the world.
 const failsafe = {
   dropUnits: 600,
@@ -141,7 +133,6 @@ window.Config = {
   grid,
   track,
   camera,
-  cliffs,
   failsafe,
   fog,
   colors,
