@@ -80,16 +80,6 @@
 
   let overlayOn = true;
 
-  const overlayGraphPadding = { top: 80, bottom: 80 };
-  const overlayGraphState = {
-    ready: false,
-    min: -100,
-    max: 100,
-    targetMin: -100,
-    targetMax: 100,
-  };
-  const overlayStatsPrev = Object.create(null);
-
   function createPoint(worldOrX, y, z){
     if (typeof worldOrX === 'object' && worldOrX !== null){
       const { x = 0, y: wy = 0, z: wz = 0 } = worldOrX;
@@ -859,138 +849,11 @@
     glr.drawQuadSolid(bodyQuad, SPRITE_META.PLAYER.tint, fogBody);
   }
 
-  function updateOverlayGraphRange(sampleMin, sampleMax){
-    if (!Number.isFinite(sampleMin) || !Number.isFinite(sampleMax)) return;
-    if (sampleMax < sampleMin) {
-      const mid = (sampleMin + sampleMax) * 0.5;
-      sampleMin = mid - 0.5;
-      sampleMax = mid + 0.5;
-    }
-    const span = Math.max(1, sampleMax - sampleMin);
-    const pad = Math.max(1, span * 0.15);
-    const targetMin = sampleMin - pad;
-    const targetMax = sampleMax + pad;
-    overlayGraphState.targetMin = targetMin;
-    overlayGraphState.targetMax = targetMax;
-    if (!overlayGraphState.ready) {
-      overlayGraphState.min = targetMin;
-      overlayGraphState.max = targetMax;
-      overlayGraphState.ready = true;
-    } else {
-      const smooth = 0.2;
-      overlayGraphState.min = lerp(overlayGraphState.min, targetMin, smooth);
-      overlayGraphState.max = lerp(overlayGraphState.max, targetMax, smooth);
-    }
-    if (overlayGraphState.max - overlayGraphState.min < 1) {
-      const mid = (overlayGraphState.min + overlayGraphState.max) * 0.5;
-      overlayGraphState.min = mid - 0.5;
-      overlayGraphState.max = mid + 0.5;
-    }
-  }
-
-  function formatStatValue(stat){
-    const { value, decimals = 2 } = stat;
-    if (!Number.isFinite(value)) return '—';
-    if (decimals <= 0) return Math.round(value).toString();
-    return value.toFixed(decimals);
-  }
-
-  function formatStatDelta(stat){
-    const { delta } = stat;
-    if (delta == null || !Number.isFinite(delta)) return null;
-    const decimals = stat.deltaDecimals != null ? stat.deltaDecimals : Math.max(0, Math.min(2, stat.decimals ?? 2));
-    const sign = delta >= 0 ? '+' : '';
-    if (decimals <= 0) return `${sign}${Math.round(delta)}`;
-    return `${sign}${delta.toFixed(decimals)}`;
-  }
-
-  function collectOverlayStats(){
-    const stats = [];
-    const trackLength = getTrackLength();
-    let segIdx = 0;
-    if (segments.length && trackLength > 0) {
-      let wrapped = state.phys.s % trackLength;
-      if (wrapped < 0) wrapped += trackLength;
-      segIdx = Math.floor(wrapped / segmentLength);
-    }
-    const quadCount = (glr && glr.stats && typeof glr.stats.quads === 'number') ? glr.stats.quads : 0;
-    stats.push({ key: 'segment', label: 'Segment', value: segIdx + 1, decimals: 0, deltaDecimals: 0 });
-    stats.push({ key: 'position', label: 'S (m)', value: state.phys.s, decimals: 1 });
-    stats.push({ key: 'carHeight', label: 'Car Y', value: state.phys.y, decimals: 2 });
-    stats.push({ key: 'camHeight', label: 'Cam Y', value: state.camYSmooth, decimals: 2 });
-    stats.push({ key: 'tilt', label: 'Tilt (°)', value: state.playerTiltDeg, decimals: 2 });
-    stats.push({ key: 'quads', label: 'Quads', value: quadCount, decimals: 0, deltaDecimals: 0 });
-    return stats.map((stat) => {
-      const prev = overlayStatsPrev[stat.key];
-      const delta = (prev != null && Number.isFinite(prev) && Number.isFinite(stat.value)) ? stat.value - prev : null;
-      return { ...stat, delta };
-    });
-  }
-
-  function drawStatsSidebar(ctx, stats){
-    if (!ctx || !Array.isArray(stats) || stats.length === 0) return;
-    const panelW = 220;
-    const padX = 16;
-    const padY = 16;
-    const headerHeight = 18;
-    const valueLineHeight = 16;
-    const deltaLineHeight = 12;
-    let bodyHeight = headerHeight;
-    for (const stat of stats) {
-      bodyHeight += valueLineHeight;
-      if (stat.delta != null) bodyHeight += deltaLineHeight;
-    }
-    const panelH = padY * 2 + bodyHeight;
-    const panelX = Math.max(24, SW - panelW - 24);
-    const panelY = 24;
-    ctx.save();
-    ctx.translate(panelX, panelY);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-    ctx.fillRect(0, 0, panelW, panelH);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.strokeRect(0, 0, panelW, panelH);
-    ctx.textBaseline = 'top';
-    ctx.textAlign = 'left';
-    ctx.font = 'bold 12px system-ui, Arial';
-    ctx.fillStyle = '#90caf9';
-    ctx.fillText('Live Stats', padX, padY);
-    let y = padY + headerHeight;
-    for (const stat of stats) {
-      ctx.font = '11px system-ui, Arial';
-      ctx.fillStyle = '#bdbdbd';
-      ctx.textAlign = 'left';
-      ctx.fillText(stat.label, padX, y);
-      ctx.textAlign = 'right';
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(formatStatValue(stat), panelW - padX, y);
-      y += valueLineHeight;
-      const deltaStr = formatStatDelta(stat);
-      if (deltaStr) {
-        ctx.font = '10px system-ui, Arial';
-        ctx.fillStyle = stat.delta >= 0 ? '#66bb6a' : '#ef5350';
-        ctx.textAlign = 'right';
-        ctx.fillText(deltaStr, panelW - padX, y);
-        y += deltaLineHeight;
-      }
-    }
-    ctx.restore();
-    for (const stat of stats) {
-      overlayStatsPrev[stat.key] = stat.value;
-    }
-  }
-
   function worldToOverlay(s,y){
-    const x = (s - state.phys.s) * (1 / track.metersPerPixel.x) + SW * 0.5;
-    const top = overlayGraphPadding.top;
-    const bottom = Math.max(top + 10, SH - overlayGraphPadding.bottom);
-    const span = Math.max(10, bottom - top);
-    const minY = overlayGraphState.min;
-    const maxY = overlayGraphState.max;
-    const denom = Math.max(1e-3, maxY - minY);
-    const norm = (y - minY) / denom;
-    const clamped = clamp(norm, 0, 1);
-    const yPx = bottom - clamped * span;
-    return { x, y: yPx };
+    return {
+      x:(s-state.phys.s)*(1/track.metersPerPixel.x) + SW*0.5,
+      y: SH - y*(1/track.metersPerPixel.y) - 60
+    };
   }
   function drawBoostCrossSection(ctx){
     const panelX = 24;
@@ -1067,74 +930,24 @@
   function renderOverlay(){
     if (!overlayOn || !ctxSide) return;
     ctxSide.clearRect(0,0,SW,SH);
-
-    const sStart = state.phys.s - SW * 0.5 * track.metersPerPixel.x;
-    const sEnd = state.phys.s + SW * 0.5 * track.metersPerPixel.x;
-    const step = Math.max(5, 2 * track.metersPerPixel.x);
-
-    const samples = [];
-    let sampleMin = Infinity;
-    let sampleMax = -Infinity;
-    for (let s = sStart; s <= sEnd; s += step){
-      const elev = elevationAt(s);
-      samples.push({ s, y: elev });
-      if (Number.isFinite(elev)) {
-        if (elev < sampleMin) sampleMin = elev;
-        if (elev > sampleMax) sampleMax = elev;
-      }
-    }
-    if (samples.length === 0) {
-      const elev = elevationAt(state.phys.s);
-      samples.push({ s: state.phys.s, y: elev });
-      if (Number.isFinite(elev)) {
-        sampleMin = Math.min(sampleMin, elev);
-        sampleMax = Math.max(sampleMax, elev);
-      }
-    } else {
-      const lastSample = samples[samples.length - 1];
-      if (lastSample.s < sEnd) {
-        const elevEnd = elevationAt(sEnd);
-        samples.push({ s: sEnd, y: elevEnd });
-        if (Number.isFinite(elevEnd)) {
-          if (elevEnd < sampleMin) sampleMin = elevEnd;
-          if (elevEnd > sampleMax) sampleMax = elevEnd;
-        }
-      }
-    }
-
-    const playerY = state.phys.y;
-    if (Number.isFinite(playerY)) {
-      if (playerY < sampleMin) sampleMin = playerY;
-      if (playerY > sampleMax) sampleMax = playerY;
-    }
-
-    if (!Number.isFinite(sampleMin) || !Number.isFinite(sampleMax)) {
-      sampleMin = -50;
-      sampleMax = 50;
-    } else if (sampleMax <= sampleMin) {
-      sampleMax = sampleMin + 1;
-    }
-
-    updateOverlayGraphRange(sampleMin, sampleMax);
-
     ctxSide.lineWidth = 2;
     ctxSide.strokeStyle = state.phys.boostFlashTimer>0 ? '#d32f2f' : '#1976d2';
     ctxSide.beginPath();
+    const sStart = state.phys.s - SW*0.5*track.metersPerPixel.x;
+    const sEnd   = state.phys.s + SW*0.5*track.metersPerPixel.x;
+    const step   = Math.max(5, 2*track.metersPerPixel.x);
     let first = true;
-    for (const sample of samples){
-      const p = worldToOverlay(sample.s, sample.y);
-      if (first){ ctxSide.moveTo(p.x, p.y); first=false; }
-      else { ctxSide.lineTo(p.x, p.y); }
+    for (let s = sStart; s <= sEnd; s += step){
+      const p = worldToOverlay(s, elevationAt(s));
+      if (first){ ctxSide.moveTo(p.x,p.y); first=false; } else { ctxSide.lineTo(p.x,p.y); }
     }
-    if (!first) ctxSide.stroke();
+    ctxSide.stroke();
 
     drawBoostCrossSection(ctxSide);
 
-    if (Number.isFinite(playerY)) {
-      const p = worldToOverlay(state.phys.s, playerY);
-      ctxSide.fillStyle = '#2e7d32';
-      ctxSide.beginPath(); ctxSide.arc(p.x, p.y, 6, 0, Math.PI*2); ctxSide.fill();
-    }
+    const p = worldToOverlay(state.phys.s, state.phys.y);
+    ctxSide.fillStyle = '#2e7d32';
+    ctxSide.beginPath(); ctxSide.arc(p.x, p.y, 6, 0, Math.PI*2); ctxSide.fill();
 
     const { dy, d2y } = groundProfileAt(state.phys.s);
     const kap = computeCurvature(dy, d2y);
@@ -1147,9 +960,6 @@
     ctxSide.font = '12px system-ui, Arial';
     ctxSide.strokeText(hud, 10, SH-12);
     ctxSide.fillText(hud, 10, SH-12);
-
-    const stats = collectOverlayStats();
-    drawStatsSidebar(ctxSide, stats);
   }
 
   const resetMatte = (() => {
