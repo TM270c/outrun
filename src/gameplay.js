@@ -10,7 +10,7 @@
     player,
     track,
     camera,
-    cliffs,
+    cliffs = {},
     failsafe,
     drift,
     boost,
@@ -39,7 +39,6 @@
     roadWidthAt,
     floorElevationAt,
     cliffSurfaceInfoAt,
-    cliffLateralSlopeAt,
     segmentAtS,
     elevationAt,
     groundProfileAt,
@@ -278,23 +277,6 @@
   state.camera.updateFromFov = setFieldOfView;
   updateCameraFromFieldOfView();
 
-  function applyCliffPushForce(step) {
-    const ax = Math.abs(state.playerN);
-    if (ax <= 1) return;
-    const seg = segmentAtS(state.phys.s);
-    if (!seg) return;
-    const idx = seg.index;
-    const segT = clamp01((state.phys.s - seg.p1.world.z) / segmentLength);
-    const slope = cliffLateralSlopeAt(idx, state.playerN, segT);
-    if (Math.abs(slope) <= EPS) return;
-    const dir = -Math.sign(slope);
-    if (dir === 0) return;
-    const s = Math.max(0, Math.min(1.5, ax - 1));
-    const gain = 1 + cliffs.distanceGain * s;
-    const delta = clamp(dir * step * cliffs.pushStep * gain, -cliffs.capPerFrame, cliffs.capPerFrame);
-    state.playerN += delta;
-  }
-
   const overlap = (ax, aw, bx, bw, scale = 1) => Math.abs(ax - bx) < (aw + bw) * scale;
 
   function doHop() {
@@ -390,7 +372,6 @@
       state.playerN -= steerDx * speed01 * segAhead.curve * player.curveLean;
     }
 
-    applyCliffPushForce(steerDx);
     state.playerN = clamp(state.playerN, lanes.road.min, lanes.road.max);
 
     let segNow = segmentAtS(phys.s);
@@ -497,7 +478,10 @@
     let targetCamY = phys.y + camera.height;
     if (phys.grounded) {
       const floorY = sampleFloorElevation(phys.s, state.playerN, phys.y);
-      targetCamY += (floorY - phys.y) * cliffs.cameraBlend;
+      const blend = cliffs.cameraBlend != null ? cliffs.cameraBlend : 0;
+      if (floorY != null && blend !== 0) {
+        targetCamY += (floorY - phys.y) * blend;
+      }
     }
     state.camYSmooth += aY * (targetCamY - state.camYSmooth);
 
