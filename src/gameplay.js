@@ -10,6 +10,7 @@
     player,
     track,
     camera,
+    cliffs,
     failsafe,
     drift,
     boost,
@@ -25,62 +26,40 @@
   const {
     clamp,
     clamp01,
+    lerp,
     computeCurvature,
     tangentNormalFromSlope,
-    wrap,
-    wrapIndex,
-    wrapDistance,
   } = MathUtil;
 
   const {
     data,
-    getTrackLength,
     roadWidthAt,
-    cliffSurfaceInfoAt,
-    segmentAtS,
-    elevationAt,
-    groundProfileAt,
-    boostZonesOnSegment,
+    floorElevationAt,
+    cliffParamsAt,
     lane = {},
   } = World;
 
-  const { getZoneLaneBounds = () => null } = lane;
+  const {
+    clampBoostLane = (v) => v,
+  } = lane;
 
   const segments = data.segments;
   const segmentLength = track.segmentSize;
+  const trackLengthRef = () => data.trackLength || 0;
 
   const hasSegments = () => segments.length > 0;
 
-  const EPS = 1e-6; // Small epsilon to avoid repeated literals.
-
-  const BASE_SPRITE_META = { wN: 0.2, aspect: 1, tint: [1, 1, 1, 1], tex: () => null };
-  const createSpriteMeta = (overrides = {}) => ({ ...BASE_SPRITE_META, ...overrides });
-
-  // Detect if a segment carries guard rails.
-  const hasRail = (seg) => Boolean(seg && seg.features && seg.features.rail);
-
-  // Translate steering input flags into a signed axis.
-  const steerAxisFromInput = (input) => {
-    if (input.left && input.right) return 0;
-    if (input.left) return -1;
-    if (input.right) return 1;
-    return 0;
+  const wrapByLength = (value, length) => {
+    if (length <= 0) return value;
+    const mod = value % length;
+    return mod < 0 ? mod + length : mod;
   };
 
-  // Clear drift bookkeeping when exiting the state machine.
-  const resetDriftState = () => {
-    state.driftState = 'idle';
-    state.driftDirSnapshot = 0;
-    state.driftCharge = 0;
-    state.allowedBoost = false;
-  };
-
-  // Initialize drift state while preserving the reset behavior.
-  const beginDrift = (dir) => {
-    state.driftState = 'drifting';
-    state.driftDirSnapshot = dir;
-    state.driftCharge = 0;
-    state.allowedBoost = false;
+  const wrapSegmentIndex = (idx) => {
+    if (!hasSegments()) return idx;
+    const count = segments.length;
+    const mod = idx % count;
+    return mod < 0 ? mod + count : mod;
   };
 
   const ensureArray = (obj, key) => {
@@ -90,28 +69,17 @@
   };
 
   const DEFAULT_SPRITE_META = {
-    PLAYER: createSpriteMeta({ wN: 0.16, aspect: 0.7, tint: [0.9, 0.22, 0.21, 1] }),
-    CAR:    createSpriteMeta({ wN: 0.28, aspect: 0.7, tint: [0.2, 0.7, 1.0, 1] }),
-    SEMI:   createSpriteMeta({ wN: 0.34, aspect: 1.6, tint: [0.85, 0.85, 0.85, 1] }),
-    TREE:   createSpriteMeta({ wN: 0.5,  aspect: 3.0, tint: [0.22, 0.7, 0.22, 1] }),
-    SIGN:   createSpriteMeta({ wN: 0.55, aspect: 1.0, tint: [1, 1, 1, 1] }),
-    PALM:   createSpriteMeta({ wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1] }),
-    PICKUP: createSpriteMeta({ wN: 0.10, aspect: 1.0, tint: [1, 0.92, 0.2, 1] }),
+    PLAYER: { wN: 0.16, aspect: 0.7, tint: [0.9, 0.22, 0.21, 1], tex: () => null },
+    CAR:    { wN: 0.28, aspect: 0.7, tint: [0.2, 0.7, 1.0, 1], tex: () => null },
+    SEMI:   { wN: 0.34, aspect: 1.6, tint: [0.85, 0.85, 0.85, 1], tex: () => null },
+    TREE:   { wN: 0.5,  aspect: 3.0, tint: [0.22, 0.7, 0.22, 1], tex: () => null },
+    SIGN:   { wN: 0.55, aspect: 1.0, tint: [1, 1, 1, 1], tex: () => null },
+    PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
+    PICKUP: { wN: 0.10, aspect: 1.0, tint: [1, 0.92, 0.2, 1], tex: () => null },
   };
 
   const NPC = { total: 20, edgePad: 0.02, avoidLookaheadSegs: 20 };
   const CAR_TYPES = ['CAR', 'SEMI'];
-
-  const randomChoice = (list) => {
-    if (!Array.isArray(list) || list.length === 0) return undefined;
-    const index = Math.floor(Math.random() * list.length);
-    return list[index];
-  };
-
-  const randomSign = () => (Math.random() < 0.5 ? -1 : 1);
-  const chooseCarType = () => (Math.random() < 0.75 ? CAR_TYPES[0] : CAR_TYPES[1]);
-  const PROP_KIND_CHOICES = ['TREE', 'PALM'];
-  const randomPropKind = () => randomChoice(PROP_KIND_CHOICES);
 
   const defaultGetKindScale = (kind) => (kind === 'PLAYER' ? player.scale : 1);
 
@@ -158,23 +126,60 @@
     return metaStack[kind] || DEFAULT_SPRITE_META[kind] || { wN: 0.2, aspect: 1, tint: [1, 1, 1, 1], tex: () => null };
   }
 
+  function segmentAtS(s) {
+    const length = trackLengthRef();
+    if (!hasSegments() || length <= 0) return null;
+    const wrapped = wrapByLength(s, length);
+    const idx = Math.floor(wrapped / segmentLength) % segments.length;
+    return segments[idx];
+  }
+
   function segmentAtIndex(idx) {
     if (!hasSegments()) return null;
-    return segments[wrapIndex(idx, segments.length)];
+    return segments[wrapSegmentIndex(idx)];
   }
 
-  // Check whether the player lateral position falls inside a zone.
+  function elevationAt(s) {
+    const length = trackLengthRef();
+    if (!hasSegments() || length <= 0) return 0;
+    const ss = wrapByLength(s, length);
+    const i = Math.floor(ss / segmentLength);
+    const seg = segments[i % segments.length];
+    const t = (ss - seg.p1.world.z) / segmentLength;
+    return lerp(seg.p1.world.y, seg.p2.world.y, t);
+  }
+
+  function groundProfileAt(s) {
+    const y = elevationAt(s);
+    if (!hasSegments()) return { y, dy: 0, d2y: 0 };
+    const h = Math.max(5, segmentLength * 0.1);
+    const y1 = elevationAt(s - h);
+    const y2 = elevationAt(s + h);
+    const dy = (y2 - y1) / (2 * h);
+    const d2y = (y2 - 2 * y + y1) / (h * h);
+    return { y, dy, d2y };
+  }
+
+  function boostZonesOnSegment(seg) {
+    if (!seg || !seg.features) return [];
+    const zones = seg.features.boostZones;
+    return Array.isArray(zones) ? zones : [];
+  }
+
   function playerWithinBoostZone(zone, nNorm) {
     if (!zone) return false;
-    const bounds = getZoneLaneBounds(zone);
-    if (!bounds) return false;
-    const { laneMin, laneMax } = bounds;
-    return nNorm >= laneMin && nNorm <= laneMax;
+    const fallbackStart = clampBoostLane(-2);
+    const fallbackEnd = clampBoostLane(2);
+    const start = (zone.nStart != null) ? zone.nStart : fallbackStart;
+    const end = (zone.nEnd != null) ? zone.nEnd : fallbackEnd;
+    const min = Math.min(start, end);
+    const max = Math.max(start, end);
+    return nNorm >= min && nNorm <= max;
   }
 
-  // Return all zones intersecting the current player offset.
   function boostZonesForPlayer(seg, nNorm) {
     const zones = boostZonesOnSegment(seg);
+    if (!zones.length) return [];
     return zones.filter((zone) => playerWithinBoostZone(zone, nNorm));
   }
 
@@ -204,32 +209,124 @@
     return getSpriteMeta('PLAYER').wN * state.getKindScale('PLAYER') * 0.5;
   }
 
-  // Half-width in normalized space for an NPC car sprite.
   function carHalfWN(car) {
-    const type = car && car.type ? car.type : 'CAR';
-    const meta = (car && car.meta) || getSpriteMeta(type);
+    const meta = car && car.meta ? car.meta : getSpriteMeta(car && car.type ? car.type : 'CAR');
     return (meta.wN || 0) * 0.5;
   }
 
-  // Apply guard-rail constraints to a lateral bound.
-  const clampToRailLimit = (segIndex, baseLimit, halfWidth, pad) => {
-    const seg = segmentAtIndex(segIndex);
-    if (hasRail(seg)) {
-      const railInner = track.railInset - halfWidth - pad;
-      return Math.min(baseLimit, railInner);
-    }
-    return baseLimit;
-  };
-
-  // NPC drift bound to avoid clipping geometry.
   function npcLateralLimit(segIndex, car) {
     const half = carHalfWN(car);
     const base = 1 - half - NPC.edgePad;
-    return clampToRailLimit(segIndex, base, half, NPC.edgePad);
+    const seg = segmentAtIndex(segIndex);
+    if (seg && seg.features && seg.features.rail) {
+      const railInner = track.railInset - half - NPC.edgePad;
+      return Math.min(base, railInner);
+    }
+    return base;
+  }
+
+  function wrapDistance(v, dv, max) {
+    return wrapByLength(v + dv, max);
   }
 
   function nearestSegmentCenter(s) {
     return Math.round(s / segmentLength) * segmentLength + segmentLength * 0.5;
+  }
+
+  const cliffInfoDefaults = Object.freeze({
+    heightOffset: 0,
+    slope: 0,
+    section: null,
+    slopeA: 0,
+    slopeB: 0,
+    coverageA: 0,
+    coverageB: 0,
+  });
+
+  const createCliffInfo = (overrides = {}) => ({ ...cliffInfoDefaults, ...overrides });
+
+  function cliffSurfaceInfoAt(segIndex, nNorm, t = 0) {
+    const absN = Math.abs(nNorm);
+    if (absN <= 1) return createCliffInfo();
+
+    const params = cliffParamsAt ? cliffParamsAt(segIndex, t) : null;
+    if (!params) return createCliffInfo();
+
+    const left = nNorm < 0;
+    const sign = Math.sign(nNorm) || 1;
+
+    const dyA = left ? params.leftA.dy : params.rightA.dy;
+    const dyB = left ? params.leftB.dy : params.rightB.dy;
+    const dxA = Math.abs(left ? params.leftA.dx : params.rightA.dx);
+    const dxB = Math.abs(left ? params.leftB.dx : params.rightB.dx);
+
+    const segData = segmentAtIndex(segIndex);
+    const baseZ = segData ? segData.p1.world.z : segIndex * segmentLength;
+    const roadW = roadWidthAt ? roadWidthAt(baseZ + clamp01(t) * segmentLength) : track.roadWidth;
+    const beyond = Math.max(0, (absN - 1) * roadW);
+
+    const widthA = Math.max(0, dxA);
+    const widthB = Math.max(0, dxB);
+    const totalWidth = widthA + widthB;
+
+    const slopeA = widthA > 1e-6 ? sign * (dyA / widthA) : 0;
+    const slopeB = widthB > 1e-6 ? sign * (dyB / widthB) : 0;
+
+    if (beyond <= 1e-6) return createCliffInfo({ slopeA, slopeB });
+
+    if (totalWidth <= 1e-6) {
+      return createCliffInfo({ heightOffset: dyA + dyB, slopeA, slopeB });
+    }
+
+    const distA = Math.min(beyond, widthA);
+    const distB = Math.max(0, Math.min(beyond - widthA, widthB));
+
+    let heightOffset = 0;
+    let coverageA = 0;
+    let coverageB = 0;
+    if (widthA > 1e-6) {
+      coverageA = distA / widthA;
+      heightOffset += dyA * coverageA;
+    }
+    if (widthB > 1e-6) {
+      coverageB = distB / widthB;
+      heightOffset += dyB * coverageB;
+    }
+
+    if (beyond >= totalWidth - 1e-6) {
+      return createCliffInfo({ heightOffset: dyA + dyB, slopeA, slopeB });
+    }
+
+    if (distB > 1e-6 && widthB > 1e-6) {
+      return createCliffInfo({
+        heightOffset,
+        slope: slopeB,
+        section: 'B',
+        slopeA,
+        slopeB,
+        coverageA,
+        coverageB,
+      });
+    }
+
+    if (distA > 1e-6 && widthA > 1e-6) {
+      return createCliffInfo({
+        heightOffset,
+        slope: slopeA,
+        section: 'A',
+        slopeA,
+        slopeB,
+        coverageA,
+        coverageB,
+      });
+    }
+
+    return createCliffInfo({ heightOffset, slopeA, slopeB, coverageA, coverageB });
+  }
+
+  function cliffLateralSlopeAt(segIndex, nNorm, t = 0) {
+    const info = cliffSurfaceInfoAt(segIndex, nNorm, t);
+    return info.slope;
   }
 
   function getAdditiveTiltDeg() {
@@ -270,6 +367,24 @@
   state.camera.updateFromFov = setFieldOfView;
   updateCameraFromFieldOfView();
 
+  function applyCliffPushForce(step) {
+    const ax = Math.abs(state.playerN);
+    if (ax <= 1) return;
+    const seg = segmentAtS(state.phys.s);
+    if (!seg) return;
+    const idx = seg.index;
+    const segT = clamp01((state.phys.s - seg.p1.world.z) / segmentLength);
+    const slope = cliffLateralSlopeAt(idx, state.playerN, segT);
+    if (Math.abs(slope) <= 1e-6) return;
+    const dir = -Math.sign(slope);
+    if (dir === 0) return;
+    const s = Math.max(0, Math.min(1.5, ax - 1));
+    const gain = 1 + cliffs.distanceGain * s;
+    let delta = dir * step * cliffs.pushStep * gain;
+    delta = Math.max(-cliffs.capPerFrame, Math.min(cliffs.capPerFrame, delta));
+    state.playerN += delta;
+  }
+
   const overlap = (ax, aw, bx, bw, scale = 1) => Math.abs(ax - bx) < (aw + bw) * scale;
 
   function doHop() {
@@ -290,12 +405,16 @@
     return true;
   }
 
-  // Player edge constraint based on road lanes and guard rails.
   function playerLateralLimit(segIndex) {
     const halfW = playerHalfWN();
     const baseLimit = Math.min(Math.abs(lanes.road.min), Math.abs(lanes.road.max));
     const base = baseLimit - halfW - 0.015;
-    return clampToRailLimit(segIndex, base, halfW, 0.015);
+    const seg = segmentAtIndex(segIndex);
+    if (seg && seg.features && seg.features.rail) {
+      const railInner = track.railInset - halfW - 0.015;
+      return Math.min(base, railInner);
+    }
+    return base;
   }
 
   function resolvePickupCollisionsInSeg(seg) {
@@ -324,7 +443,7 @@
         if (overlap(state.playerN, pHalf, car.offset, carHalfWN(car), 1)) {
           const capped = car.speed / Math.max(1, Math.abs(phys.vtan));
           phys.vtan = car.speed * capped;
-          phys.s = wrapDistance(car.z, -2, getTrackLength());
+          phys.s = wrapDistance(car.z, -2, trackLengthRef());
           break;
         }
       }
@@ -344,7 +463,7 @@
       input.hop = false;
     }
 
-    const steerAxis = steerAxisFromInput(input);
+    const steerAxis = (input.left && input.right) ? 0 : (input.left ? -1 : (input.right ? 1 : 0));
     const boosting = state.boostTimer > 0;
     if (boosting) state.boostTimer = Math.max(0, state.boostTimer - dt);
     const speed01 = clamp(Math.abs(phys.vtan) / player.topSpeed, 0, 1);
@@ -352,10 +471,10 @@
     if (boosting) steerDx *= drift.steerScale;
 
     if (state.driftState === 'drifting') {
-      let lock = drift.lockBase;
-      if (steerAxis === state.driftDirSnapshot) lock = drift.lockWith;
-      else if (steerAxis === -state.driftDirSnapshot) lock = drift.lockAgainst;
-      state.playerN += steerDx * lock * state.driftDirSnapshot;
+      let k = drift.lockBase;
+      if (steerAxis === state.driftDirSnapshot) k = drift.lockWith;
+      else if (steerAxis === -state.driftDirSnapshot) k = drift.lockAgainst;
+      state.playerN += steerDx * k * state.driftDirSnapshot;
     } else if (steerAxis !== 0) {
       state.playerN += steerDx * steerAxis;
     }
@@ -365,52 +484,57 @@
       state.playerN -= steerDx * speed01 * segAhead.curve * player.curveLean;
     }
 
+    applyCliffPushForce(steerDx);
     state.playerN = clamp(state.playerN, lanes.road.min, lanes.road.max);
 
     let segNow = segmentAtS(phys.s);
     const segFeatures = segNow ? segNow.features : null;
     const zonesHere = boostZonesForPlayer(segNow, state.playerN);
+    const hasZonesHere = zonesHere.length > 0;
     const driveZoneHere = zonesHere.find((zone) => zone.type === boost.types.drive) || null;
-    const zoneBoost = (segFeatures && segFeatures.boostMultiplier != null) ? segFeatures.boostMultiplier : player.crestBoost;
-    const zoneMultBase = zonesHere.length ? zoneBoost : 1;
+    const zoneMultBase = hasZonesHere
+      ? ((segFeatures && segFeatures.boostMultiplier != null) ? segFeatures.boostMultiplier : player.crestBoost)
+      : 1;
 
     const prevGrounded = phys.grounded;
     if (phys.grounded) {
-      const groundNow = groundProfileAt(phys.s);
-      const tnNow = tangentNormalFromSlope(groundNow.dy);
-      const boostScale = boosting ? drift.boostScale : 1;
-      const boostedMaxSpeed = player.topSpeed * boostScale;
-      const accel = player.accelForce * boostScale;
-      const brake = player.brakeForce * boostScale;
-      let accelSum = 0;
-      if (input.up) accelSum += accel;
-      if (input.down) accelSum -= brake;
-      accelSum += -player.gravity * tnNow.ty;
-      accelSum += -player.rollDrag * phys.vtan;
-      phys.vtan = clamp(phys.vtan + accelSum * dt, -boostedMaxSpeed, boostedMaxSpeed);
+      const { dy } = groundProfileAt(phys.s);
+      const { tx, ty } = tangentNormalFromSlope(dy);
+      const boostedMaxSpeed = player.topSpeed * (boosting ? drift.boostScale : 1);
+      const accel = player.accelForce * (boosting ? drift.boostScale : 1);
+      const brake = player.brakeForce * (boosting ? drift.boostScale : 1);
+      let a = 0;
+      if (input.up) a += accel;
+      if (input.down) a -= brake;
+      a += -player.gravity * ty;
+      a += -player.rollDrag * phys.vtan;
+      phys.vtan = clamp(phys.vtan + a * dt, -boostedMaxSpeed, boostedMaxSpeed);
 
-      const driveZoneId = driveZoneHere ? driveZoneHere.id : null;
-      if (driveZoneId && state.activeDriveZoneId !== driveZoneId) {
-        state.boostTimer = Math.max(state.boostTimer, drift.boostTime);
-        applyBoostImpulse();
+      if (driveZoneHere) {
+        if (state.activeDriveZoneId !== driveZoneHere.id) {
+          state.boostTimer = Math.max(state.boostTimer, drift.boostTime);
+          applyBoostImpulse();
+          state.activeDriveZoneId = driveZoneHere.id;
+        }
+      } else {
+        state.activeDriveZoneId = null;
       }
-      state.activeDriveZoneId = driveZoneId;
 
-      const travelV = phys.vtan * zoneMultBase;
-      phys.s += travelV * tnNow.tx * dt;
+      const zoneMult = zoneMultBase;
+      const travelV = phys.vtan * zoneMult;
+      phys.s += travelV * tx * dt;
+      phys.y = groundProfileAt(phys.s).y;
 
-      const groundNext = groundProfileAt(phys.s);
-      const tnNext = tangentNormalFromSlope(groundNext.dy);
-      phys.y = groundNext.y;
-
-      const kap = computeCurvature(groundNext.dy, groundNext.d2y);
+      const { dy: ndy, d2y } = groundProfileAt(phys.s);
+      const kap = computeCurvature(ndy, d2y);
       if (kap < 0) {
         const need = phys.vtan * phys.vtan * -kap;
-        const support = player.gravity * tnNext.ny;
+        const support = player.gravity * tangentNormalFromSlope(ndy).ny;
         if (need > support) {
           phys.grounded = false;
-          phys.vx = phys.vtan * tnNext.tx;
-          phys.vy = phys.vtan * tnNext.ty;
+          const tn = tangentNormalFromSlope(ndy);
+          phys.vx = phys.vtan * tn.tx;
+          phys.vy = phys.vtan * tn.ty;
         }
       }
     } else {
@@ -424,13 +548,12 @@
 
       state.activeDriveZoneId = null;
 
-      const groundNext = groundProfileAt(phys.s);
-      const gy = groundNext.y;
-      const { dy } = groundNext;
+      const gy = elevationAt(phys.s);
+      const { dy } = groundProfileAt(phys.s);
       if (phys.y <= gy && phys.vy <= phys.vx * dy) {
         const tn = tangentNormalFromSlope(dy);
-        const landCap = boosting ? player.topSpeed * drift.boostScale : player.topSpeed;
         const vtanNew = phys.vx * tn.tx + phys.vy * tn.ty;
+        const landCap = boosting ? player.topSpeed * drift.boostScale : player.topSpeed;
         phys.vtan = clamp(vtanNew, -landCap, landCap);
         phys.y = gy;
         phys.grounded = true;
@@ -438,11 +561,25 @@
     }
 
     if (!prevGrounded && phys.grounded) {
-      const steerAxisLanding = steerAxisFromInput(input);
-      if (state.hopHeld && steerAxisLanding !== 0) {
-        beginDrift(steerAxisLanding);
+      const steerAxis2 = (input.left && input.right) ? 0 : (input.left ? -1 : (input.right ? 1 : 0));
+      if (state.hopHeld) {
+        const dir = (steerAxis2 === 0) ? 0 : steerAxis2;
+        if (dir !== 0) {
+          state.driftState = 'drifting';
+          state.driftDirSnapshot = dir;
+          state.driftCharge = 0;
+          state.allowedBoost = false;
+        } else {
+          state.driftState = 'idle';
+          state.driftDirSnapshot = 0;
+          state.driftCharge = 0;
+          state.allowedBoost = false;
+        }
       } else {
-        resetDriftState();
+        state.driftState = 'idle';
+        state.driftDirSnapshot = 0;
+        state.driftCharge = 0;
+        state.allowedBoost = false;
       }
     }
 
@@ -456,19 +593,26 @@
           }
         }
       } else {
-        resetDriftState();
+        state.driftState = 'idle';
+        state.driftDirSnapshot = 0;
+        state.driftCharge = 0;
+        state.allowedBoost = false;
       }
     }
 
     phys.t += dt;
 
-    const length = getTrackLength();
+    const length = trackLengthRef();
     if (length > 0) {
-      phys.s = wrap(phys.s, length);
+      phys.s = ((phys.s % length) + length) % length;
     }
 
     const aY = 1 - Math.exp(-dt / camera.heightEase);
-    const targetCamY = phys.y + camera.height;
+    let targetCamY = phys.y + camera.height;
+    if (phys.grounded) {
+      const floorY = floorElevationAt ? floorElevationAt(phys.s, state.playerN) : phys.y;
+      targetCamY += (floorY - phys.y) * cliffs.cameraBlend;
+    }
     state.camYSmooth += aY * (targetCamY - state.camYSmooth);
 
     state.lateralRate = state.playerN - state.prevPlayerN;
@@ -479,7 +623,7 @@
       const bound = playerLateralLimit(segNow.index);
       const preClamp = state.playerN;
       state.playerN = clamp(state.playerN, -bound, bound);
-      const scraping = Math.abs(preClamp) > bound - EPS || Math.abs(state.playerN) >= bound - EPS;
+      const scraping = Math.abs(preClamp) > bound - 1e-6 || Math.abs(state.playerN) >= bound - 1e-6;
       if (scraping) {
         const offRoadDecelLimit = player.topSpeed / 4;
         if (Math.abs(phys.vtan) > offRoadDecelLimit) {
@@ -493,7 +637,8 @@
 
     if (!state.resetMatteActive) {
       const roadY = elevationAt(phys.s);
-      if ((roadY - phys.y) > failsafe.dropUnits) {
+      const bodyY = phys.grounded ? (floorElevationAt ? floorElevationAt(phys.s, state.playerN) : phys.y) : phys.y;
+      if (bodyY != null && (roadY - bodyY) > failsafe.dropUnits) {
         queueRespawn(phys.s);
       }
     }
@@ -516,13 +661,13 @@
     const segCount = segments.length;
     for (let i = 0; i < NPC.total; i += 1) {
       const s = Math.floor(Math.random() * segCount) * segmentLength;
-      const type = chooseCarType();
+      const type = CAR_TYPES[Math.random() < 0.75 ? 0 : 1];
       const meta = getSpriteMeta(type);
       const tmpCar = { type, meta };
       const seg = segmentAtS(s);
       if (!seg) continue;
       const b = npcLateralLimit(seg.index, tmpCar);
-      const side = randomSign();
+      const side = Math.random() < 0.5 ? -1 : 1;
       const offset = side * (Math.random() * (b * 0.9));
       const isSemi = type === 'SEMI';
       const speed = (player.topSpeed / 6) + Math.random() * player.topSpeed / (isSemi ? 5 : 3);
@@ -578,7 +723,7 @@
       const oldSeg = segmentAtS(car.z);
       const avoidance = steerAvoidance(car, oldSeg, playerSeg, playerHalfWN());
       car.offset += avoidance;
-      car.z = wrapDistance(car.z, dt * car.speed, getTrackLength());
+      car.z = wrapDistance(car.z, dt * car.speed, trackLengthRef());
       const newSeg = segmentAtS(car.z);
       if (oldSeg && newSeg && oldSeg !== newSeg) {
         const idx = oldSeg.cars.indexOf(car);
@@ -603,16 +748,16 @@
     if (!hasSegments()) return;
     const segCount = segments.length;
     for (let i = 8; i < segCount; i += 6) {
-      addProp(i, randomPropKind(), -1.25 - Math.random() * 0.15);
-      addProp(i, randomPropKind(), 1.25 + Math.random() * 0.15);
+      addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', -1.25 - Math.random() * 0.15);
+      addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', 1.25 + Math.random() * 0.15);
       if (i % 12 === 0) {
         addProp(i, 'SIGN', -1.05);
         addProp(i, 'SIGN', 1.05);
       }
       if (i % 18 === 0) {
         const extra = 1.6 + Math.random() * 1.6;
-        addProp(i, randomPropKind(), -extra);
-        addProp(i, randomPropKind(), extra);
+        addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', -extra);
+        addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', extra);
       }
     }
   }
@@ -663,23 +808,15 @@
     return () => { state.input[flag] = value; };
   }
 
-  const KEY_DIRECTION_CODES = {
-    left: ['ArrowLeft', 'KeyA'],
-    right: ['ArrowRight', 'KeyD'],
-    up: ['ArrowUp', 'KeyW'],
-    down: ['ArrowDown', 'KeyS'],
-  };
-
-  function applyDirectionalBindings(actions, value) {
-    Object.entries(KEY_DIRECTION_CODES).forEach(([flag, codes]) => {
-      const action = keyActionFromFlag(flag, value);
-      codes.forEach((code) => {
-        actions[code] = action;
-      });
-    });
-  }
-
   const keydownActions = {
+    ArrowLeft: keyActionFromFlag('left', true),
+    KeyA: keyActionFromFlag('left', true),
+    ArrowRight: keyActionFromFlag('right', true),
+    KeyD: keyActionFromFlag('right', true),
+    ArrowUp: keyActionFromFlag('up', true),
+    KeyW: keyActionFromFlag('up', true),
+    ArrowDown: keyActionFromFlag('down', true),
+    KeyS: keyActionFromFlag('down', true),
     Space: () => {
       if (!state.hopHeld) {
         if (state.phys.grounded && state.phys.t >= state.phys.nextHopTime) {
@@ -694,17 +831,24 @@
     KeyL: () => { if (typeof state.callbacks.onResetScene === 'function') state.callbacks.onResetScene(); },
   };
 
-  applyDirectionalBindings(keydownActions, true);
-
   const keyupActions = {
+    ArrowLeft: keyActionFromFlag('left', false),
+    KeyA: keyActionFromFlag('left', false),
+    ArrowRight: keyActionFromFlag('right', false),
+    KeyD: keyActionFromFlag('right', false),
+    ArrowUp: keyActionFromFlag('up', false),
+    KeyW: keyActionFromFlag('up', false),
+    ArrowDown: keyActionFromFlag('down', false),
+    KeyS: keyActionFromFlag('down', false),
     Space: () => {
       state.hopHeld = false;
       if (state.allowedBoost) state.boostTimer = drift.boostTime;
-      resetDriftState();
+      state.driftState = 'idle';
+      state.driftDirSnapshot = 0;
+      state.driftCharge = 0;
+      state.allowedBoost = false;
     },
   };
-
-  applyDirectionalBindings(keyupActions, false);
 
   function createKeyHandler(actions) {
     return (e) => {
@@ -741,7 +885,10 @@
     state.camYSmooth = phys.y + cameraHeight;
 
     state.hopHeld = false;
-    resetDriftState();
+    state.driftState = 'idle';
+    state.driftDirSnapshot = 0;
+    state.driftCharge = 0;
+    state.allowedBoost = false;
     state.boostTimer = 0;
 
     state.camRollDeg = 0;
@@ -752,8 +899,8 @@
   }
 
   function respawnPlayerAt(sTarget, nNorm = 0) {
-    const length = getTrackLength();
-    const sWrapped = wrap(sTarget, length);
+    const length = trackLengthRef();
+    const sWrapped = length > 0 ? ((sTarget % length) + length) % length : sTarget;
     const seg = segmentAtS(sWrapped);
     const segIdx = seg ? seg.index : 0;
     const bound = playerLateralLimit(segIdx);
