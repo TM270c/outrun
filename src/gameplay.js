@@ -355,7 +355,11 @@
       if (!Number.isFinite(distance)) return null;
       const dist = Math.max(0, distance);
       const normalized = 1 + (dist / roadW);
-      const limit = normalized - half - pad;
+      let limit = normalized - half - pad;
+      if (Number.isFinite(track.railInset)) {
+        const guardrailLimit = Math.max(0, track.railInset - half - pad);
+        limit = Math.min(limit, guardrailLimit);
+      }
       if (!Number.isFinite(limit)) return null;
       return Math.max(0, limit);
     };
@@ -363,10 +367,10 @@
     const slopeAngleFor = (section) => {
       if (!section) return 0;
       const width = Math.max(0, Math.abs(section.dx ?? 0));
-      const height = section.dy ?? 0;
-      if (height <= 0) return 0;
+      const height = Math.abs(section.dy ?? 0);
+      if (height <= EPS_DIST) return 0;
       if (width <= EPS_DIST) return 90;
-      return Math.atan2(Math.abs(height), width) * RAD_TO_DEG;
+      return Math.atan2(height, width) * RAD_TO_DEG;
     };
 
     const makeBoundForSide = (sections = []) => {
@@ -439,7 +443,8 @@
       : Math.atan2(Math.abs(sectionDy), sectionDx) * RAD_TO_DEG;
 
     const limitDeg = cliffs.driveLimitDeg ?? 90;
-    if (limitDeg > 0 && upward && slopeAngleDeg >= limitDeg) {
+    const steepEnough = slopeAngleDeg >= limitDeg;
+    if (limitDeg > 0 && steepEnough) {
       applyCliffGuardrailLimits(seg, segT);
       return;
     }
