@@ -357,11 +357,14 @@
       const dist = Math.max(0, distance);
       const normalizedEdge = 1 + (dist / roadW);
       const limit = normalizedEdge - half - pad;
+      const normalized = 1 + (dist / roadW);
+      const limit = normalized - half - pad;
       if (!Number.isFinite(limit)) return null;
       return Math.max(0, limit);
     };
 
     const resolveSectionAngle = (section, sectionIndex, accumDist, sideSign) => {
+    const slopeAngleFor = (section) => {
       if (!section) return 0;
       const width = Math.max(0, Math.abs(section.dx ?? 0));
       const height = section.dy ?? 0;
@@ -408,8 +411,21 @@
           const width = Math.max(0, Math.abs(section.dx ?? 0));
           accum += width;
         }
+      return Math.atan2(Math.abs(height), width) * RAD_TO_DEG;
+    };
+
+    const makeBoundForSide = (sections = []) => {
+      let accum = 0;
+      for (const section of sections) {
+        if (!section) continue;
+        const angle = slopeAngleFor(section);
+        if (angle >= limitDeg && angle > 0) {
+          return limitFromDistance(accum);
+        }
+        const width = Math.max(0, Math.abs(section.dx ?? 0));
+        accum += width;
       }
-      return bestLimit;
+      return null;
     };
 
     const leftLimit = makeBoundForSide([params.leftA, params.leftB], -1);
