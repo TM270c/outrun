@@ -10,7 +10,6 @@
     player,
     track,
     camera,
-    cliffs = {},
     failsafe,
     drift,
     boost,
@@ -37,7 +36,6 @@
     data,
     getTrackLength,
     roadWidthAt,
-    floorElevationAt,
     cliffSurfaceInfoAt,
     segmentAtS,
     elevationAt,
@@ -60,11 +58,6 @@
 
   // Detect if a segment carries guard rails.
   const hasRail = (seg) => Boolean(seg && seg.features && seg.features.rail);
-
-  // Resolve floor height sampler if provided.
-  const sampleFloorElevation = (s, nNorm, fallback) => (
-    typeof floorElevationAt === 'function' ? floorElevationAt(s, nNorm) : fallback
-  );
 
   // Translate steering input flags into a signed axis.
   const steerAxisFromInput = (input) => {
@@ -475,14 +468,7 @@
     }
 
     const aY = 1 - Math.exp(-dt / camera.heightEase);
-    let targetCamY = phys.y + camera.height;
-    if (phys.grounded) {
-      const floorY = sampleFloorElevation(phys.s, state.playerN, phys.y);
-      const blend = cliffs.cameraBlend != null ? cliffs.cameraBlend : 0;
-      if (floorY != null && blend !== 0) {
-        targetCamY += (floorY - phys.y) * blend;
-      }
-    }
+    const targetCamY = phys.y + camera.height;
     state.camYSmooth += aY * (targetCamY - state.camYSmooth);
 
     state.lateralRate = state.playerN - state.prevPlayerN;
@@ -507,8 +493,7 @@
 
     if (!state.resetMatteActive) {
       const roadY = elevationAt(phys.s);
-      const bodyY = phys.grounded ? sampleFloorElevation(phys.s, state.playerN, phys.y) : phys.y;
-      if (bodyY != null && (roadY - bodyY) > failsafe.dropUnits) {
+      if ((roadY - phys.y) > failsafe.dropUnits) {
         queueRespawn(phys.s);
       }
     }
