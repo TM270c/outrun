@@ -350,67 +350,22 @@
     const half = playerHalfWN();
     const pad = PLAYER_EDGE_PAD;
     const EPS_DIST = 1e-6;
-    const SAMPLE_EPS = 1e-3;
 
     const limitFromDistance = (distance) => {
       if (!Number.isFinite(distance)) return null;
       const dist = Math.max(0, distance);
-      const normalizedEdge = 1 + (dist / roadW);
-      const limit = normalizedEdge - half - pad;
       const normalized = 1 + (dist / roadW);
       const limit = normalized - half - pad;
       if (!Number.isFinite(limit)) return null;
       return Math.max(0, limit);
     };
 
-    const resolveSectionAngle = (section, sectionIndex, accumDist, sideSign) => {
     const slopeAngleFor = (section) => {
       if (!section) return 0;
       const width = Math.max(0, Math.abs(section.dx ?? 0));
       const height = section.dy ?? 0;
       if (height <= 0) return 0;
       if (width <= EPS_DIST) return 90;
-
-      const baseAngle = Math.atan2(Math.abs(height), width) * RAD_TO_DEG;
-      if (width <= SAMPLE_EPS || typeof cliffSurfaceInfoAt !== 'function') return baseAngle;
-
-      const maxOffset = Math.max(width - SAMPLE_EPS, SAMPLE_EPS);
-      const sampleOffset = Math.min(Math.max(width * 0.5, SAMPLE_EPS), maxOffset);
-      const sampleDist = accumDist + sampleOffset;
-      const denom = Math.max(roadW, EPS_DIST);
-      const absN = 1 + (sampleDist / denom);
-      const sampleN = sideSign * absN;
-      const info = cliffSurfaceInfoAt(seg.index, sampleN, segT);
-
-      if (!info) return baseAngle;
-
-      const slope = sectionIndex === 0
-        ? (info.slopeA ?? info.slope ?? 0)
-        : (info.slopeB ?? info.slope ?? 0);
-
-      if (!Number.isFinite(slope)) return baseAngle;
-
-      const infoAngle = Math.abs(Math.atan(slope) * RAD_TO_DEG);
-      return Math.max(baseAngle, infoAngle);
-    };
-
-    const makeBoundForSide = (sections = [], sideSign = 1) => {
-      let accum = 0;
-      let bestLimit = null;
-      for (let i = 0; i < sections.length; i++) {
-        const section = sections[i];
-        if (section) {
-          const angle = resolveSectionAngle(section, i, accum, sideSign);
-          if (angle >= limitDeg && angle > 0) {
-            const limit = limitFromDistance(accum);
-            if (limit != null) {
-              bestLimit = bestLimit == null ? limit : Math.min(bestLimit, limit);
-              break;
-            }
-          }
-          const width = Math.max(0, Math.abs(section.dx ?? 0));
-          accum += width;
-        }
       return Math.atan2(Math.abs(height), width) * RAD_TO_DEG;
     };
 
@@ -428,8 +383,8 @@
       return null;
     };
 
-    const leftLimit = makeBoundForSide([params.leftA, params.leftB], -1);
-    const rightLimit = makeBoundForSide([params.rightA, params.rightB], 1);
+    const leftLimit = makeBoundForSide([params.leftA, params.leftB]);
+    const rightLimit = makeBoundForSide([params.rightA, params.rightB]);
 
     const customBounds = {};
     let hasBound = false;
