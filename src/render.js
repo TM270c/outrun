@@ -849,15 +849,6 @@
     glr.drawQuadSolid(bodyQuad, SPRITE_META.PLAYER.tint, fogBody);
   }
 
-  function worldToOverlay(s, y){
-    const metersPerPixel = track.metersPerPixel || {};
-    const metersPerPixelX = metersPerPixel.x || 1;
-    const metersPerPixelY = metersPerPixel.y || 1;
-    return {
-      x: (s - state.phys.s) * (1 / metersPerPixelX) + SW * 0.5,
-      y: SH - y * (1 / metersPerPixelY) - 60,
-    };
-  }
   function drawTrackProfilePanel(ctx){
     const panelX = 0;
     const panelY = 16;
@@ -1004,8 +995,24 @@
   function renderOverlay(){
     if (!overlayOn || !ctxSide) return;
     ctxSide.clearRect(0,0,SW,SH);
-    const trackPanelBottom = drawTrackProfilePanel(ctxSide);
-    drawBoostCrossSection(ctxSide, trackPanelBottom + 16);
+    ctxSide.lineWidth = 2;
+    ctxSide.strokeStyle = state.phys.boostFlashTimer>0 ? '#d32f2f' : '#1976d2';
+    ctxSide.beginPath();
+    const sStart = state.phys.s - SW*0.5*track.metersPerPixel.x;
+    const sEnd   = state.phys.s + SW*0.5*track.metersPerPixel.x;
+    const step   = Math.max(5, 2*track.metersPerPixel.x);
+    let first = true;
+    for (let s = sStart; s <= sEnd; s += step){
+      const p = worldToOverlay(s, elevationAt(s));
+      if (first){ ctxSide.moveTo(p.x,p.y); first=false; } else { ctxSide.lineTo(p.x,p.y); }
+    }
+    ctxSide.stroke();
+
+    drawBoostCrossSection(ctxSide);
+
+    const p = worldToOverlay(state.phys.s, state.phys.y);
+    ctxSide.fillStyle = '#2e7d32';
+    ctxSide.beginPath(); ctxSide.arc(p.x, p.y, 6, 0, Math.PI*2); ctxSide.fill();
 
     const { dy, d2y } = groundProfileAt(state.phys.s);
     const kap = computeCurvature(dy, d2y);
