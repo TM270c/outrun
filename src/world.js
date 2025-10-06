@@ -709,29 +709,19 @@
     const roadW = roadWidthAt(baseZ + clamp01(t) * segmentLength);
     const beyond = Math.max(0, (absN - 1) * roadW);
 
-    const EPS = 1e-6;
     const widthA = Math.max(0, dxA);
     const widthB = Math.max(0, dxB);
     const totalWidth = widthA + widthB;
 
-    const hasHeightA = Math.abs(dyA) > EPS;
-    const hasHeightB = Math.abs(dyB) > EPS;
-    const isVerticalA = hasHeightA && widthA <= EPS;
-    const isVerticalB = hasHeightB && widthB <= EPS;
-    const verticalSlope = (dy) => sign * (dy >= 0 ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
+    const slopeA = (widthA > 1e-6) ? sign * (dyA / widthA) : 0;
+    const slopeB = (widthB > 1e-6) ? sign * (dyB / widthB) : 0;
 
-    const slopeA = (widthA > EPS)
-      ? sign * (dyA / widthA)
-      : (isVerticalA ? verticalSlope(dyA) : 0);
-    const slopeB = (widthB > EPS)
-      ? sign * (dyB / widthB)
-      : (isVerticalB ? verticalSlope(dyB) : 0);
-
-    const touchesVerticalA = isVerticalA && beyond > 0;
-    const touchesVerticalB = isVerticalB && beyond > Math.max(widthA - EPS, 0);
-
-    if (beyond <= EPS && !touchesVerticalA && !touchesVerticalB) {
+    if (beyond <= 1e-6) {
       return { heightOffset: 0, slope: 0, section: null, slopeA, slopeB, coverageA: 0, coverageB: 0 };
+    }
+
+    if (totalWidth <= 1e-6) {
+      return { heightOffset: dyA + dyB, slope: 0, section: null, slopeA, slopeB, coverageA: 0, coverageB: 0 };
     }
 
     const distA = Math.min(beyond, widthA);
@@ -740,53 +730,27 @@
     let heightOffset = 0;
     let coverageA = 0;
     let coverageB = 0;
-
-    if (widthA > EPS) {
-      coverageA = clamp01(widthA > 0 ? distA / widthA : 0);
+    if (widthA > 1e-6) {
+      coverageA = distA / widthA;
       heightOffset += dyA * coverageA;
-    } else if (touchesVerticalA) {
-      coverageA = 1;
-      heightOffset += dyA;
     }
-
-    if (widthB > EPS) {
-      coverageB = clamp01(widthB > 0 ? distB / widthB : 0);
+    if (widthB > 1e-6) {
+      coverageB = distB / widthB;
       heightOffset += dyB * coverageB;
-    } else if (touchesVerticalB) {
-      coverageB = 1;
-      heightOffset += dyB;
     }
 
-    if (coverageB <= 0 && hasHeightB && beyond > EPS && beyond >= totalWidth - EPS && beyond >= Math.max(widthA - EPS, 0)) {
-      coverageB = 1;
-      heightOffset += dyB;
+    if (beyond >= totalWidth - 1e-6) {
+      return { heightOffset: dyA + dyB, slope: 0, section: null, slopeA, slopeB, coverageA: 0, coverageB: 0 };
     }
 
-    const touchedB = (widthB > EPS && distB > EPS) || touchesVerticalB || (coverageB > 0 && beyond >= totalWidth - EPS);
-    const touchedA = (widthA > EPS && distA > EPS) || touchesVerticalA;
-
-    if (touchedB || (beyond >= totalWidth - EPS && (coverageB > 0 || hasHeightB))) {
-      return {
-        heightOffset,
-        slope: slopeB,
-        section: 'B',
-        slopeA,
-        slopeB,
-        coverageA,
-        coverageB,
-      };
+    if (distB > 1e-6 && widthB > 1e-6) {
+      const slope = slopeB;
+      return { heightOffset, slope, section: 'B', slopeA, slopeB, coverageA, coverageB };
     }
 
-    if (touchedA || (beyond >= totalWidth - EPS && (coverageA > 0 || hasHeightA))) {
-      return {
-        heightOffset,
-        slope: slopeA,
-        section: 'A',
-        slopeA,
-        slopeB,
-        coverageA,
-        coverageB,
-      };
+    if (distA > 1e-6 && widthA > 1e-6) {
+      const slope = slopeA;
+      return { heightOffset, slope, section: 'A', slopeA, slopeB, coverageA, coverageB };
     }
 
     return { heightOffset, slope: 0, section: null, slopeA, slopeB, coverageA, coverageB };
