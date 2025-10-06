@@ -938,7 +938,7 @@
     const step   = Math.max(5, 2*track.metersPerPixel.x);
     let first = true;
     for (let s = sStart; s <= sEnd; s += step){
-      const p = worldToOverlay(s, floorElevationAt(s, state.playerN));
+      const p = worldToOverlay(s, elevationAt(s));
       if (first){ ctxSide.moveTo(p.x,p.y); first=false; } else { ctxSide.lineTo(p.x,p.y); }
     }
     ctxSide.stroke();
