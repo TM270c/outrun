@@ -101,6 +101,8 @@
       this._fogColor = [NaN,NaN,NaN];
 
       this.whiteTex = this._makeWhiteTex();
+
+      this.stats = { quads: 0 };
     }
     _createShader(src, type){
       const gl=this.gl, sh = gl.createShader(type);
@@ -147,6 +149,7 @@
       });
     }
     begin(clear){
+      this.stats.quads = 0;
       const clearColor = clear === undefined ? DEFAULT_CLEAR_COLOR : clear;
       const gl=this.gl;
       gl.viewport(0,0,gl.canvas.width,gl.canvas.height);
@@ -190,6 +193,9 @@
       gl.bindTexture(gl.TEXTURE_2D, tex || this.whiteTex);
       gl.uniform1i(this.u_useTex, tex ? 1 : 0);
       gl.drawArrays(gl.TRIANGLES,0,6);
+      if (this.stats && typeof this.stats.quads === 'number') {
+        this.stats.quads += 1;
+      }
     }
     drawQuadSolid(quad, color, fog){
       const colorArray = color === undefined ? DEFAULT_SOLID_COLOR : color;
