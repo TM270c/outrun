@@ -849,20 +849,88 @@
     glr.drawQuadSolid(bodyQuad, SPRITE_META.PLAYER.tint, fogBody);
   }
 
-  function worldToOverlay(s,y){
-    return {
-      x:(s-state.phys.s)*(1/track.metersPerPixel.x) + SW*0.5,
-      y: SH - y*(1/track.metersPerPixel.y) - 60
-    };
+  function drawTrackProfilePanel(ctx){
+    const panelX = 0;
+    const panelY = 16;
+    const panelW = SW;
+    const panelH = 130;
+    const graphPadX = 32;
+    const graphPadTop = 26;
+    const graphPadBottom = 34;
+    const graphW = panelW - graphPadX * 2;
+    const graphH = panelH - graphPadTop - graphPadBottom;
+
+    ctx.save();
+    ctx.translate(panelX, panelY);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, panelW, panelH);
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, panelW - 1, panelH - 1);
+
+    ctx.fillStyle = '#1c1c1c';
+    ctx.fillRect(graphPadX, graphPadTop, graphW, graphH);
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+    ctx.strokeRect(graphPadX + 0.5, graphPadTop + 0.5, graphW - 1, graphH - 1);
+
+    const centerX = graphPadX + graphW * 0.5;
+    const centerY = graphPadTop + graphH * 0.5;
+    const metersPerPixelX = track.metersPerPixel.x || 1;
+    const metersPerPixelY = track.metersPerPixel.y || 1;
+    const sCenter = state.phys.s;
+    const sSpan = graphW * metersPerPixelX;
+    const sStart = sCenter - sSpan * 0.5;
+    const samples = Math.max(2, Math.ceil(graphW / 4));
+    const baseElevation = elevationAt(sCenter);
+    const scaleY = 1 / metersPerPixelY;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(graphPadX, graphPadTop, graphW, graphH);
+    ctx.clip();
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = state.phys.boostFlashTimer > 0 ? '#d32f2f' : '#1976d2';
+    ctx.beginPath();
+    for (let i = 0; i < samples; i++){
+      const t = i / (samples - 1);
+      const s = sStart + t * sSpan;
+      const elevation = elevationAt(s);
+      const dx = (s - sCenter) / metersPerPixelX;
+      const dy = (elevation - baseElevation) * scaleY;
+      const x = centerX + dx;
+      const y = centerY - dy;
+      if (i === 0){
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+
+    ctx.restore();
+
+    ctx.fillStyle = '#2e7d32';
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#0b2510';
+    ctx.stroke();
+
+    ctx.restore();
+
+    return panelY + panelH;
   }
-  function drawBoostCrossSection(ctx){
+  function drawBoostCrossSection(ctx, startY = 24){
     const panelX = 24;
-    const panelY = 24;
+    const panelY = startY;
     const panelW = 220;
-    const panelH = 120;
+    const panelH = 116;
     const roadPadX = 18;
-    const roadPadTop = 24;
-    const roadPadBottom = 20;
+    const roadPadTop = 22;
+    const roadPadBottom = 24;
     const roadW = panelW - roadPadX * 2;
     const roadH = panelH - roadPadTop - roadPadBottom;
 
@@ -871,14 +939,16 @@
 
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(0, 0, panelW, panelH);
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, panelW - 1, panelH - 1);
 
     const roadX = roadPadX;
     const roadY = roadPadTop;
-    ctx.fillStyle = '#484848';
+    ctx.fillStyle = '#1c1c1c';
     ctx.fillRect(roadX, roadY, roadW, roadH);
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(roadX, roadY, roadW, roadH);
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+    ctx.strokeRect(roadX + 0.5, roadY + 0.5, roadW - 1, roadH - 1);
 
     const seg = segmentAtS(state.phys.s);
     const zones = boostZonesOnSegment(seg);
@@ -919,11 +989,6 @@
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 1.5;
     ctx.stroke();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '11px system-ui, Arial';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('Cross-section', 0, panelH - 4);
 
     ctx.restore();
   }
