@@ -1,20 +1,12 @@
 # Columns: type,enter,hold,leave,curve,dy,railpresent,boostStart,boostEnd,repeats,boostType,boostLaneStart,boostLaneEnd,boostVisible[,comment]
-# Demo track showcasing varied hills, curves, straights, boosts, and guardrail layouts. Height ends where it begins.
-# Set railpresent=false to drop guardrails for that build step. Hill types: smoothHill (eased), sharpHill (mirrored sharp), straight (linear grade).
+# Set railpresent=false to drop guardrails for that build step. Hill types: smoothHill (eased), smoothHill (mirrored sharp), straight (linear grade).
 # Provide a boost window via boostStart/boostEnd (segment offsets within the generated block) to auto-spawn pickups and apply the boost multiplier. Use boostStart=0 and boostEnd=0 to skip spawning a boost zone for that row.
 # Optional boostType column accepts "jump" (orange hop boost) or "drive" (blue drive-over boost). Provide boostLaneStart/boostLaneEnd values to constrain the boost zone laterally using player-normalized coordinates (-2 at far left, +2 at far right).
-straight,20,40,20,0,0,true,0,0,1,,,,,Warm-up straight with full guardrails
-smoothHill,24,32,24,0,5,true,0,0,1,,,,,Gentle smooth climb
-straight,12,24,12,0,0,true,4,28,1,drive,-0.5,0.5,true,Mid-plateau with centred drive boost
-smoothHill,24,32,24,0,-5,true,0,0,1,,,,,Matching smooth descent back to base elevation
-sharpHill,12,16,12,0,4,true,0,0,1,,,,,Sharp crest rising toward lookout
-straight,6,12,6,0,0,false,0,0,1,,,,,Scenic straight without guardrails
-sharpHill,12,16,12,0,-4,true,0,0,1,,,,,Sharp drop into valley floor
-smoothHill,6,8,6,0,1,true,0,0,1,,,,,Small bump jump setup
-smoothHill,6,8,6,0,-1,true,0,0,1,,,,,Small bump landing
-curve,10,20,10,30,0,true,0,0,1,,,,,Sweeping left curve with gentle grade
-curve,10,14,10,-32,0,false,2,12,1,jump,1,2,true,Cliffside right hairpin with jump boost
-curve,4,8,4,18,0,true,0,0,1,,,,,Quick left flick entering chicane
-curve,4,8,4,-18,0,true,0,0,1,,,,,Quick right flick
-curve,4,8,4,12,0,true,0,0,1,,,,,Left exit from chicane
-straight,12,24,12,0,0,true,8,20,1,jump,-2,-0.5,true,Final straight with outer-lane jump pads
+straight,30,30,30,0,0,false,2,30,1,
+straight,4,4,4,0,4,false,2,30,1,
+straight,4,4,4,0,-4,false,2,30,1,
+straight,30,30,30,0,0,false,2,30,1,
+straight,200,200,200,20,-120,true,2,30,1,
+straight,30,30,30,0,0,false,2,30,1,
+straight,30,30,30,-10,0,false,2,30,1,
+straight,30,30,30,0,0,false,2,30,1,

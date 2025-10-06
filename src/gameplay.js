@@ -38,8 +38,8 @@
     getTrackLength,
     roadWidthAt,
     floorElevationAt,
-    cliffParamsAt,
     cliffSurfaceInfoAt,
+    cliffLateralSlopeAt,
     segmentAtS,
     elevationAt,
     groundProfileAt,
@@ -212,8 +212,6 @@
     return getSpriteMeta('PLAYER').wN * state.getKindScale('PLAYER') * 0.5;
   }
 
-  const PLAYER_EDGE_PAD = 0.015;
-
   // Half-width in normalized space for an NPC car sprite.
   function carHalfWN(car) {
     const type = car && car.type ? car.type : 'CAR';
@@ -222,9 +220,9 @@
   }
 
   // Apply guard-rail constraints to a lateral bound.
-  const clampToRailLimit = (segIndex, baseLimit, halfWidth, pad, forceRailInset = false) => {
+  const clampToRailLimit = (segIndex, baseLimit, halfWidth, pad) => {
     const seg = segmentAtIndex(segIndex);
-    if (forceRailInset || hasRail(seg)) {
+    if (hasRail(seg)) {
       const railInner = track.railInset - halfWidth - pad;
       return Math.min(baseLimit, railInner);
     }
@@ -280,131 +278,6 @@
   state.camera.updateFromFov = setFieldOfView;
   updateCameraFromFieldOfView();
 
-  const RAD_TO_DEG = 180 / Math.PI;
-
-  // Clamp the player against guard rails or steep cliff edges and bleed speed.
-  function applyGuardrailBrake(seg, forceRailInset = false, customBound = null) {
-    if (!seg) return false;
-    const baseBound = playerLateralLimit(seg.index, forceRailInset);
-    let leftBound = baseBound;
-    let rightBound = baseBound;
-
-    if (customBound != null) {
-      if (typeof customBound === 'number') {
-        const safe = Math.max(0, Math.abs(customBound));
-        leftBound = Math.min(leftBound, safe);
-        rightBound = Math.min(rightBound, safe);
-      } else if (typeof customBound === 'object') {
-        if (customBound.left != null) {
-          const safeLeft = Math.max(0, Math.abs(customBound.left));
-          leftBound = Math.min(leftBound, safeLeft);
-        }
-        if (customBound.right != null) {
-          const safeRight = Math.max(0, Math.abs(customBound.right));
-          rightBound = Math.min(rightBound, safeRight);
-        }
-        if (customBound.both != null) {
-          const safeBoth = Math.max(0, Math.abs(customBound.both));
-          leftBound = Math.min(leftBound, safeBoth);
-          rightBound = Math.min(rightBound, safeBoth);
-        }
-      }
-    }
-
-    const preClamp = state.playerN;
-    let clamped = preClamp;
-    if (clamped < -leftBound) clamped = -leftBound;
-    if (clamped > rightBound) clamped = rightBound;
-    state.playerN = clamp(clamped, -leftBound, rightBound);
-
-    const leftScrape = leftBound >= 0 && state.playerN <= -leftBound + EPS;
-    const rightScrape = rightBound >= 0 && state.playerN >= rightBound - EPS;
-    const scraping = Math.abs(preClamp - state.playerN) > EPS || leftScrape || rightScrape;
-    if (!scraping) return false;
-
-    const { phys } = state;
-    const offRoadDecelLimit = player.topSpeed / 4;
-    if (Math.abs(phys.vtan) > offRoadDecelLimit) {
-      const sign = Math.sign(phys.vtan) || 1;
-      phys.vtan -= sign * (player.topSpeed * 0.8) * (1 / 60);
-    }
-    return true;
-  }
-
-  function applyCliffGuardrailLimits(seg, segT) {
-    if (!seg || typeof cliffParamsAt !== 'function' || typeof roadWidthAt !== 'function') {
-      return false;
-    }
-
-    const limitDeg = Math.max(0, cliffs.driveLimitDeg ?? 0);
-    if (limitDeg <= 0) return false;
-
-    const params = cliffParamsAt(seg.index, segT);
-    if (!params) return false;
-
-    const baseZ = seg.p1 && seg.p1.world ? seg.p1.world.z : seg.index * segmentLength;
-    const roadZ = baseZ + clamp01(segT) * segmentLength;
-    const roadW = roadWidthAt(roadZ);
-    if (!Number.isFinite(roadW) || roadW <= 0) return false;
-
-    const half = playerHalfWN();
-    const pad = PLAYER_EDGE_PAD;
-    const EPS_DIST = 1e-6;
-
-    const limitFromDistance = (distance) => {
-      if (!Number.isFinite(distance)) return null;
-      const dist = Math.max(0, distance);
-      const normalized = 1 + (dist / roadW);
-      let limit = normalized - half - pad;
-      if (Number.isFinite(track.railInset)) {
-        const guardrailLimit = Math.max(0, track.railInset - half - pad);
-        limit = Math.min(limit, guardrailLimit);
-      }
-      if (!Number.isFinite(limit)) return null;
-      return Math.max(0, limit);
-    };
-
-    const slopeAngleFor = (section) => {
-      if (!section) return 0;
-      const width = Math.max(0, Math.abs(section.dx ?? 0));
-      const height = Math.abs(section.dy ?? 0);
-      if (height <= EPS_DIST) return 0;
-      if (width <= EPS_DIST) return 90;
-      return Math.atan2(height, width) * RAD_TO_DEG;
-    };
-
-    const makeBoundForSide = (sections = []) => {
-      let accum = 0;
-      for (const section of sections) {
-        if (!section) continue;
-        const angle = slopeAngleFor(section);
-        if (angle >= limitDeg && angle > 0) {
-          return limitFromDistance(accum);
-        }
-        const width = Math.max(0, Math.abs(section.dx ?? 0));
-        accum += width;
-      }
-      return null;
-    };
-
-    const leftLimit = makeBoundForSide([params.leftA, params.leftB]);
-    const rightLimit = makeBoundForSide([params.rightA, params.rightB]);
-
-    const customBounds = {};
-    let hasBound = false;
-    if (leftLimit != null) {
-      customBounds.left = leftLimit;
-      hasBound = true;
-    }
-    if (rightLimit != null) {
-      customBounds.right = rightLimit;
-      hasBound = true;
-    }
-
-    if (!hasBound) return false;
-    return applyGuardrailBrake(seg, false, customBounds);
-  }
-
   function applyCliffPushForce(step) {
     const ax = Math.abs(state.playerN);
     if (ax <= 1) return;
@@ -412,66 +285,13 @@
     if (!seg) return;
     const idx = seg.index;
     const segT = clamp01((state.phys.s - seg.p1.world.z) / segmentLength);
-    if (applyCliffGuardrailLimits(seg, segT)) return;
-    const info = cliffSurfaceInfoAt(idx, state.playerN, segT);
-    const { heightOffset = 0, coverageA = 0, coverageB = 0 } = info || {};
-    const params = typeof cliffParamsAt === 'function' ? cliffParamsAt(idx, segT) : null;
-    const isLeft = state.playerN < 0;
-    const sections = params ? (isLeft ? [params.leftA, params.leftB] : [params.rightA, params.rightB]) : [];
-
-    const getSectionData = () => {
-      if (!sections.length) return { dx: 0, dy: 0 };
-      if (info.section === 'A') return sections[0] || { dx: 0, dy: 0 };
-      if (info.section === 'B') return sections[1] || { dx: 0, dy: 0 };
-      if ((coverageB ?? 0) > (coverageA ?? 0)) return sections[1] || { dx: 0, dy: 0 };
-      return sections[0] || { dx: 0, dy: 0 };
-    };
-
-    const activeSection = getSectionData();
-    const sectionDy = activeSection.dy ?? 0;
-    const sectionDx = Math.max(0, Math.abs(activeSection.dx ?? 0));
-    const upward = sectionDy > 0;
-
-    const slope = info.section === 'B'
-      ? (info.slopeB ?? 0)
-      : info.section === 'A'
-        ? (info.slopeA ?? 0)
-        : (info.slope ?? 0);
-
-    const slopeAngleDeg = sectionDx <= EPS
-      ? (Math.abs(sectionDy) > 0 ? 90 : 0)
-      : Math.atan2(Math.abs(sectionDy), sectionDx) * RAD_TO_DEG;
-
-    const limitDeg = cliffs.driveLimitDeg ?? 90;
-    const steepEnough = slopeAngleDeg >= limitDeg;
-    if (limitDeg > 0 && steepEnough) {
-      applyCliffGuardrailLimits(seg, segT);
-      return;
-    }
-
+    const slope = cliffLateralSlopeAt(idx, state.playerN, segT);
     if (Math.abs(slope) <= EPS) return;
     const dir = -Math.sign(slope);
     if (dir === 0) return;
-
     const s = Math.max(0, Math.min(1.5, ax - 1));
     const gain = 1 + cliffs.distanceGain * s;
-    const heightScale = Math.max(0, cliffs.heightPushScale ?? 0);
-    const heightSample = Math.abs(heightOffset);
-    const baseMax = Math.max(1, cliffs.heightPushMax ?? 3);
-    let heightMul = 1;
-
-    if (heightScale > 0) {
-      heightMul = clamp(1 + heightSample * heightScale, 1, baseMax);
-    }
-
-    if (upward) {
-      const angleLimit = Math.max(0.0001, limitDeg);
-      const angleRatio = clamp(slopeAngleDeg / angleLimit, 0, 1);
-      const angleMul = 1 + angleRatio * (baseMax - 1);
-      heightMul = Math.min(baseMax, heightMul * angleMul);
-    }
-
-    const delta = clamp(dir * step * cliffs.pushStep * gain * heightMul, -cliffs.capPerFrame, cliffs.capPerFrame);
+    const delta = clamp(dir * step * cliffs.pushStep * gain, -cliffs.capPerFrame, cliffs.capPerFrame);
     state.playerN += delta;
   }
 
@@ -496,11 +316,11 @@
   }
 
   // Player edge constraint based on road lanes and guard rails.
-  function playerLateralLimit(segIndex, forceRailInset = false) {
+  function playerLateralLimit(segIndex) {
     const halfW = playerHalfWN();
     const baseLimit = Math.min(Math.abs(lanes.road.min), Math.abs(lanes.road.max));
-    const base = baseLimit - halfW - PLAYER_EDGE_PAD;
-    return clampToRailLimit(segIndex, base, halfW, PLAYER_EDGE_PAD, forceRailInset);
+    const base = baseLimit - halfW - 0.015;
+    return clampToRailLimit(segIndex, base, halfW, 0.015);
   }
 
   function resolvePickupCollisionsInSeg(seg) {
@@ -686,7 +506,17 @@
 
     segNow = segmentAtS(phys.s);
     if (segNow) {
-      applyGuardrailBrake(segNow);
+      const bound = playerLateralLimit(segNow.index);
+      const preClamp = state.playerN;
+      state.playerN = clamp(state.playerN, -bound, bound);
+      const scraping = Math.abs(preClamp) > bound - EPS || Math.abs(state.playerN) >= bound - EPS;
+      if (scraping) {
+        const offRoadDecelLimit = player.topSpeed / 4;
+        if (Math.abs(phys.vtan) > offRoadDecelLimit) {
+          const sign = Math.sign(phys.vtan) || 1;
+          phys.vtan -= sign * (player.topSpeed * 0.8) * (1 / 60);
+        }
+      }
     }
 
     resolveCollisions();

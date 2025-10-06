@@ -43,13 +43,9 @@ const camera = {
 
 // Cliff behaviour and camera bias when approaching drops.
 const cliffs = {
-  pushStep: 0.5,         // base lateral push rate before distance/height scaling
-  distanceGain: 0.6,     // extra push from deeper offsets; multiplies with heightPushScale
-  heightPushScale: 0.002, // multiplier per unit of cliff height contributing to pushback
-  heightPushMax: 3.0,    // clamp for the height-based multiplier so pushStep stays stable
+  pushStep: 0.5,
+  distanceGain: 0.6,
   capPerFrame: 0.5,
-  driveLimitDeg: 60,     // maximum lateral slope angle before the car is forced back on-road
-  guardrailHeight: 60,   // minimum cliff drop height before invisible guardrail slows the player
   cameraBlend: 1 / 3,
 };
 
