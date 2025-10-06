@@ -17,6 +17,7 @@
     parallaxLayers,
     boost,
     drift,
+    lanes = {},
     tilt: tiltConfig = {},
   } = Config;
 
@@ -50,6 +51,7 @@
   const {
     laneToRoadRatio = (n) => n,
     getZoneLaneBounds = () => null,
+    clampRoadLane: clampRoadLaneRaw,
   } = lane;
 
   const { padQuad, makeRotatedQuad } = RenderGL;
@@ -861,6 +863,24 @@
       y: SH - y*(1/track.metersPerPixel.y) - 60
     };
   }
+
+  function clampLaneToRoad(value, fallback = 0){
+    if (typeof clampRoadLaneRaw === 'function'){
+      return clampRoadLaneRaw(value, fallback);
+    }
+    const fallbackValue = (fallback == null) ? 0 : fallback;
+    const min = (lanes && lanes.road && typeof lanes.road.min === 'number') ? lanes.road.min : -1;
+    const max = (lanes && lanes.road && typeof lanes.road.max === 'number') ? lanes.road.max : 1;
+    const candidate = (typeof value === 'number' && Number.isFinite(value)) ? value : fallbackValue;
+    return clamp(candidate, min, max);
+  }
+
+  function sampleRoadElevation(s, laneN){
+    if (typeof floorElevationAt === 'function'){
+      return floorElevationAt(s, laneN);
+    }
+    return elevationAt(s);
+  }
   function drawBoostCrossSection(ctx){
     const panelX = 24;
     const panelY = 24;
@@ -943,15 +963,18 @@
     const sEnd   = state.phys.s + SW*0.5*track.metersPerPixel.x;
     const step   = Math.max(5, 2*track.metersPerPixel.x);
     let first = true;
+    const overlayLaneN = clampLaneToRoad(state.playerN, 0);
+    const sampleOverlayFloor = (s) => sampleRoadElevation(s, overlayLaneN);
     for (let s = sStart; s <= sEnd; s += step){
-      const p = worldToOverlay(s, floorElevationAt(s, state.playerN));
+      const p = worldToOverlay(s, sampleOverlayFloor(s));
       if (first){ ctxSide.moveTo(p.x,p.y); first=false; } else { ctxSide.lineTo(p.x,p.y); }
     }
     ctxSide.stroke();
 
     drawBoostCrossSection(ctxSide);
 
-    const p = worldToOverlay(state.phys.s, state.phys.y);
+    const roadY = sampleOverlayFloor(state.phys.s);
+    const p = worldToOverlay(state.phys.s, roadY);
     ctxSide.fillStyle = '#2e7d32';
     ctxSide.beginPath(); ctxSide.arc(p.x, p.y, 6, 0, Math.PI*2); ctxSide.fill();
 
