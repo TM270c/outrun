@@ -546,7 +546,7 @@
     }
   }
 
-  function resolveCollisions(prevS = state.phys.s, targetS = state.phys.s, dt = 0, prevY = state.phys.y) {
+  function resolveCollisions(prevS = state.phys.s, targetS = state.phys.s, dt = 0) {
     if (!hasSegments()) return;
     const { phys } = state;
     const seg = segmentAtS(phys.s);
@@ -558,8 +558,7 @@
     const timeStep = dt > 0 ? dt : 0;
     const effectiveSpeed = timeStep > 0 ? (Math.abs(deltaS) / timeStep) : Math.abs(phys.vtan);
     const cars = (state.cars && state.cars.length) ? state.cars : (seg && Array.isArray(seg.cars) ? seg.cars : []);
-    const playerBottomNow = phys.y;
-    const playerBottomPrev = (typeof prevY === 'number') ? prevY : playerBottomNow;
+    const playerBottom = phys.y;
 
     for (let i = 0; i < cars.length; i += 1) {
       const car = cars[i];
@@ -567,16 +566,8 @@
       const dist = forward ? trackForwardDistance(prevS, car.z) : trackBackwardDistance(prevS, car.z);
       if (dist > travelAllowance) continue;
       if (!overlap(state.playerN, pHalf, car.offset, carHalfWN(car), 1)) continue;
-      const carBase = floorElevationAt ? floorElevationAt(car.z, car.offset) : elevationAt(car.z);
-      const carTop = carBase + carHitboxHeight(car);
-      let playerBottomAtCar = playerBottomNow;
-      if (travel > 1e-6) {
-        const ratio = clamp(dist / travel, 0, 1);
-        playerBottomAtCar = lerp(playerBottomPrev, playerBottomNow, ratio);
-      } else {
-        playerBottomAtCar = Math.min(playerBottomPrev, playerBottomNow);
-      }
-      if (playerBottomAtCar > carTop) continue;
+      const carTop = elevationAt(car.z) + carHitboxHeight(car);
+      if (playerBottom > carTop) continue;
       if (effectiveSpeed <= car.speed) continue;
       const capped = car.speed / Math.max(1, effectiveSpeed);
       phys.vtan = car.speed * capped;
@@ -593,7 +584,6 @@
     const { phys, input } = state;
     if (!hasSegments()) return;
     const prevS = phys.s;
-    const prevY = phys.y;
     let sweepTargetS = phys.s;
 
     if (input.hop) {
@@ -775,7 +765,7 @@
       }
     }
 
-    resolveCollisions(prevS, sweepTargetS, dt, prevY);
+    resolveCollisions(prevS, sweepTargetS, dt);
 
     if (!state.resetMatteActive) {
       const roadY = elevationAt(phys.s);
