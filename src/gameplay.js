@@ -73,9 +73,9 @@
   };
 
   const DEFAULT_SPRITE_META = {
-    PLAYER: { wN: 0.16, aspect: 0.7, hitboxHeight: 72, tint: [0.9, 0.22, 0.21, 1], tex: () => null },
-    CAR:    { wN: 0.28, aspect: 0.7, hitboxHeight: 90, tint: [0.2, 0.7, 1.0, 1], tex: () => null },
-    SEMI:   { wN: 0.34, aspect: 1.6, hitboxHeight: 140, tint: [0.85, 0.85, 0.85, 1], tex: () => null },
+    PLAYER: { wN: 0.16, aspect: 0.7, tint: [0.9, 0.22, 0.21, 1], tex: () => null },
+    CAR:    { wN: 0.28, aspect: 0.7, tint: [0.2, 0.7, 1.0, 1], tex: () => null },
+    SEMI:   { wN: 0.34, aspect: 1.6, tint: [0.85, 0.85, 0.85, 1], tex: () => null },
     TREE:   { wN: 0.5,  aspect: 3.0, tint: [0.22, 0.7, 0.22, 1], tex: () => null },
     SIGN:   { wN: 0.55, aspect: 1.0, tint: [1, 1, 1, 1], tex: () => null },
     PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
@@ -221,14 +221,6 @@
     return (meta.wN || 0) * 0.5;
   }
 
-  function carHitboxHeight(car) {
-    const meta = car && car.meta ? car.meta : getSpriteMeta(car && car.type ? car.type : 'CAR');
-    if (meta && Number.isFinite(meta.hitboxHeight)) {
-      return meta.hitboxHeight;
-    }
-    return 90;
-  }
-
   function npcLateralLimit(segIndex, car) {
     const half = carHalfWN(car);
     const base = 1 - half - NPC.edgePad;
@@ -302,24 +294,6 @@
 
   function wrapDistance(v, dv, max) {
     return wrapByLength(v + dv, max);
-  }
-
-  function trackForwardDistance(from, to) {
-    let d = to - from;
-    const length = trackLengthRef();
-    if (length > 0) {
-      while (d < 0) d += length;
-    }
-    return d;
-  }
-
-  function trackBackwardDistance(from, to) {
-    let d = from - to;
-    const length = trackLengthRef();
-    if (length > 0) {
-      while (d < 0) d += length;
-    }
-    return d;
   }
 
   function nearestSegmentCenter(s) {
@@ -497,7 +471,6 @@
   }
 
   const overlap = (ax, aw, bx, bw, scale = 1) => Math.abs(ax - bx) < (aw + bw) * scale;
-  const COLLISION_SWEEP_EPSILON = Math.max(1, segmentLength * 0.5);
 
   function doHop() {
     const { phys } = state;
@@ -546,36 +519,26 @@
     }
   }
 
-  function resolveCollisions(prevS = state.phys.s, targetS = state.phys.s, dt = 0) {
-    if (!hasSegments()) return;
+  function resolveCollisions() {
     const { phys } = state;
     const seg = segmentAtS(phys.s);
+    if (!seg) return;
     const pHalf = playerHalfWN();
-    const deltaS = targetS - prevS;
-    const travel = Math.abs(deltaS);
-    const forward = deltaS >= 0;
-    const travelAllowance = travel + COLLISION_SWEEP_EPSILON;
-    const timeStep = dt > 0 ? dt : 0;
-    const effectiveSpeed = timeStep > 0 ? (Math.abs(deltaS) / timeStep) : Math.abs(phys.vtan);
-    const cars = (state.cars && state.cars.length) ? state.cars : (seg && Array.isArray(seg.cars) ? seg.cars : []);
-    const playerBottom = phys.y;
 
-    for (let i = 0; i < cars.length; i += 1) {
-      const car = cars[i];
+    for (let i = 0; i < seg.cars.length; i++) {
+      const car = seg.cars[i];
       if (!car) continue;
-      const dist = forward ? trackForwardDistance(prevS, car.z) : trackBackwardDistance(prevS, car.z);
-      if (dist > travelAllowance) continue;
-      if (!overlap(state.playerN, pHalf, car.offset, carHalfWN(car), 1)) continue;
-      const carTop = elevationAt(car.z) + carHitboxHeight(car);
-      if (playerBottom > carTop) continue;
-      if (effectiveSpeed <= car.speed) continue;
-      const capped = car.speed / Math.max(1, effectiveSpeed);
-      phys.vtan = car.speed * capped;
-      phys.s = wrapDistance(car.z, -2, trackLengthRef());
-      break;
+      if (Math.abs(phys.vtan) > car.speed) {
+        if (overlap(state.playerN, pHalf, car.offset, carHalfWN(car), 1)) {
+          const capped = car.speed / Math.max(1, Math.abs(phys.vtan));
+          phys.vtan = car.speed * capped;
+          phys.s = wrapDistance(car.z, -2, trackLengthRef());
+          break;
+        }
+      }
     }
 
-    if (!seg) return;
+    if (!hasSegments()) return;
     const neighbors = [seg, segmentAtIndex(seg.index + 1), segmentAtIndex(seg.index - 1)];
     neighbors.forEach(resolvePickupCollisionsInSeg);
   }
@@ -583,8 +546,6 @@
   function updatePhysics(dt) {
     const { phys, input } = state;
     if (!hasSegments()) return;
-    const prevS = phys.s;
-    let sweepTargetS = phys.s;
 
     if (input.hop) {
       doHop();
@@ -650,9 +611,7 @@
 
       const zoneMult = zoneMultBase;
       const travelV = phys.vtan * zoneMult;
-      const deltaS = travelV * tx * dt;
-      phys.s += deltaS;
-      sweepTargetS += deltaS;
+      phys.s += travelV * tx * dt;
       phys.y = groundProfileAt(phys.s).y;
 
       const { dy: ndy, d2y } = groundProfileAt(phys.s);
@@ -673,9 +632,7 @@
         phys.vx -= player.airDrag * phys.vx * dt;
         phys.vy -= player.airDrag * phys.vy * dt;
       }
-      const deltaS = phys.vx * dt;
-      phys.s += deltaS;
-      sweepTargetS += deltaS;
+      phys.s += phys.vx * dt;
       phys.y += phys.vy * dt;
 
       state.activeDriveZoneId = null;
@@ -765,7 +722,7 @@
       }
     }
 
-    resolveCollisions(prevS, sweepTargetS, dt);
+    resolveCollisions();
 
     if (!state.resetMatteActive) {
       const roadY = elevationAt(phys.s);
