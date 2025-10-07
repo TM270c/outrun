@@ -232,13 +232,39 @@
     return base;
   }
 
+  function slopeAngleDeg(slope) {
+    if (!Number.isFinite(slope)) return 0;
+    return Math.abs(Math.atan(slope) * 180 / Math.PI);
+  }
+
+  function slopeLimitRatio(slope) {
+    if (CLIFF_LIMIT_DEG == null || CLIFF_LIMIT_DEG <= 0) return 0;
+    const angleDeg = slopeAngleDeg(slope);
+    return angleDeg / CLIFF_LIMIT_DEG;
+  }
+
+  function slopeExceedsLimit(slope) {
+    if (CLIFF_LIMIT_DEG == null || CLIFF_LIMIT_DEG <= 0) return false;
+    return slopeLimitRatio(slope) > 1;
+  }
+
   function cliffSectionExceedsLimit(section) {
-    if (CLIFF_LIMIT_DEG == null || !section) return false;
+    if (!section) return false;
     const dx = Math.abs(section.dx ?? 0);
     const dy = Math.abs(section.dy ?? 0);
     if (dx <= 1e-6 && dy <= 1e-6) return false;
-    const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
-    return angleDeg > CLIFF_LIMIT_DEG;
+    const slope = dy / Math.max(dx, 1e-6);
+    return slopeExceedsLimit(slope);
+  }
+
+  const CLIFF_LIMIT_N_SAMPLES = Object.freeze([-1.05, 1.05, -1.5, 1.5]);
+
+  function cliffInfoExceedsLimit(info) {
+    if (!info) return false;
+    if (slopeExceedsLimit(info.slope)) return true;
+    if (slopeExceedsLimit(info.slopeA)) return true;
+    if (slopeExceedsLimit(info.slopeB)) return true;
+    return false;
   }
 
   function segmentHasSteepCliff(segIndex) {
@@ -247,8 +273,20 @@
       const t = CLIFF_ANGLE_SAMPLES[i];
       const params = cliffParamsAt(segIndex, t);
       if (!params) continue;
-      if (cliffSectionExceedsLimit(params.leftA) || cliffSectionExceedsLimit(params.rightA)) {
+      if (
+        cliffSectionExceedsLimit(params.leftA) ||
+        cliffSectionExceedsLimit(params.rightA) ||
+        cliffSectionExceedsLimit(params.leftB) ||
+        cliffSectionExceedsLimit(params.rightB)
+      ) {
         return true;
+      }
+      for (let j = 0; j < CLIFF_LIMIT_N_SAMPLES.length; j += 1) {
+        const n = CLIFF_LIMIT_N_SAMPLES[j];
+        const info = cliffSurfaceInfoAt(segIndex, n, t);
+        if (cliffInfoExceedsLimit(info)) {
+          return true;
+        }
       }
     }
     return false;
@@ -399,9 +437,9 @@
   function cliffSteepnessMultiplier(slope) {
     if (!Number.isFinite(slope)) return 1;
     if (CLIFF_LIMIT_DEG == null || CLIFF_LIMIT_DEG <= 0) return 1;
-    const angleDeg = Math.abs(Math.atan(slope) * 180 / Math.PI);
+    const angleDeg = slopeAngleDeg(slope);
     if (angleDeg <= 1e-4) return 1;
-    const ratio = angleDeg / CLIFF_LIMIT_DEG;
+    const ratio = slopeLimitRatio(slope);
     if (ratio <= 0) return 1;
     const clampedRatio = Math.min(ratio, 0.999);
     const ease = clampedRatio * clampedRatio;
