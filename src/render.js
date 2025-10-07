@@ -183,10 +183,27 @@
     return 1 - (1 - sprites.far.shrinkTo) * Math.pow(f, sprites.far.power);
   }
 
+  const BACKDROP_SCALE = 1.25;
+
   function drawParallaxLayer(tex, cfg){
     if (!glr || !tex) return;
     const uOffset = state.playerN * cfg.parallaxX;
-    const quad = { x1:0, y1:0, x2:W, y2:0, x3:W, y3:H, x4:0, y4:H };
+    const scaledW = W * BACKDROP_SCALE;
+    const scaledH = H * BACKDROP_SCALE;
+    const centerX = W * 0.5;
+    const centerY = H * 0.5;
+    const halfScaledW = scaledW * 0.5;
+    const halfScaledH = scaledH * 0.5;
+    const quad = {
+      x1: centerX - halfScaledW,
+      y1: centerY - halfScaledH,
+      x2: centerX + halfScaledW,
+      y2: centerY - halfScaledH,
+      x3: centerX + halfScaledW,
+      y3: centerY + halfScaledH,
+      x4: centerX - halfScaledW,
+      y4: centerY + halfScaledH,
+    };
     const uv = {u1: uOffset, v1: 0, u2: uOffset+cfg.uvSpanX, v2: 0, u3: uOffset+cfg.uvSpanX, v3: cfg.uvSpanY, u4: uOffset, v4: cfg.uvSpanY};
     glr.drawQuadTextured(tex, quad, uv);
   }
