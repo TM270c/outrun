@@ -18,6 +18,7 @@
     boost,
     drift,
     tilt: tiltConfig = {},
+    build = {},
   } = Config;
 
   const {
@@ -953,7 +954,11 @@
     const kap = computeCurvature(dy, d2y);
     const boostingHUD = (state.boostTimer>0) ? `boost:${state.boostTimer.toFixed(2)}s ` : '';
     const driftHUD = `drift:${state.driftState}${state.driftState==='drifting'?' dir='+state.driftDirSnapshot:''} charge:${state.driftCharge.toFixed(2)}/${drift.chargeMin} armed:${state.allowedBoost}`;
-    const hud = `${boostingHUD}${driftHUD}  vtan:${state.phys.vtan.toFixed(1)}  grounded:${state.phys.grounded}  kappa:${kap.toFixed(5)}  n:${state.playerN.toFixed(2)}  cars:${state.cars.length}  pickups:${state.pickupCollected}/${state.pickupTotal}`;
+    const buildVersion = (typeof build.version === 'string' && build.version.length > 0)
+      ? build.version
+      : null;
+    const versionHUD = buildVersion ? `ver:${buildVersion}  ` : '';
+    const hud = `${versionHUD}${boostingHUD}${driftHUD}  vtan:${state.phys.vtan.toFixed(1)}  grounded:${state.phys.grounded}  kappa:${kap.toFixed(5)}  n:${state.playerN.toFixed(2)}  cars:${state.cars.length}  pickups:${state.pickupCollected}/${state.pickupTotal}`;
     ctxSide.fillStyle = '#fff';
     ctxSide.strokeStyle = '#000';
     ctxSide.lineWidth = 3;

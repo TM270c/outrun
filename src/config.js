@@ -1,3 +1,8 @@
+// Build metadata for tracking deployed versions.
+const build = Object.freeze({
+  version: '0.1.0',
+});
+
 // Core handling and tuning for the player car.
 const player = {
   accelForce: 3000,     // forward push strength
@@ -137,6 +142,7 @@ const tilt = {
 };
 
 window.Config = {
+  build,
   player,
   grid,
   track,
