@@ -52,6 +52,7 @@ const cliffs = {
   distanceGain: 0.6,
   capPerFrame: 0.5,
   cameraBlend: 1 / 3,
+  cliffLimit: 60,
 };
 
 // Guard rails for falling through the world.

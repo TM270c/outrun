@@ -125,6 +125,9 @@
     },
   };
 
+  const CLIFF_LIMIT_DEG = Number.isFinite(cliffs.cliffLimit) ? cliffs.cliffLimit : null;
+  const CLIFF_ANGLE_SAMPLES = [0, 0.5, 1];
+
   function getSpriteMeta(kind) {
     const metaStack = state.spriteMeta || {};
     return metaStack[kind] || DEFAULT_SPRITE_META[kind] || { wN: 0.2, aspect: 1, tint: [1, 1, 1, 1], tex: () => null };
@@ -227,6 +230,28 @@
       return Math.min(base, railInner);
     }
     return base;
+  }
+
+  function cliffSectionExceedsLimit(section) {
+    if (CLIFF_LIMIT_DEG == null || !section) return false;
+    const dx = Math.abs(section.dx ?? 0);
+    const dy = Math.abs(section.dy ?? 0);
+    if (dx <= 1e-6 && dy <= 1e-6) return false;
+    const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+    return angleDeg > CLIFF_LIMIT_DEG;
+  }
+
+  function segmentHasSteepCliff(segIndex) {
+    if (CLIFF_LIMIT_DEG == null || typeof cliffParamsAt !== 'function') return false;
+    for (let i = 0; i < CLIFF_ANGLE_SAMPLES.length; i += 1) {
+      const t = CLIFF_ANGLE_SAMPLES[i];
+      const params = cliffParamsAt(segIndex, t);
+      if (!params) continue;
+      if (cliffSectionExceedsLimit(params.leftA) || cliffSectionExceedsLimit(params.rightA)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   function wrapDistance(v, dv, max) {
@@ -417,6 +442,10 @@
     if (seg && seg.features && seg.features.rail) {
       const railInner = track.railInset - halfW - 0.015;
       return Math.min(base, railInner);
+    }
+    if (segmentHasSteepCliff(segIndex)) {
+      const cliffBound = Math.max(0, 1 - halfW - 0.015);
+      return Math.min(base, cliffBound);
     }
     return base;
   }
