@@ -396,6 +396,23 @@
   state.camera.updateFromFov = setFieldOfView;
   updateCameraFromFieldOfView();
 
+  function cliffSteepnessMultiplier(slope) {
+    if (!Number.isFinite(slope)) return 1;
+    if (CLIFF_LIMIT_DEG == null || CLIFF_LIMIT_DEG <= 0) return 1;
+    const angleDeg = Math.abs(Math.atan(slope) * 180 / Math.PI);
+    if (angleDeg <= 1e-4) return 1;
+    const ratio = angleDeg / CLIFF_LIMIT_DEG;
+    if (ratio <= 0) return 1;
+    const clampedRatio = Math.min(ratio, 0.999);
+    const ease = clampedRatio * clampedRatio;
+    const escalation = ease / Math.max(0.001, 1 - clampedRatio);
+    if (ratio <= 1) {
+      return 1 + escalation;
+    }
+    const excess = ratio - 1;
+    return 1 + escalation + excess * (2 + escalation);
+  }
+
   function applyCliffPushForce(step) {
     const ax = Math.abs(state.playerN);
     if (ax <= 1) return;
@@ -409,7 +426,8 @@
     if (dir === 0) return;
     const s = Math.max(0, Math.min(1.5, ax - 1));
     const gain = 1 + cliffs.distanceGain * s;
-    let delta = dir * step * cliffs.pushStep * gain;
+    const steepGain = cliffSteepnessMultiplier(slope);
+    let delta = dir * step * cliffs.pushStep * gain * steepGain;
     delta = Math.max(-cliffs.capPerFrame, Math.min(cliffs.capPerFrame, delta));
     state.playerN += delta;
   }
