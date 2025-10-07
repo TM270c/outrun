@@ -37,6 +37,10 @@
     floorElevationAt,
     cliffParamsAt,
     lane = {},
+    pushZone,
+    buildTrackFromCSV,
+    buildCliffsFromCSV_Lite,
+    enforceCliffWrap,
   } = World;
 
   const {
@@ -826,7 +830,7 @@
       }
       state.hopHeld = true;
     },
-    KeyR: () => { if (typeof state.callbacks.onQueueReset === 'function') state.callbacks.onQueueReset(); },
+    KeyR: () => { queueReset(); },
     KeyB: () => { if (typeof state.callbacks.onToggleOverlay === 'function') state.callbacks.onToggleOverlay(); },
     KeyL: () => { if (typeof state.callbacks.onResetScene === 'function') state.callbacks.onResetScene(); },
   };
@@ -908,7 +912,75 @@
     resetPlayerState({ s: sWrapped, playerN: nextPlayerN });
   }
 
+  function applyDefaultFieldOfView() {
+    const cameraState = state && state.camera ? state.camera : null;
+    const update = cameraState && cameraState.updateFromFov;
+    if (typeof update === 'function') {
+      update(camera.fovDeg);
+    } else if (cameraState && camera.fovDeg != null) {
+      cameraState.fieldOfView = camera.fovDeg;
+    }
+  }
+
+  async function resetScene() {
+    applyDefaultFieldOfView();
+
+    if (typeof buildTrackFromCSV === 'function') {
+      try {
+        await buildTrackFromCSV('tracks/test-track.csv');
+      } catch (err) {
+        console.warn('CSV build failed, keeping existing track', err);
+      }
+    }
+
+    if (typeof buildCliffsFromCSV_Lite === 'function') {
+      try {
+        await buildCliffsFromCSV_Lite('tracks/cliffs.csv');
+      } catch (err) {
+        // Ignore optional cliff data errors
+      }
+    }
+
+    if (typeof enforceCliffWrap === 'function') {
+      enforceCliffWrap(1);
+    }
+
+    const segmentsNow = data && Array.isArray(data.segments) ? data.segments : [];
+    const segmentCount = segmentsNow.length;
+    const roadZones = ensureArray(data, 'roadTexZones');
+    const railZones = ensureArray(data, 'railTexZones');
+    const cliffZones = ensureArray(data, 'cliffTexZones');
+
+    roadZones.length = 0;
+    railZones.length = 0;
+    cliffZones.length = 0;
+
+    if (segmentCount > 0 && typeof pushZone === 'function') {
+      pushZone(roadZones, 0, segmentCount - 1, 20);
+      pushZone(railZones, 0, segmentCount - 1, 20);
+      pushZone(cliffZones, 0, segmentCount - 1, 3);
+    }
+
+    spawnProps();
+    spawnCars();
+    spawnPickups();
+    resetPlayerState({
+      s: camera.backSegments * track.segmentSize,
+      playerN: 0,
+      timers: { t: 0, nextHopTime: 0, boostFlashTimer: 0 },
+    });
+  }
+
+  function queueReset() {
+    if (state.resetMatteActive) return;
+    state.pendingRespawn = null;
+    if (typeof state.callbacks.onQueueReset === 'function') {
+      state.callbacks.onQueueReset();
+    }
+  }
+
   function queueRespawn(sAtFail) {
+    if (state.resetMatteActive) return;
     const targetS = nearestSegmentCenter(sAtFail);
     state.pendingRespawn = { targetS, targetN: 0 };
     if (typeof state.callbacks.onQueueRespawn === 'function') {
@@ -931,6 +1003,8 @@
     spawnPickups,
     resetPlayerState,
     respawnPlayerAt,
+    resetScene,
+    queueReset,
     queueRespawn,
   };
 })(window);

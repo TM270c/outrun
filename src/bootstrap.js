@@ -6,45 +6,47 @@ const dom = {
 
 const glr = new RenderGL.GLRenderer(dom.canvas);
 
-await (async function loadAssets() {
-  await Promise.all(
-    Object.entries(World.assets.manifest).map(async ([k, url]) => {
-      const tex = await glr.loadTexture(url);
-      World.assets.textures[k] = tex;
-    }),
-  );
-})();
-
-await World.buildTrackFromCSV('tracks/test-track.csv').catch(() => {
-  /* fallback like original */
-});
-await World.buildCliffsFromCSV_Lite('tracks/cliffs.csv').catch(() => {});
-World.enforceCliffWrap(1);
-
-const N = World.data.segments.length;
 const roadTexZones = [];
 const railTexZones = [];
 const cliffTexZones = [];
-World.pushZone(roadTexZones, 0, N - 1, 20);
-World.pushZone(railTexZones, 0, N - 1, 20);
-World.pushZone(cliffTexZones, 0, N - 1, 3);
+
 World.data.roadTexZones = roadTexZones;
 World.data.railTexZones = railTexZones;
 World.data.cliffTexZones = cliffTexZones;
 
-Gameplay.spawnProps();
-Gameplay.spawnCars();
-Gameplay.spawnPickups();
-Gameplay.resetPlayerState({
-  s: Config.camera.backSegments * Config.track.segmentSize,
-  playerN: 0,
-  timers: { t: 0, nextHopTime: 0, boostFlashTimer: 0 },
-});
+async function loadAssets() {
+  await Promise.all(
+    Object.entries(World.assets.manifest).map(async ([key, url]) => {
+      const tex = await glr.loadTexture(url);
+      World.assets.textures[key] = tex;
+    }),
+  );
+}
+
+function setupCallbacks() {
+  Gameplay.state.callbacks.onQueueReset = () => {
+    Renderer.matte.startReset();
+  };
+  Gameplay.state.callbacks.onQueueRespawn = (respawn) => {
+    if (!respawn) return;
+    const { targetS, targetN = 0 } = respawn;
+    Renderer.matte.startRespawn(targetS, targetN);
+  };
+  Gameplay.state.callbacks.onResetScene = () => {
+    Gameplay.resetScene().catch((err) => console.error('Reset failed', err));
+  };
+}
+
+await loadAssets();
+
+Renderer.attach(glr, dom);
+setupCallbacks();
+
+await Gameplay.resetScene();
 
 addEventListener('keydown', Gameplay.keydownHandler);
 addEventListener('keyup', Gameplay.keyupHandler);
 
-Renderer.attach(glr, dom);
 Renderer.frame((dt) => {
   Gameplay.step(dt);
 });
