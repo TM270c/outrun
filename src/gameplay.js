@@ -66,14 +66,6 @@
     return mod < 0 ? mod + count : mod;
   };
 
-  const computeSegmentStepDelta = (oldS, newS) => {
-    if (!Number.isFinite(oldS) || !Number.isFinite(newS)) return 0;
-    if (segmentLength <= 0) return 0;
-    const prev = Math.floor(oldS / segmentLength);
-    const next = Math.floor(newS / segmentLength);
-    return next - prev;
-  };
-
   const ensureArray = (obj, key) => {
     if (!obj) return [];
     if (!Array.isArray(obj[key])) obj[key] = [];
@@ -527,11 +519,13 @@
     }
   }
 
-  function resolveCarCollisionsInSegment(seg) {
-    if (!seg) return false;
+  function resolveCollisions() {
     const { phys } = state;
+    const seg = segmentAtS(phys.s);
+    if (!seg) return;
     const pHalf = playerHalfWN();
-    for (let i = 0; i < seg.cars.length; i += 1) {
+
+    for (let i = 0; i < seg.cars.length; i++) {
       const car = seg.cars[i];
       if (!car) continue;
       if (Math.abs(phys.vtan) > car.speed) {
@@ -539,72 +533,19 @@
           const capped = car.speed / Math.max(1, Math.abs(phys.vtan));
           phys.vtan = car.speed * capped;
           phys.s = wrapDistance(car.z, -2, trackLengthRef());
-          return true;
+          break;
         }
       }
     }
-    return false;
-  }
 
-  function resolveCollisions(prevSegIndex = null, currentSegIndex = null, segmentStepDelta = 0) {
     if (!hasSegments()) return;
-    const segmentsToVisit = [];
-
-    if (prevSegIndex == null || currentSegIndex == null) {
-      const segNow = segmentAtS(state.phys.s);
-      if (segNow) segmentsToVisit.push(segNow.index);
-    } else {
-      if (segmentStepDelta > 0) {
-        let idx = prevSegIndex;
-        for (let step = 0; step < segmentStepDelta; step += 1) {
-          idx = wrapSegmentIndex(idx + 1);
-          segmentsToVisit.push(idx);
-        }
-      } else if (segmentStepDelta < 0) {
-        let idx = prevSegIndex;
-        for (let step = 0; step < Math.abs(segmentStepDelta); step += 1) {
-          idx = wrapSegmentIndex(idx - 1);
-          segmentsToVisit.push(idx);
-        }
-      } else {
-        segmentsToVisit.push(currentSegIndex);
-      }
-    }
-
-    if (currentSegIndex != null && !segmentsToVisit.includes(currentSegIndex)) {
-      segmentsToVisit.push(currentSegIndex);
-    }
-
-    const visitedSegments = [];
-    for (let i = 0; i < segmentsToVisit.length; i += 1) {
-      const seg = segmentAtIndex(segmentsToVisit[i]);
-      if (!seg) continue;
-      visitedSegments.push(seg);
-      if (resolveCarCollisionsInSegment(seg)) {
-        return;
-      }
-      resolvePickupCollisionsInSeg(seg);
-    }
-
-    const finalSegIndex = currentSegIndex ?? (visitedSegments.length ? visitedSegments[visitedSegments.length - 1].index : null);
-    if (finalSegIndex == null) return;
-    const finalSeg = segmentAtIndex(finalSegIndex);
-    if (!finalSeg) return;
-    const neighborIndices = [finalSegIndex + 1, finalSegIndex - 1];
-    for (let n = 0; n < neighborIndices.length; n += 1) {
-      const neighbor = segmentAtIndex(neighborIndices[n]);
-      if (!neighbor) continue;
-      resolvePickupCollisionsInSeg(neighbor);
-    }
+    const neighbors = [seg, segmentAtIndex(seg.index + 1), segmentAtIndex(seg.index - 1)];
+    neighbors.forEach(resolvePickupCollisionsInSeg);
   }
 
   function updatePhysics(dt) {
     const { phys, input } = state;
     if (!hasSegments()) return;
-
-    const startS = phys.s;
-    let segNow = segmentAtS(startS);
-    const prevSegIndex = segNow ? segNow.index : null;
 
     if (input.hop) {
       doHop();
@@ -635,6 +576,7 @@
     applyCliffPushForce(steerDx);
     state.playerN = clamp(state.playerN, lanes.road.min, lanes.road.max);
 
+    let segNow = segmentAtS(phys.s);
     const segFeatures = segNow ? segNow.features : null;
     const zonesHere = boostZonesForPlayer(segNow, state.playerN);
     const hasZonesHere = zonesHere.length > 0;
@@ -747,10 +689,7 @@
       }
     }
 
-    const unwrappedS = phys.s;
     phys.t += dt;
-
-    const segStepDelta = computeSegmentStepDelta(startS, unwrappedS);
 
     const length = trackLengthRef();
     if (length > 0) {
@@ -783,8 +722,7 @@
       }
     }
 
-    const currentSegIndex = segNow ? segNow.index : null;
-    resolveCollisions(prevSegIndex, currentSegIndex, segStepDelta);
+    resolveCollisions();
 
     if (!state.resetMatteActive) {
       const roadY = elevationAt(phys.s);
