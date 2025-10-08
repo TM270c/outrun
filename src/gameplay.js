@@ -221,9 +221,41 @@
     return getSpriteMeta('PLAYER').wN * state.getKindScale('PLAYER') * 0.5;
   }
 
+  function carMeta(car) {
+    const kind = car && car.type ? car.type : 'CAR';
+    return (car && car.meta) ? car.meta : getSpriteMeta(kind);
+  }
+
   function carHalfWN(car) {
-    const meta = car && car.meta ? car.meta : getSpriteMeta(car && car.type ? car.type : 'CAR');
+    const meta = carMeta(car);
     return (meta.wN || 0) * 0.5;
+  }
+
+  function carHitboxHeight(car, s = state.phys.s) {
+    const meta = carMeta(car);
+    const hitbox = meta.hitbox || {};
+    const widthN = (hitbox.widthN != null) ? hitbox.widthN : (meta.wN || 0);
+    const aspect = (hitbox.aspect != null) ? hitbox.aspect : (meta.aspect || 1);
+    const roadW = roadWidthAt ? roadWidthAt(s) : track.roadWidth;
+    if (hitbox.height != null) return hitbox.height;
+    if (hitbox.heightN != null) return hitbox.heightN * roadW;
+    const width = widthN * roadW;
+    return width * aspect;
+  }
+
+  function carHitboxTopY(car) {
+    const s = (car && Number.isFinite(car.z)) ? car.z : state.phys.s;
+    const n = (car && Number.isFinite(car.offset)) ? car.offset : 0;
+    const baseY = floorElevationAt ? floorElevationAt(s, n) : elevationAt(s);
+    return baseY + carHitboxHeight(car, s);
+  }
+
+  function playerBaseHeight() {
+    const { phys } = state;
+    if (phys.grounded && floorElevationAt) {
+      return floorElevationAt(phys.s, state.playerN);
+    }
+    return phys.y;
   }
 
   function npcLateralLimit(segIndex, car) {
@@ -545,6 +577,8 @@
       const car = seg.cars[i];
       if (!car) continue;
       if (!overlap(state.playerN, pHalf, car.offset, carHalfWN(car), 1)) continue;
+
+      if (!phys.grounded && playerBaseHeight() >= carHitboxTopY(car)) continue;
 
       const now = phys.t;
       const lastHit = car[CAR_COLLISION_STAMP] ?? -Infinity;
