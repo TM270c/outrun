@@ -16,6 +16,7 @@
     boost,
     lanes,
     tilt: tiltConfig = {},
+    forceLandingOnCarImpact = false,
   } = Config;
 
   const {
@@ -84,6 +85,10 @@
 
   const NPC = { total: 20, edgePad: 0.02, avoidLookaheadSegs: 20 };
   const CAR_TYPES = ['CAR', 'SEMI'];
+
+  const CAR_COLLISION_COOLDOWN = 1 / 120;
+  const CAR_COLLISION_REWIND = -2;
+  const CAR_COLLISION_STAMP = Symbol('carCollisionStamp');
 
   const defaultGetKindScale = (kind) => (kind === 'PLAYER' ? player.scale : 1);
 
@@ -519,28 +524,94 @@
     }
   }
 
-  function resolveCollisions() {
-    const { phys } = state;
-    const seg = segmentAtS(phys.s);
-    if (!seg) return;
-    const pHalf = playerHalfWN();
+  function resolvePickupCollisionsAround(seg) {
+    if (!seg || !hasSegments()) return;
+    const seen = new Set();
+    const neighbors = [seg, segmentAtIndex(seg.index + 1), segmentAtIndex(seg.index - 1)];
+    for (const neighbor of neighbors) {
+      if (!neighbor) continue;
+      if (seen.has(neighbor.index)) continue;
+      seen.add(neighbor.index);
+      resolvePickupCollisionsInSeg(neighbor);
+    }
+  }
 
-    for (let i = 0; i < seg.cars.length; i++) {
+  function resolveCarCollisionsInSeg(seg) {
+    const { phys } = state;
+    if (!seg || !Array.isArray(seg.cars) || !seg.cars.length) return false;
+    const pHalf = playerHalfWN();
+    const trackLength = trackLengthRef();
+    for (let i = 0; i < seg.cars.length; i += 1) {
       const car = seg.cars[i];
       if (!car) continue;
-      if (Math.abs(phys.vtan) > car.speed) {
-        if (overlap(state.playerN, pHalf, car.offset, carHalfWN(car), 1)) {
-          const capped = car.speed / Math.max(1, Math.abs(phys.vtan));
-          phys.vtan = car.speed * capped;
-          phys.s = wrapDistance(car.z, -2, trackLengthRef());
-          break;
-        }
-      }
-    }
+      if (!overlap(state.playerN, pHalf, car.offset, carHalfWN(car), 1)) continue;
 
-    if (!hasSegments()) return;
-    const neighbors = [seg, segmentAtIndex(seg.index + 1), segmentAtIndex(seg.index - 1)];
-    neighbors.forEach(resolvePickupCollisionsInSeg);
+      const now = phys.t;
+      const lastHit = car[CAR_COLLISION_STAMP] ?? -Infinity;
+      if ((now - lastHit) <= CAR_COLLISION_COOLDOWN) continue;
+
+      const { dy } = groundProfileAt(car.z);
+      const tangent = tangentNormalFromSlope(dy);
+      const wasGrounded = phys.grounded;
+      const currentVx = phys.vx;
+      const currentVy = phys.vy;
+      const playerForwardSpeed = wasGrounded ? phys.vtan : (currentVx * tangent.tx + currentVy * tangent.ty);
+      const npcForwardSpeed = Number.isFinite(car.speed) ? car.speed : 0;
+
+      if (!(playerForwardSpeed > npcForwardSpeed)) continue;
+
+      const vt = Math.min(playerForwardSpeed, npcForwardSpeed);
+      phys.s = wrapDistance(car.z, CAR_COLLISION_REWIND, trackLength);
+      phys.vtan = vt;
+
+      const landingProfile = groundProfileAt(phys.s);
+      const landingTangent = tangentNormalFromSlope(landingProfile.dy);
+      let perpComponent = currentVx * landingTangent.nx + currentVy * landingTangent.ny;
+      const shouldForceLanding = forceLandingOnCarImpact && !wasGrounded;
+
+      if (shouldForceLanding) {
+        phys.grounded = true;
+        phys.y = landingProfile.y;
+        phys.nextHopTime = phys.t;
+        perpComponent = 0;
+      }
+
+      phys.vx = landingTangent.tx * vt + landingTangent.nx * perpComponent;
+      phys.vy = landingTangent.ty * vt + landingTangent.ny * perpComponent;
+
+      car[CAR_COLLISION_STAMP] = now;
+      return true;
+    }
+    return false;
+  }
+
+  function resolveSegmentCollisions(seg) {
+    if (!seg) return false;
+    const carHit = resolveCarCollisionsInSeg(seg);
+    resolvePickupCollisionsAround(seg);
+    return carHit;
+  }
+
+  function resolveCollisions() {
+    const seg = segmentAtS(state.phys.s);
+    if (!seg) return false;
+    return resolveSegmentCollisions(seg);
+  }
+
+  function collectSegmentsCrossed(startS, endS) {
+    if (!hasSegments() || !Number.isFinite(segmentLength) || segmentLength <= 0) return [];
+    const startIndex = Math.floor(startS / segmentLength);
+    const endIndex = Math.floor(endS / segmentLength);
+    const deltaSegments = endIndex - startIndex;
+    if (deltaSegments === 0) return [];
+    const direction = deltaSegments > 0 ? 1 : -1;
+    const touched = [];
+    for (let step = direction; direction > 0 ? step <= deltaSegments : step >= deltaSegments; step += direction) {
+      const idx = wrapSegmentIndex(startIndex + step);
+      const seg = segmentAtIndex(idx);
+      if (seg) touched.push(seg);
+    }
+    return touched;
   }
 
   function updatePhysics(dt) {
@@ -576,6 +647,8 @@
     applyCliffPushForce(steerDx);
     state.playerN = clamp(state.playerN, lanes.road.min, lanes.road.max);
 
+    const startS = phys.s;
+    let segmentsCrossedDuringStep = [];
     let segNow = segmentAtS(phys.s);
     const segFeatures = segNow ? segNow.features : null;
     const zonesHere = boostZonesForPlayer(segNow, state.playerN);
@@ -648,6 +721,9 @@
         phys.grounded = true;
       }
     }
+
+    const integrationEndS = phys.s;
+    segmentsCrossedDuringStep = collectSegmentsCrossed(startS, integrationEndS);
 
     if (!prevGrounded && phys.grounded) {
       const steerAxis2 = (input.left && input.right) ? 0 : (input.left ? -1 : (input.right ? 1 : 0));
@@ -722,7 +798,16 @@
       }
     }
 
-    resolveCollisions();
+    for (const seg of segmentsCrossedDuringStep) {
+      if (!seg) continue;
+      if (resolveSegmentCollisions(seg)) {
+        break;
+      }
+    }
+    const landingSeg = segmentAtS(phys.s);
+    if (landingSeg) {
+      resolveSegmentCollisions(landingSeg);
+    }
 
     if (!state.resetMatteActive) {
       const roadY = elevationAt(phys.s);
