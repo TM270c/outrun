@@ -142,6 +142,8 @@ const tilt = {
   additive: { tiltAddEnabled: true, tiltAddMaxDeg: null },
 };
 
+const forceLandingOnCarImpact = false;
+
 window.Config = {
   build,
   player,
@@ -159,6 +161,7 @@ window.Config = {
   boost,
   lanes,
   tilt,
+  forceLandingOnCarImpact,
 };
 
 Object.freeze(window.Config);
