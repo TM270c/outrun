@@ -68,10 +68,11 @@ const fog = {
   color: [0.1, 0.5, 0.8],
 };
 
-// Procedural snowfall sprites distributed along the road.
+// Procedural snowfall overlay planes.
 const snowfall = {
   enabled: true,
-  distance: 20,
+  flakesPerGroup: 24,
+  endSegments: 20,
   density: 0.65,
 };
 
