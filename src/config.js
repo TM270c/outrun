@@ -68,6 +68,14 @@ const fog = {
   color: [0.1, 0.5, 0.8],
 };
 
+// Procedural snowfall overlay planes.
+const snowfall = {
+  enabled: true,
+  flakesPerGroup: 24,
+  endSegments: 20,
+  density: 0.65,
+};
+
 // Default fallback tint values for world primitives.
 const colors = {
   road: [0.5, 0.5, 0.5, 1],
@@ -160,6 +168,7 @@ window.Config = {
   cliffs,
   failsafe,
   fog,
+  snowfall,
   colors,
   debug,
   sprites,
