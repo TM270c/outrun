@@ -74,6 +74,7 @@ const snowfall = {
   flakesPerGroup: 24,
   endSegments: 20,
   density: 0.65,
+  segmentPhaseStride: 1.5,
 };
 
 // Default fallback tint values for world primitives.
