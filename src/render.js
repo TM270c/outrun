@@ -75,15 +75,18 @@
 
   const SNOW_DEFAULTS = {
     enabled: false,
-    flakesPerGroup: 24,
-    endSegments: 20,
+    distance: 20,
     density: 0.5,
   };
 
+  const SNOW_FLAKES_PER_SCREEN = 36;
+
   const snowState = {
-    planes: [],
-    circleTex: null,
+    cache: new Map(),
+    offsetMap: new Map(),
+    flakeTex: null,
     lastT: null,
+    frameStamp: 0,
     config: { ...SNOW_DEFAULTS },
     density: SNOW_DEFAULTS.density,
   };
@@ -111,13 +114,13 @@
   function readSnowConfig(){
     const base = snowfallConfig || {};
     const enabled = base.enabled !== false;
-    const flakesRaw = Number.isFinite(base.flakesPerGroup) ? base.flakesPerGroup : SNOW_DEFAULTS.flakesPerGroup;
-    const endRaw = Number.isFinite(base.endSegments) ? base.endSegments : SNOW_DEFAULTS.endSegments;
+    const distanceRaw = Number.isFinite(base.distance)
+      ? base.distance
+      : (Number.isFinite(base.endSegments) ? base.endSegments : SNOW_DEFAULTS.distance);
     const densityRaw = typeof base.density === 'number' ? base.density : SNOW_DEFAULTS.density;
     snowState.config = {
       enabled,
-      flakesPerGroup: Math.max(0, Math.floor(flakesRaw)),
-      endSegments: Math.max(0, Math.floor(endRaw)),
+      distance: Math.max(0, Math.floor(distanceRaw)),
       density: clamp(densityRaw, 0, 1),
     };
     snowState.density = snowState.config.density;
@@ -125,64 +128,89 @@
 
   function ensureSnowResources(){
     if (!glr || !snowState.config.enabled) return;
-    if (!snowState.circleTex) {
-      snowState.circleTex = glr.makeCircleTex(48);
+    if (!snowState.flakeTex) {
+      snowState.flakeTex = glr.makeCircleTex(40);
     }
   }
 
-  function createSnowflakes(count){
+  function hashFloat(a, b){
+    let x = Math.imul((a | 0) ^ 0x9e3779b1, 0x85ebca6b);
+    x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35);
+    x ^= (b | 0) + 0x517cc1b7;
+    x = Math.imul(x ^ (x >>> 16), 0x27d4eb2d);
+    return ((x >>> 0) / 0xffffffff);
+  }
+
+  function createSnowFlakesForSegment(segIndex, count){
     const flakes = [];
     for (let i = 0; i < count; i++) {
+      const seed = i * 13;
       flakes.push({
-        seedX: Math.random(),
-        seedY: Math.random(),
-        radiusN: lerp(0.004, 0.012, Math.random()),
-        fallSpeed: lerp(0.2, 0.55, Math.random()),
-        swayAmp: lerp(0.015, 0.06, Math.random()),
-        swaySpeed: lerp(0.25, 0.9, Math.random()),
-        drift: lerp(-0.02, 0.02, Math.random()),
-        opacity: lerp(0.35, 0.85, Math.random()),
-        phase: Math.random() * TAU,
+        seedX: hashFloat(segIndex, seed + 1),
+        seedY: hashFloat(segIndex, seed + 2),
+        radiusN: lerp(0.006, 0.02, hashFloat(segIndex, seed + 3)),
+        fallSpeed: lerp(0.28, 0.62, hashFloat(segIndex, seed + 4)),
+        swayAmp: lerp(-0.1, 0.1, hashFloat(segIndex, seed + 5)),
+        swaySpeed: lerp(0.4, 1.2, hashFloat(segIndex, seed + 6)),
+        opacity: lerp(0.4, 0.85, hashFloat(segIndex, seed + 7)),
+        phase: hashFloat(segIndex, seed + 8) * TAU,
       });
     }
     return flakes;
   }
 
-  function createSnowPlane(index, flakeCount){
-    return {
-      index,
-      time: Math.random() * 10,
-      offset: Math.random(),
-      speed: lerp(0.85, 1.15, Math.random()),
-      scroll: Math.random(),
-      scrollRate: lerp(-0.12, 0.12, Math.random()),
-      flakes: createSnowflakes(flakeCount),
-    };
+  function ensureSnowScreen(segIndex){
+    const cache = snowState.cache;
+    if (!cache.has(segIndex)) {
+      const speed = lerp(0.75, 1.3, hashFloat(segIndex, 101));
+      const baseTime = hashFloat(segIndex, 202) * 100;
+      cache.set(segIndex, {
+        segmentIndex: segIndex,
+        time: baseTime,
+        speed,
+        flakes: createSnowFlakesForSegment(segIndex, SNOW_FLAKES_PER_SCREEN),
+        lastFrame: -1,
+      });
+    }
+    const screen = cache.get(segIndex);
+    if (!Array.isArray(screen.flakes) || screen.flakes.length !== SNOW_FLAKES_PER_SCREEN) {
+      screen.flakes = createSnowFlakesForSegment(segIndex, SNOW_FLAKES_PER_SCREEN);
+    }
+    return screen;
   }
 
-  function ensureSnowPlanes(count, flakeCount){
-    const arr = snowState.planes;
-    if (arr.length > count) arr.length = count;
+  function distributeOffsets(totalSegments, count){
+    const offsets = [];
+    if (count <= 0 || totalSegments <= 0) return offsets;
+    if (count >= totalSegments) {
+      for (let i = 0; i < totalSegments; i++) offsets.push(i);
+      return offsets;
+    }
+    if (count === 1) {
+      offsets.push(0);
+      return offsets;
+    }
+    const maxIndex = totalSegments - 1;
     for (let i = 0; i < count; i++) {
-      if (!arr[i]) {
-        arr[i] = createSnowPlane(i, flakeCount);
-      }
-      const plane = arr[i];
-      plane.index = i;
-      if (!Number.isFinite(plane.scrollRate)) plane.scrollRate = lerp(-0.12, 0.12, Math.random());
-      if (!Number.isFinite(plane.scroll)) plane.scroll = Math.random();
-      if (!Array.isArray(plane.flakes) || plane.flakes.length !== flakeCount) {
-        plane.flakes = createSnowflakes(flakeCount);
+      const t = i / (count - 1);
+      const idx = Math.min(maxIndex, Math.round(t * maxIndex));
+      if (!offsets.includes(idx)) offsets.push(idx);
+    }
+    if (offsets.length < count) {
+      for (let i = 0; i < totalSegments && offsets.length < count; i++) {
+        if (!offsets.includes(i)) offsets.push(i);
       }
     }
+    offsets.sort((a, b) => a - b);
+    return offsets;
   }
 
-  function tickSnowSystem(){
+  function tickSnowSystem(baseSeg){
     const cfg = snowState.config;
     snowState.density = cfg.density;
-    if (!cfg.enabled) {
+    snowState.offsetMap.clear();
+    if (!cfg.enabled || !baseSeg) {
       snowState.lastT = state.phys.t;
-      snowState.planes.length = 0;
       return;
     }
 
@@ -191,18 +219,39 @@
     const dt = snowState.lastT == null ? 0 : Math.max(0, now - snowState.lastT);
     snowState.lastT = now;
 
-    const planeCount = Math.min(track.drawDistance, cfg.endSegments);
-    if (planeCount <= 0) {
-      snowState.planes.length = 0;
+    const totalSegments = Math.min(track.drawDistance, cfg.distance);
+    let activeCount = Math.max(0, Math.min(totalSegments, Math.floor(totalSegments * cfg.density)));
+    if (activeCount === 0 && cfg.density > 0 && totalSegments > 0) {
+      activeCount = 1;
+    }
+    const visibleCount = Math.min(activeCount, 20);
+    if (visibleCount <= 0 || totalSegments <= 0) {
+      snowState.frameStamp++;
       return;
     }
 
-    ensureSnowPlanes(planeCount, cfg.flakesPerGroup);
+    const offsets = distributeOffsets(totalSegments, visibleCount);
+    const baseIndex = baseSeg.index;
 
-    for (const plane of snowState.planes) {
-      if (!plane) continue;
-      plane.time = (plane.time + dt * plane.speed) % 4096;
-      plane.scroll = (plane.scroll + dt * plane.scrollRate + 1) % 1;
+    for (const offset of offsets) {
+      const segIdx = (baseIndex + offset) % segments.length;
+      const seg = segments[segIdx];
+      if (!seg) continue;
+      const screen = ensureSnowScreen(seg.index);
+      screen.time = (screen.time + dt * screen.speed) % 4096;
+      screen.lastFrame = snowState.frameStamp;
+      snowState.offsetMap.set(offset, screen);
+    }
+
+    snowState.frameStamp++;
+
+    if (snowState.frameStamp % 240 === 0) {
+      for (const [key, val] of snowState.cache.entries()) {
+        if (!val || val.lastFrame == null) continue;
+        if (snowState.frameStamp - val.lastFrame > 480) {
+          snowState.cache.delete(key);
+        }
+      }
     }
   }
 
@@ -521,7 +570,7 @@
       return;
     }
 
-    tickSnowSystem();
+    tickSnowSystem(baseSeg);
 
     const basePct = pctRem(frame.sCam, segmentLength);
     const zoneData = {
@@ -601,14 +650,16 @@
       const w1 = p1.screen.scale * rw1 * HALF_VIEW;
       const w2 = p2.screen.scale * rw2 * HALF_VIEW;
 
-      if (snowState.config.enabled && n < snowState.planes.length) {
-        const plane = snowState.planes[n];
-        if (plane) {
+      if (snowState.config.enabled && snowState.offsetMap.has(n)) {
+        const screen = snowState.offsetMap.get(n);
+        if (screen) {
           drawList.push({
-            type: 'snow',
+            type: 'snowScreen',
             depth: depth - 1e-3,
-            plane,
+            screen,
             segDepth: depth,
+            near: { x: p1.screen.x, y: p1.screen.y, w: w1 },
+            far: { x: p2.screen.x, y: p2.screen.y, w: w2 },
           });
         }
       }
@@ -844,51 +895,6 @@
     }
   }
 
-  function renderSnowPlane(item){
-    const { plane, segDepth } = item;
-    if (!plane || !glr || !snowState.circleTex) return;
-    if (!Array.isArray(plane.flakes) || plane.flakes.length === 0) return;
-
-    const totalPlanes = snowState.planes.length || 1;
-    const depthFade = 1 - plane.index / totalPlanes;
-    const fogFade = clamp(1 - fogFactorFromZ(segDepth), 0, 1);
-    const baseAlpha = snowState.density * fogFade * (0.4 + 0.6 * depthFade);
-    if (baseAlpha <= 0.001) return;
-
-    const width = W;
-    const height = H;
-    if (width <= 0 || height <= 0) return;
-    const scaleRef = Math.min(width, height);
-    const time = (plane.time % 4096) + plane.offset;
-    const scroll = plane.scroll || 0;
-
-    for (const flake of plane.flakes) {
-      if (!flake) continue;
-      const fallPhaseRaw = flake.seedY + time * flake.fallSpeed;
-      const fallPhase = fallPhaseRaw - Math.floor(fallPhaseRaw);
-      const y = fallPhase * height;
-
-      const swayPhase = plane.time * flake.swaySpeed * TAU + flake.phase;
-      let xNorm = flake.seedX + Math.sin(swayPhase) * flake.swayAmp + scroll * flake.drift;
-      xNorm -= Math.floor(xNorm);
-      const x = xNorm * width;
-
-      const size = Math.max(2, flake.radiusN * scaleRef);
-      const alpha = Math.min(1, baseAlpha * flake.opacity);
-      if (alpha <= 0.01) continue;
-
-      const half = size * 0.5;
-      const quad = {
-        x1: x - half, y1: y - half,
-        x2: x + half, y2: y - half,
-        x3: x + half, y3: y + half,
-        x4: x - half, y4: y + half,
-      };
-
-      glr.drawQuadTextured(snowState.circleTex, quad, UNIT_UV, [1, 1, 1, alpha], [0, 0, 0, 0]);
-    }
-  }
-
   function renderDrawList(drawList){
     const SPRITE_META = state.spriteMeta;
     for (const item of drawList){
@@ -900,9 +906,55 @@
         drawBillboard(item.x, item.y - item.h * 0.2, item.w, item.h, item.z, item.tint, item.tex);
       } else if (item.type === 'player'){
         renderPlayer(item, SPRITE_META);
-      } else if (item.type === 'snow'){
-        renderSnowPlane(item);
+      } else if (item.type === 'snowScreen'){
+        renderSnowScreen(item);
       }
+    }
+  }
+
+  function renderSnowScreen(item){
+    const { screen, segDepth, near, far } = item;
+    if (!screen || !glr || !snowState.flakeTex) return;
+    if (!Array.isArray(screen.flakes) || screen.flakes.length === 0) return;
+
+    const fogFade = clamp(1 - fogFactorFromZ(segDepth), 0, 1);
+    const baseAlpha = snowState.density * fogFade;
+    if (baseAlpha <= 0.001) return;
+
+    const nearLeft = near.x - near.w;
+    const nearRight = near.x + near.w;
+    const farLeft = far.x - far.w;
+    const farRight = far.x + far.w;
+
+    const fogVals = fogArray(segDepth);
+
+    for (const flake of screen.flakes) {
+      if (!flake) continue;
+      const fallPhaseRaw = flake.seedY + screen.time * flake.fallSpeed;
+      const fallPhase = fallPhaseRaw - Math.floor(fallPhaseRaw);
+      const y = lerp(near.y, far.y, fallPhase);
+
+      const swayPhase = screen.time * flake.swaySpeed + flake.phase;
+      let lateral = flake.seedX + Math.sin(swayPhase) * flake.swayAmp;
+      lateral -= Math.floor(lateral);
+      const left = lerp(nearLeft, farLeft, fallPhase);
+      const right = lerp(nearRight, farRight, fallPhase);
+      const x = lerp(left, right, lateral);
+
+      const widthAtPhase = Math.max(4, Math.abs(right - left));
+      const size = Math.max(2, flake.radiusN * widthAtPhase);
+      const alpha = Math.min(1, baseAlpha * flake.opacity);
+      if (alpha <= 0.01) continue;
+
+      const half = size * 0.5;
+      const quad = {
+        x1: x - half, y1: y - half,
+        x2: x + half, y2: y - half,
+        x3: x + half, y3: y + half,
+        x4: x - half, y4: y + half,
+      };
+
+      glr.drawQuadTextured(snowState.flakeTex, quad, UNIT_UV, [1, 1, 1, alpha], fogVals);
     }
   }
 
@@ -1221,9 +1273,11 @@
     canvasOverlay = dom && dom.overlay || null;
     canvasHUD = dom && dom.hud || null;
 
-    snowState.circleTex = null;
-    snowState.planes.length = 0;
+    snowState.flakeTex = null;
+    snowState.cache.clear();
+    snowState.offsetMap.clear();
     snowState.lastT = null;
+    snowState.frameStamp = 0;
     readSnowConfig();
 
     if (canvas3D){
