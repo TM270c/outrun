@@ -16,6 +16,7 @@
     boost,
     lanes,
     tilt: tiltConfig = {},
+    traffic: trafficConfig = {},
     forceLandingOnCarImpact = false,
   } = Config;
 
@@ -83,7 +84,8 @@
     PICKUP: { wN: 0.10, aspect: 1.0, tint: [1, 0.92, 0.2, 1], tex: () => null },
   };
 
-  const NPC = { total: 20, edgePad: 0.02, avoidLookaheadSegs: 20 };
+  const NPC_DEFAULTS = { total: 20, edgePad: 0.02, avoidLookaheadSegs: 20 };
+  const NPC = { ...NPC_DEFAULTS, ...trafficConfig };
   const CAR_TYPES = ['CAR', 'SEMI'];
 
   const CAR_COLLISION_COOLDOWN = 1 / 120;

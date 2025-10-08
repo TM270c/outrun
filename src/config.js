@@ -95,6 +95,13 @@ const parallaxLayers = [
   { key: 'horizon3', parallaxX: 0.18, uvSpanX: 1.0, uvSpanY: 1.0 },
 ];
 
+// Road traffic tuning for non-player cars.
+const traffic = {
+  total: 20,
+  edgePad: 0.02,
+  avoidLookaheadSegs: 20,
+};
+
 // Drift boost tuning.
 const drift = {
   chargeMin: 0.6,
@@ -157,6 +164,7 @@ window.Config = {
   debug,
   sprites,
   parallaxLayers,
+  traffic,
   drift,
   boost,
   lanes,
