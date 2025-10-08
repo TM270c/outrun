@@ -174,6 +174,17 @@
     return { y, dy, d2y };
   }
 
+  function playerFloorHeightAt(s = state.phys.s, nNorm = state.playerN, groundProfile = null) {
+    if (typeof floorElevationAt === 'function') {
+      const floor = floorElevationAt(s, nNorm);
+      if (Number.isFinite(floor)) {
+        return floor;
+      }
+    }
+    const profile = groundProfile || groundProfileAt(s);
+    return profile.y;
+  }
+
   function boostZonesOnSegment(seg) {
     if (!seg || !seg.features) return [];
     const zones = seg.features.boostZones;
@@ -515,7 +526,8 @@
     const { phys } = state;
     if (!phys.grounded || phys.t < phys.nextHopTime) return false;
     const jumpZone = jumpZoneForPlayer();
-    const { dy } = groundProfileAt(phys.s);
+    const ground = groundProfileAt(phys.s);
+    const { dy } = ground;
     const { tx, ty, nx, ny } = tangentNormalFromSlope(dy);
     const baseVx = phys.vtan * tx;
     const baseVy = phys.vtan * ty;
@@ -523,6 +535,7 @@
     const newVy = baseVy + ny * player.hopImpulse;
     phys.vx = newVx;
     phys.vy = newVy;
+    phys.y = playerFloorHeightAt(phys.s, state.playerN, ground);
     phys.grounded = false;
     phys.nextHopTime = phys.t + player.hopCooldown;
     applyJumpZoneBoost(jumpZone);
@@ -607,7 +620,7 @@
 
       if (shouldForceLanding) {
         phys.grounded = true;
-        phys.y = landingProfile.y;
+        phys.y = playerFloorHeightAt(phys.s, state.playerN, landingProfile);
         phys.nextHopTime = phys.t;
         perpComponent = 0;
       }
@@ -696,7 +709,8 @@
 
     const prevGrounded = phys.grounded;
     if (phys.grounded) {
-      const { dy } = groundProfileAt(phys.s);
+      const groundNow = groundProfileAt(phys.s);
+      const { dy } = groundNow;
       const { tx, ty } = tangentNormalFromSlope(dy);
       const boostedMaxSpeed = player.topSpeed * (boosting ? drift.boostScale : 1);
       const accel = player.accelForce * (boosting ? drift.boostScale : 1);
@@ -721,9 +735,10 @@
       const zoneMult = zoneMultBase;
       const travelV = phys.vtan * zoneMult;
       phys.s += travelV * tx * dt;
-      phys.y = groundProfileAt(phys.s).y;
+      const groundNext = groundProfileAt(phys.s);
+      phys.y = playerFloorHeightAt(phys.s, state.playerN, groundNext);
 
-      const { dy: ndy, d2y } = groundProfileAt(phys.s);
+      const { dy: ndy, d2y } = groundNext;
       const kap = computeCurvature(ndy, d2y);
       if (kap < 0) {
         const need = phys.vtan * phys.vtan * -kap;
@@ -746,8 +761,9 @@
 
       state.activeDriveZoneId = null;
 
-      const gy = elevationAt(phys.s);
-      const { dy } = groundProfileAt(phys.s);
+      const groundContact = groundProfileAt(phys.s);
+      const gy = playerFloorHeightAt(phys.s, state.playerN, groundContact);
+      const { dy } = groundContact;
       if (phys.y <= gy && phys.vy <= phys.vx * dy) {
         const tn = tangentNormalFromSlope(dy);
         const vtanNew = phys.vx * tn.tx + phys.vy * tn.ty;
@@ -1078,7 +1094,9 @@
   } = {}) {
     const { phys } = state;
     phys.s = s;
-    phys.y = elevationAt(phys.s);
+    const nextPlayerN = (playerNOverride != null) ? playerNOverride : state.playerN;
+    state.playerN = nextPlayerN;
+    phys.y = playerFloorHeightAt(phys.s, nextPlayerN);
     phys.grounded = true;
     phys.vx = 0;
     phys.vy = 0;
@@ -1090,8 +1108,6 @@
       if (timers.boostFlashTimer != null) phys.boostFlashTimer = timers.boostFlashTimer;
     }
 
-    const nextPlayerN = (playerNOverride != null) ? playerNOverride : state.playerN;
-    state.playerN = nextPlayerN;
     state.camYSmooth = phys.y + cameraHeight;
 
     state.hopHeld = false;
