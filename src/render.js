@@ -80,20 +80,12 @@
     density: 0.5,
   };
 
-  const SNOW_WIDTH_PAD = 1.45;
-  const SNOW_SCREEN_PAD = 0.12;
-  const SNOW_TOP_PAD = 0.18;
-  const SNOW_BOTTOM_PAD = 0.08;
-  const SNOW_MIN_SPAN_PX = 96;
-  const SNOW_DEPTH_OFFSET = 1e-3;
-
   const snowState = {
     planes: [],
     circleTex: null,
     lastT: null,
     config: { ...SNOW_DEFAULTS },
     density: SNOW_DEFAULTS.density,
-    visibleCount: 0,
   };
 
   let glr = null;
@@ -129,7 +121,6 @@
       density: clamp(densityRaw, 0, 1),
     };
     snowState.density = snowState.config.density;
-    snowState.visibleCount = 0;
   }
 
   function ensureSnowResources(){
@@ -192,7 +183,6 @@
     if (!cfg.enabled) {
       snowState.lastT = state.phys.t;
       snowState.planes.length = 0;
-      snowState.visibleCount = 0;
       return;
     }
 
@@ -202,7 +192,6 @@
     snowState.lastT = now;
 
     const planeCount = Math.min(track.drawDistance, cfg.endSegments);
-    snowState.visibleCount = planeCount;
     if (planeCount <= 0) {
       snowState.planes.length = 0;
       return;
@@ -581,35 +570,6 @@
     state.playerTiltDeg += (cliffDeg - state.playerTiltDeg) * 0.35;
   }
 
-  function makeSnowBounds(pNear, pFar, wNear, wFar){
-    if (!pNear || !pFar) return null;
-    const nearX = pNear.screen.x;
-    const farX = pFar.screen.x;
-    if (!Number.isFinite(nearX) || !Number.isFinite(farX)) return null;
-
-    const bottomBase = Number.isFinite(pNear.screen.y) ? pNear.screen.y : H;
-    const farBaseY = Number.isFinite(pFar.screen.y) ? pFar.screen.y : bottomBase - H * 0.25;
-    const bottomMax = H * (1 + SNOW_BOTTOM_PAD);
-    const bottomMin = H * (1 - SNOW_BOTTOM_PAD);
-    const bottom = clamp(bottomBase, bottomMin, bottomMax);
-
-    const minTop = -H * SNOW_TOP_PAD;
-    let topCandidate = Math.min(farBaseY, bottom - SNOW_MIN_SPAN_PX * 0.5, H * 0.25);
-    if (!Number.isFinite(topCandidate)) topCandidate = minTop;
-    let top = Math.min(topCandidate, minTop);
-    if (bottom - top < SNOW_MIN_SPAN_PX) top = bottom - SNOW_MIN_SPAN_PX;
-
-    const nearHalf = Math.max(HALF_VIEW * (1 + SNOW_SCREEN_PAD), Math.abs(wNear) * SNOW_WIDTH_PAD);
-    const farHalf = Math.max(HALF_VIEW * (1 + SNOW_SCREEN_PAD), Math.abs(wFar) * SNOW_WIDTH_PAD);
-    const nearScale = Math.max(1, (pNear.screen.scale || 0) * HALF_VIEW);
-    const farScale = Math.max(1, (pFar.screen.scale || 0) * HALF_VIEW);
-
-    return {
-      near: { x: nearX, y: bottom, w: nearHalf, scale: nearScale },
-      far: { x: farX, y: top, w: farHalf, scale: farScale },
-    };
-  }
-
   function buildWorldDrawList(baseSeg, basePct, frame, zoneData){
     const { sCam, camX, camY } = frame;
     const drawList = [];
@@ -641,16 +601,14 @@
       const w1 = p1.screen.scale * rw1 * HALF_VIEW;
       const w2 = p2.screen.scale * rw2 * HALF_VIEW;
 
-      if (snowState.config.enabled && n < snowState.visibleCount && n < snowState.planes.length) {
+      if (snowState.config.enabled && n < snowState.planes.length) {
         const plane = snowState.planes[n];
-        const bounds = makeSnowBounds(p1, p2, w1, w2);
-        if (plane && bounds) {
+        if (plane) {
           drawList.push({
             type: 'snow',
-            depth: depth - SNOW_DEPTH_OFFSET,
+            depth: depth - 1e-3,
             plane,
             segDepth: depth,
-            bounds,
           });
         }
       }
@@ -887,55 +845,37 @@
   }
 
   function renderSnowPlane(item){
-    const { plane, segDepth, bounds } = item || {};
-    if (!plane || !glr || !snowState.circleTex || !bounds) return;
+    const { plane, segDepth } = item;
+    if (!plane || !glr || !snowState.circleTex) return;
     if (!Array.isArray(plane.flakes) || plane.flakes.length === 0) return;
 
-    const planeCount = Math.max(1, snowState.visibleCount || snowState.planes.length || 1);
-    const fadeDenom = Math.max(1, planeCount - 1);
-    const idx = Math.min(Math.max(plane.index || 0, 0), planeCount - 1);
-    const depthFade = fadeDenom > 0 ? 1 - idx / fadeDenom : 1;
+    const totalPlanes = snowState.planes.length || 1;
+    const depthFade = 1 - plane.index / totalPlanes;
     const fogFade = clamp(1 - fogFactorFromZ(segDepth), 0, 1);
-    const fadeNorm = clamp(depthFade, 0, 1);
-    const baseAlpha = snowState.density * fogFade * (0.5 + 0.5 * fadeNorm) * fadeNorm;
+    const baseAlpha = snowState.density * fogFade * (0.4 + 0.6 * depthFade);
     if (baseAlpha <= 0.001) return;
 
-    const { near, far } = bounds;
-    if (!near || !far) return;
-    const top = far.y;
-    const bottom = near.y;
-    const verticalSpan = bottom - top;
-    if (!Number.isFinite(verticalSpan) || verticalSpan <= 1) return;
-
-    const nearSpan = near.w * 2;
-    const farSpan = far.w * 2;
-    if (!Number.isFinite(nearSpan) || !Number.isFinite(farSpan)) return;
-
-    const nearLeft = near.x - near.w;
-    const farLeft = far.x - far.w;
+    const width = W;
+    const height = H;
+    if (width <= 0 || height <= 0) return;
+    const scaleRef = Math.min(width, height);
     const time = (plane.time % 4096) + plane.offset;
     const scroll = plane.scroll || 0;
 
     for (const flake of plane.flakes) {
       if (!flake) continue;
-
       const fallPhaseRaw = flake.seedY + time * flake.fallSpeed;
-      let v = fallPhaseRaw - Math.floor(fallPhaseRaw);
+      const fallPhase = fallPhaseRaw - Math.floor(fallPhaseRaw);
+      const y = fallPhase * height;
+
       const swayPhase = plane.time * flake.swaySpeed * TAU + flake.phase;
-      let u = flake.seedX + scroll * flake.drift;
-      u -= Math.floor(u);
+      let xNorm = flake.seedX + Math.sin(swayPhase) * flake.swayAmp + scroll * flake.drift;
+      xNorm -= Math.floor(xNorm);
+      const x = xNorm * width;
 
-      const baseFar = farLeft + farSpan * u;
-      const baseNear = nearLeft + nearSpan * u;
-      let x = lerp(baseFar, baseNear, v);
-      const spanAtV = lerp(farSpan, nearSpan, v);
-      x += Math.sin(swayPhase) * flake.swayAmp * spanAtV * 0.5;
-      const y = top + verticalSpan * v;
-
-      const scaleRef = lerp(far.scale, near.scale, v);
       const size = Math.max(2, flake.radiusN * scaleRef);
       const alpha = Math.min(1, baseAlpha * flake.opacity);
-      if (alpha <= 0.01 || !Number.isFinite(x) || !Number.isFinite(y)) continue;
+      if (alpha <= 0.01) continue;
 
       const half = size * 0.5;
       const quad = {
