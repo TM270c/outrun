@@ -151,6 +151,9 @@ const tilt = {
 
 const forceLandingOnCarImpact = false;
 
+const snowScreenDistance = 60;
+const snowScreenDensity = 1;
+
 window.Config = {
   build,
   player,
@@ -170,6 +173,8 @@ window.Config = {
   lanes,
   tilt,
   forceLandingOnCarImpact,
+  snowScreenDistance,
+  snowScreenDensity,
 };
 
 Object.freeze(window.Config);

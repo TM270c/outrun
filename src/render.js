@@ -19,6 +19,8 @@
     drift,
     tilt: tiltConfig = {},
     build = {},
+    snowScreenDistance: snowScreenDistanceRaw = 0,
+    snowScreenDensity: snowScreenDensityRaw = 1,
   } = Config;
 
   const {
@@ -62,6 +64,11 @@
     padTop: sprites.overlap.y,
     padBottom: sprites.overlap.y,
   };
+
+  const SNOW_SCREEN_DISTANCE = Math.max(0, Math.floor(snowScreenDistanceRaw || 0));
+  const SNOW_SCREEN_DENSITY = Math.max(1, Math.floor(snowScreenDensityRaw || 1));
+  const SNOW_SCREEN_SIZE = 220;
+  const SNOW_SCREEN_STROKE = 18;
 
   let glr = null;
   let canvas3D = null;
@@ -538,6 +545,7 @@
         depth,
         segIndex: idx,
         seg,
+        cameraOffset: n,
         visibleRoad,
         boostZones: boostZonesHere,
         p1,
@@ -720,6 +728,53 @@
     }
   }
 
+  function shouldRenderSnowScreen(cameraOffset, segIndex){
+    if (SNOW_SCREEN_DISTANCE <= 0) return false;
+    if (typeof cameraOffset !== 'number' || cameraOffset < 0) return false;
+    if (cameraOffset >= SNOW_SCREEN_DISTANCE) return false;
+    const density = SNOW_SCREEN_DENSITY;
+    if (density <= 1) return true;
+    const idx = typeof segIndex === 'number' ? segIndex : 0;
+    return ((idx + 1) % density) === 0;
+  }
+
+  function drawSquareOutline(cx, cy, size, stroke, color, fogVals){
+    if (!glr || size <= 0 || stroke <= 0) return;
+    const s = Math.min(stroke, size * 0.5);
+    const half = size * 0.5;
+    const left = cx - half;
+    const right = cx + half;
+    const top = cy - half;
+    const bottom = cy + half;
+
+    const topQuad = { x1: left, y1: top, x2: right, y2: top, x3: right, y3: top + s, x4: left, y4: top + s };
+    const bottomQuad = { x1: left, y1: bottom - s, x2: right, y2: bottom - s, x3: right, y3: bottom, x4: left, y4: bottom };
+    const leftQuad = { x1: left, y1: top + s, x2: left + s, y2: top + s, x3: left + s, y3: bottom - s, x4: left, y4: bottom - s };
+    const rightQuad = { x1: right - s, y1: top + s, x2: right, y2: top + s, x3: right, y3: bottom - s, x4: right - s, y4: bottom - s };
+
+    glr.drawQuadSolid(topQuad, color, fogVals);
+    glr.drawQuadSolid(bottomQuad, color, fogVals);
+    glr.drawQuadSolid(leftQuad, color, fogVals);
+    glr.drawQuadSolid(rightQuad, color, fogVals);
+  }
+
+  function renderSnowScreen(it){
+    if (!shouldRenderSnowScreen(it.cameraOffset, it.segIndex)) return;
+    const { p1, p2, visibleRoad, seg } = it;
+    if (!seg) return;
+
+    const y2 = visibleRoad ? p2.screen.y : (p1.screen.y - 1);
+    const cx = lerp(p1.screen.x, p2.screen.x, 0.5);
+    const cy = lerp(p1.screen.y, y2, 0.5);
+    const size = SNOW_SCREEN_SIZE;
+    const stroke = SNOW_SCREEN_STROKE;
+    const color = Array.isArray(seg.snowScreenColor) ? seg.snowScreenColor : [1, 1, 1, 1];
+    const zMid = lerp(p1.camera.z, p2.camera.z, 0.5);
+    const fogVals = fogArray(zMid);
+
+    drawSquareOutline(cx, cy, size, stroke, color, fogVals);
+  }
+
   function renderStrip(it){
     const {
       p1,
@@ -844,6 +899,8 @@
       const uvR = { u1: 0, v1: v0Rail, u2: 1, v2: v0Rail, u3: 1, v3: v1Rail, u4: 0, v4: v1Rail };
       glr.drawQuadTextured(texRail, padWithSpriteOverlap(quadR), uvR, colors.rail, fogArray(p1RS.camera.z, p2RS.camera.z));
     }
+
+    renderSnowScreen(it);
   }
 
   function renderPlayer(item, SPRITE_META){
