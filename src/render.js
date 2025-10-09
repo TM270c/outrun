@@ -766,10 +766,15 @@
     const y2 = visibleRoad ? p2.screen.y : (p1.screen.y - 1);
     const cx = lerp(p1.screen.x, p2.screen.x, 0.5);
     const cy = lerp(p1.screen.y, y2, 0.5);
-    const size = SNOW_SCREEN_SIZE;
-    const stroke = SNOW_SCREEN_STROKE;
     const color = Array.isArray(seg.snowScreenColor) ? seg.snowScreenColor : [1, 1, 1, 1];
     const zMid = lerp(p1.camera.z, p2.camera.z, 0.5);
+    const scale1 = (p1 && p1.screen && typeof p1.screen.scale === 'number') ? p1.screen.scale : 0;
+    const scale2Base = (p2 && p2.screen && typeof p2.screen.scale === 'number') ? p2.screen.scale : scale1;
+    const scale2 = visibleRoad ? scale2Base : scale1;
+    const baseScale = lerp(scale1, scale2, 0.5);
+    const spriteScale = Math.max(0, baseScale) * spriteFarScaleFromZ(zMid);
+    const size = Math.max(1, SNOW_SCREEN_SIZE * spriteScale);
+    const stroke = Math.max(1, SNOW_SCREEN_STROKE * spriteScale);
     const fogVals = fogArray(zMid);
 
     drawSquareOutline(cx, cy, size, stroke, color, fogVals);
