@@ -890,9 +890,10 @@
           const radialFactor = clamp(dirLen / maxRadius, 0, 1);
           const stretchScale = snowStretchFactor;
           const stretchBase = flakeSizePx * speedPct * closeness * stretchScale;
+          const edgeBias = Math.pow(radialFactor, 1.75);
           const stretchAmount = Math.min(
             flakeSizePx * 4 * stretchScale,
-            stretchBase * (0.3 + radialFactor * 0.9)
+            stretchBase * lerp(0.05, 1.5, edgeBias)
           );
 
           if (stretchAmount > 0.01){
