@@ -86,8 +86,6 @@
     return orderedRange(fallbackMin, numericOr(value, fallbackMax));
   }
 
-  const SNOW_SCREEN_SIZE_MULTIPLIER = 5;
-
   const snowSizeRange = rangeFromConfig(snowSize, 10, 30);
   const snowSpeedRange = rangeFromConfig(snowSpeed, 0.3, 1.0);
   const snowDensityFactor = Math.max(0, numericOr(snowDensity, 1));
@@ -650,7 +648,7 @@
         const farScale = spriteFarScaleFromZ(zMid);
         const baseHalf = Math.max(12, scaleMid * rwMid * HALF_VIEW * 0.8);
         const halfSize = baseHalf * farScale;
-        const sizePx = halfSize * 2 * SNOW_SCREEN_SIZE_MULTIPLIER;
+        const sizePx = halfSize * 2;
         const color = (seg.snowScreen && Array.isArray(seg.snowScreen.color))
           ? seg.snowScreen.color
           : [1, 1, 1, 1];
