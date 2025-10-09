@@ -24,6 +24,7 @@
     snowDensity = 1,
     snowSize = { min: 10, max: 30 },
     snowSpeed = { min: 0.3, max: 1.0 },
+    snowStretch = 1,
   } = Config;
 
   const {
@@ -88,6 +89,7 @@
   const snowSizeRange = rangeFromConfig(snowSize, 10, 30);
   const snowSpeedRange = rangeFromConfig(snowSpeed, 0.3, 1.0);
   const snowDensityFactor = Math.max(0, numericOr(snowDensity, 1));
+  const snowStretchFactor = Math.max(0, numericOr(snowStretch, 1));
 
   function mulberry32(seed){
     let t = seed >>> 0;
@@ -885,8 +887,12 @@
           const normDirX = dirX / dirLen;
           const normDirY = dirY / dirLen;
           const radialFactor = clamp(dirLen / maxRadius, 0, 1);
-          const stretchBase = flakeSizePx * speedPct * closeness;
-          const stretchAmount = Math.min(flakeSizePx * 4, stretchBase * (0.3 + radialFactor * 0.9));
+          const stretchScale = snowStretchFactor;
+          const stretchBase = flakeSizePx * speedPct * closeness * stretchScale;
+          const stretchAmount = Math.min(
+            flakeSizePx * 4 * stretchScale,
+            stretchBase * (0.3 + radialFactor * 0.9)
+          );
 
           if (stretchAmount > 0.01){
             const vertsByDot = quadVerts
