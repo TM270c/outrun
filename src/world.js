@@ -18,19 +18,43 @@
     CURVE_EASE,
   } = MathUtil;
 
+  function resolveAssetUrl(path){
+    if (typeof path !== 'string' || path.length === 0) return path;
+
+    try {
+      const chromeApi = global.chrome;
+      if (chromeApi && chromeApi.runtime && typeof chromeApi.runtime.getURL === 'function') {
+        return chromeApi.runtime.getURL(path);
+      }
+    } catch (err) {
+      // Ignore access errors and fall back to location-based resolution.
+    }
+
+    try {
+      const base = global.location && global.location.href ? global.location.href : null;
+      if (base) {
+        return new URL(path, base).toString();
+      }
+    } catch (err) {
+      // new URL may throw for invalid inputs; fall back to original path.
+    }
+
+    return path;
+  }
+
   const assetManifest = {
-    road:      'tex/road-seg.png',
-    rail:      'tex/guardrail.png',
-    cliff:     'tex/cliff.png',
-    boostJump: 'tex/boost.png',
-    boostDrive:'tex/boost.png',
-    horizon1:  'tex/paralax-1.png',
-    horizon2:  'tex/paralax-2.png',
-    horizon3:  'tex/paralax-3.png',
-    car:       'tex/car.png',
-    semi:      'tex/semi.png',
-    tree:      'tex/tree.png',
-    sign:      'tex/billboard.png',
+    road:      resolveAssetUrl('tex/road-seg.png'),
+    rail:      resolveAssetUrl('tex/guardrail.png'),
+    cliff:     resolveAssetUrl('tex/cliff.png'),
+    boostJump: resolveAssetUrl('tex/boost.png'),
+    boostDrive:resolveAssetUrl('tex/boost.png'),
+    horizon1:  resolveAssetUrl('tex/paralax-1.png'),
+    horizon2:  resolveAssetUrl('tex/paralax-2.png'),
+    horizon3:  resolveAssetUrl('tex/paralax-3.png'),
+    car:       resolveAssetUrl('tex/car.png'),
+    semi:      resolveAssetUrl('tex/semi.png'),
+    tree:      resolveAssetUrl('tex/tree.png'),
+    sign:      resolveAssetUrl('tex/billboard.png'),
   };
 
   const textures = {};
@@ -55,7 +79,7 @@
     }
 
     await Promise.all(Object.entries(assetManifest).map(async ([key, path]) => {
-      textures[key] = await loader(key, path);
+      textures[key] = await loader(key, resolveAssetUrl(path));
     }));
 
     return textures;
@@ -243,7 +267,8 @@
   }
 
   async function buildTrackFromCSV(url){
-    const res = await fetch(url, { cache: 'no-store' });
+    const csvUrl = resolveAssetUrl(url);
+    const res = await fetch(csvUrl, { cache: 'no-store' });
     if (!res.ok) throw new Error('CSV load failed: ' + res.status);
     const text = await res.text();
 
@@ -413,7 +438,8 @@
 
     let text = '';
     try {
-      const res = await fetch(url, { cache: 'no-store' });
+      const csvUrl = resolveAssetUrl(url);
+      const res = await fetch(csvUrl, { cache: 'no-store' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       text = await res.text();
     } catch (e) {
@@ -776,6 +802,7 @@
       get trackLength(){ return trackLength; },
     },
     assets: { manifest: assetManifest, textures },
+    resolveAssetUrl,
     loadTexturesWith,
     roadWidthAt,
     buildTrackFromCSV,
