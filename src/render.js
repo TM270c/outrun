@@ -15,7 +15,6 @@
     debug,
     sprites,
     parallaxLayers,
-    snowfall: snowfallConfig = {},
     boost,
     drift,
     tilt: tiltConfig = {},
@@ -64,30 +63,6 @@
     padBottom: sprites.overlap.y,
   };
 
-  const UNIT_UV = Object.freeze({
-    u1: 0, v1: 0,
-    u2: 1, v2: 0,
-    u3: 1, v3: 1,
-    u4: 0, v4: 1,
-  });
-
-  const TAU = Math.PI * 2;
-
-  const SNOW_DEFAULTS = {
-    enabled: false,
-    flakesPerGroup: 24,
-    endSegments: 20,
-    density: 0.5,
-  };
-
-  const snowState = {
-    planes: [],
-    circleTex: null,
-    lastT: null,
-    config: { ...SNOW_DEFAULTS },
-    density: SNOW_DEFAULTS.density,
-  };
-
   let glr = null;
   let canvas3D = null;
   let canvasOverlay = null;
@@ -105,106 +80,6 @@
   let HUD_COVER_RADIUS = 0;
 
   let overlayOn = true;
-
-  readSnowConfig();
-
-  function readSnowConfig(){
-    const base = snowfallConfig || {};
-    const enabled = base.enabled !== false;
-    const flakesRaw = Number.isFinite(base.flakesPerGroup) ? base.flakesPerGroup : SNOW_DEFAULTS.flakesPerGroup;
-    const endRaw = Number.isFinite(base.endSegments) ? base.endSegments : SNOW_DEFAULTS.endSegments;
-    const densityRaw = typeof base.density === 'number' ? base.density : SNOW_DEFAULTS.density;
-    snowState.config = {
-      enabled,
-      flakesPerGroup: Math.max(0, Math.floor(flakesRaw)),
-      endSegments: Math.max(0, Math.floor(endRaw)),
-      density: clamp(densityRaw, 0, 1),
-    };
-    snowState.density = snowState.config.density;
-  }
-
-  function ensureSnowResources(){
-    if (!glr || !snowState.config.enabled) return;
-    if (!snowState.circleTex) {
-      snowState.circleTex = glr.makeCircleTex(48);
-    }
-  }
-
-  function createSnowflakes(count){
-    const flakes = [];
-    for (let i = 0; i < count; i++) {
-      flakes.push({
-        seedX: Math.random(),
-        seedY: Math.random(),
-        radiusN: lerp(0.004, 0.012, Math.random()),
-        fallSpeed: lerp(0.2, 0.55, Math.random()),
-        swayAmp: lerp(0.015, 0.06, Math.random()),
-        swaySpeed: lerp(0.25, 0.9, Math.random()),
-        drift: lerp(-0.02, 0.02, Math.random()),
-        opacity: lerp(0.35, 0.85, Math.random()),
-        phase: Math.random() * TAU,
-      });
-    }
-    return flakes;
-  }
-
-  function createSnowPlane(index, flakeCount){
-    return {
-      index,
-      time: Math.random() * 10,
-      offset: Math.random(),
-      speed: lerp(0.85, 1.15, Math.random()),
-      scroll: Math.random(),
-      scrollRate: lerp(-0.12, 0.12, Math.random()),
-      flakes: createSnowflakes(flakeCount),
-    };
-  }
-
-  function ensureSnowPlanes(count, flakeCount){
-    const arr = snowState.planes;
-    if (arr.length > count) arr.length = count;
-    for (let i = 0; i < count; i++) {
-      if (!arr[i]) {
-        arr[i] = createSnowPlane(i, flakeCount);
-      }
-      const plane = arr[i];
-      plane.index = i;
-      if (!Number.isFinite(plane.scrollRate)) plane.scrollRate = lerp(-0.12, 0.12, Math.random());
-      if (!Number.isFinite(plane.scroll)) plane.scroll = Math.random();
-      if (!Array.isArray(plane.flakes) || plane.flakes.length !== flakeCount) {
-        plane.flakes = createSnowflakes(flakeCount);
-      }
-    }
-  }
-
-  function tickSnowSystem(){
-    const cfg = snowState.config;
-    snowState.density = cfg.density;
-    if (!cfg.enabled) {
-      snowState.lastT = state.phys.t;
-      snowState.planes.length = 0;
-      return;
-    }
-
-    ensureSnowResources();
-    const now = state.phys.t || 0;
-    const dt = snowState.lastT == null ? 0 : Math.max(0, now - snowState.lastT);
-    snowState.lastT = now;
-
-    const planeCount = Math.min(track.drawDistance, cfg.endSegments);
-    if (planeCount <= 0) {
-      snowState.planes.length = 0;
-      return;
-    }
-
-    ensureSnowPlanes(planeCount, cfg.flakesPerGroup);
-
-    for (const plane of snowState.planes) {
-      if (!plane) continue;
-      plane.time = (plane.time + dt * plane.speed) % 4096;
-      plane.scroll = (plane.scroll + dt * plane.scrollRate + 1) % 1;
-    }
-  }
 
   function createPoint(worldOrX, y, z){
     if (typeof worldOrX === 'object' && worldOrX !== null){
@@ -521,8 +396,6 @@
       return;
     }
 
-    tickSnowSystem();
-
     const basePct = pctRem(frame.sCam, segmentLength);
     const zoneData = {
       road: zonesFor('road'),
@@ -600,18 +473,6 @@
       const rw2 = roadWidthAt(p2.world.z);
       const w1 = p1.screen.scale * rw1 * HALF_VIEW;
       const w2 = p2.screen.scale * rw2 * HALF_VIEW;
-
-      if (snowState.config.enabled && n < snowState.planes.length) {
-        const plane = snowState.planes[n];
-        if (plane) {
-          drawList.push({
-            type: 'snow',
-            depth: depth - 1e-3,
-            plane,
-            segDepth: depth,
-          });
-        }
-      }
 
       const fogRoad = fogArray(p1.camera.z, p2.camera.z);
       const yScale1 = 1.0 - fogRoad[0];
@@ -844,51 +705,6 @@
     }
   }
 
-  function renderSnowPlane(item){
-    const { plane, segDepth } = item;
-    if (!plane || !glr || !snowState.circleTex) return;
-    if (!Array.isArray(plane.flakes) || plane.flakes.length === 0) return;
-
-    const totalPlanes = snowState.planes.length || 1;
-    const depthFade = 1 - plane.index / totalPlanes;
-    const fogFade = clamp(1 - fogFactorFromZ(segDepth), 0, 1);
-    const baseAlpha = snowState.density * fogFade * (0.4 + 0.6 * depthFade);
-    if (baseAlpha <= 0.001) return;
-
-    const width = W;
-    const height = H;
-    if (width <= 0 || height <= 0) return;
-    const scaleRef = Math.min(width, height);
-    const time = (plane.time % 4096) + plane.offset;
-    const scroll = plane.scroll || 0;
-
-    for (const flake of plane.flakes) {
-      if (!flake) continue;
-      const fallPhaseRaw = flake.seedY + time * flake.fallSpeed;
-      const fallPhase = fallPhaseRaw - Math.floor(fallPhaseRaw);
-      const y = fallPhase * height;
-
-      const swayPhase = plane.time * flake.swaySpeed * TAU + flake.phase;
-      let xNorm = flake.seedX + Math.sin(swayPhase) * flake.swayAmp + scroll * flake.drift;
-      xNorm -= Math.floor(xNorm);
-      const x = xNorm * width;
-
-      const size = Math.max(2, flake.radiusN * scaleRef);
-      const alpha = Math.min(1, baseAlpha * flake.opacity);
-      if (alpha <= 0.01) continue;
-
-      const half = size * 0.5;
-      const quad = {
-        x1: x - half, y1: y - half,
-        x2: x + half, y2: y - half,
-        x3: x + half, y3: y + half,
-        x4: x - half, y4: y + half,
-      };
-
-      glr.drawQuadTextured(snowState.circleTex, quad, UNIT_UV, [1, 1, 1, alpha], [0, 0, 0, 0]);
-    }
-  }
-
   function renderDrawList(drawList){
     const SPRITE_META = state.spriteMeta;
     for (const item of drawList){
@@ -900,8 +716,6 @@
         drawBillboard(item.x, item.y - item.h * 0.2, item.w, item.h, item.z, item.tint, item.tex);
       } else if (item.type === 'player'){
         renderPlayer(item, SPRITE_META);
-      } else if (item.type === 'snow'){
-        renderSnowPlane(item);
       }
     }
   }
@@ -1220,11 +1034,6 @@
     canvas3D = dom && dom.canvas || null;
     canvasOverlay = dom && dom.overlay || null;
     canvasHUD = dom && dom.hud || null;
-
-    snowState.circleTex = null;
-    snowState.planes.length = 0;
-    snowState.lastT = null;
-    readSnowConfig();
 
     if (canvas3D){
       W = canvas3D.width;
