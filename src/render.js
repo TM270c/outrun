@@ -55,6 +55,40 @@
   const textures = assets ? assets.textures : {};
   const state = Gameplay.state;
 
+  const snowScreenCache = new Map();
+
+  function mulberry32(seed){
+    let t = seed >>> 0;
+    return function(){
+      t = (t + 0x6D2B79F5) | 0;
+      let r = Math.imul(t ^ (t >>> 15), 1 | t);
+      r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+      return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function snowFieldFor(segIndex = 0){
+    if (snowScreenCache.has(segIndex)) return snowScreenCache.get(segIndex);
+    const seed = (segIndex * 0x45d9f3b) ^ 0x9E3779B9;
+    const rng = mulberry32(seed);
+    const flakeCount = 80 + Math.floor(rng() * 40);
+    const flakes = new Array(flakeCount);
+    for (let i = 0; i < flakeCount; i++){
+      flakes[i] = {
+        baseX: rng(),
+        baseY: rng(),
+        speed: 0.3 + rng() * 0.9,
+        swayAmp: 0.05 + rng() * 0.08,
+        swayFreq: 0.5 + rng() * 1.5,
+        phase: rng() * Math.PI * 2,
+        size: 0.004 + rng() * 0.006,
+      };
+    }
+    const field = { flakes, phaseOffset: rng() * 1000 };
+    snowScreenCache.set(segIndex, field);
+    return field;
+  }
+
   const segments = data.segments;
   const segmentLength = track.segmentSize;
 
@@ -579,7 +613,6 @@
         const baseHalf = Math.max(12, scaleMid * rwMid * HALF_VIEW * 0.8);
         const halfSize = baseHalf * farScale;
         const sizePx = halfSize * 2;
-        const strokePx = Math.max(4, Math.min(sizePx, sizePx * 0.12));
         const color = (seg.snowScreen && Array.isArray(seg.snowScreen.color))
           ? seg.snowScreen.color
           : [1, 1, 1, 1];
@@ -590,7 +623,6 @@
             x: centerX,
             y: centerY,
             size: sizePx,
-            stroke: strokePx,
             color,
             z: zMid,
             segIndex: seg.index,
@@ -763,42 +795,42 @@
 
   function renderSnowScreen(item){
     if (!glr) return;
-    const { x, y, size, stroke, color = [1, 1, 1, 1], z } = item;
-    if (!(size > 0) || !(stroke > 0)) return;
+    const { x, y, size, color = [1, 1, 1, 1], z, segIndex } = item;
+    if (!(size > 0)) return;
     const half = size * 0.5;
     if (!(half > 0)) return;
-    const thickness = Math.max(1, Math.min(stroke, half));
+
     const fogVals = fogArray(z || 0);
+    const { flakes, phaseOffset } = snowFieldFor(segIndex);
+    const time = (state && state.phys && typeof state.phys.t === 'number')
+      ? state.phys.t
+      : ((typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now() / 1000
+        : 0);
+    const animTime = time + phaseOffset;
+    const alpha = Array.isArray(color) && color.length >= 4 ? color[3] : 1;
+    const flakeColor = [1, 1, 1, alpha];
 
-    const top = {
-      x1: x - half, y1: y - half,
-      x2: x + half, y2: y - half,
-      x3: x + half, y3: y - half + thickness,
-      x4: x - half, y4: y - half + thickness,
-    };
-    const bottom = {
-      x1: x - half, y1: y + half - thickness,
-      x2: x + half, y2: y + half - thickness,
-      x3: x + half, y3: y + half,
-      x4: x - half, y4: y + half,
-    };
-    const left = {
-      x1: x - half, y1: y - half + thickness,
-      x2: x - half + thickness, y2: y - half + thickness,
-      x3: x - half + thickness, y3: y + half - thickness,
-      x4: x - half, y4: y + half - thickness,
-    };
-    const right = {
-      x1: x + half - thickness, y1: y - half + thickness,
-      x2: x + half, y2: y - half + thickness,
-      x3: x + half, y3: y + half - thickness,
-      x4: x + half - thickness, y4: y + half - thickness,
-    };
-
-    glr.drawQuadSolid(top, color, fogVals);
-    glr.drawQuadSolid(bottom, color, fogVals);
-    if (left.y3 > left.y1) glr.drawQuadSolid(left, color, fogVals);
-    if (right.y3 > right.y1) glr.drawQuadSolid(right, color, fogVals);
+    for (let i = 0; i < flakes.length; i++){
+      const flake = flakes[i];
+      const fallT = animTime * flake.speed;
+      let normY = (flake.baseY + fallT) % 1;
+      if (normY < 0) normY += 1;
+      const sway = Math.sin(animTime * flake.swayFreq + flake.phase) * flake.swayAmp;
+      const normX = clamp((flake.baseX - 0.5) + sway, -0.6, 0.6);
+      const localY = normY - 0.5;
+      const px = x + normX * size;
+      const py = y + localY * size;
+      const flakeSizePx = Math.max(1, Math.round(size * flake.size));
+      const fHalf = flakeSizePx * 0.5;
+      const quad = {
+        x1: px - fHalf, y1: py - fHalf,
+        x2: px + fHalf, y2: py - fHalf,
+        x3: px + fHalf, y3: py + fHalf,
+        x4: px - fHalf, y4: py + fHalf,
+      };
+      glr.drawQuadSolid(quad, flakeColor, fogVals);
+    }
   }
 
   function renderStrip(it){
