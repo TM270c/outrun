@@ -76,11 +76,11 @@ const colors = {
 };
 
 // Snow screen rendering controls.
-const snowScreenDistance = 60;
-const snowScreenDensity = 1;
-const snowDensity = 1;
-const snowSize = { min: 10, max: 30 };
-const snowSpeed = { min: 0.3, max: 1.0 };
+const snowScreenDistance = 20;
+const snowScreenDensity = 2;
+const snowDensity = .5;
+const snowSize = { min: 1, max: 1.5 };
+const snowSpeed = { min: 0.1, max: .5 };
 
 // Debug overlay defaults for development builds.
 const debug = {
