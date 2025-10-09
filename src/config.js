@@ -78,6 +78,9 @@ const colors = {
 // Snow screen rendering controls.
 const snowScreenDistance = 60;
 const snowScreenDensity = 1;
+const snowDensity = 1;
+const snowSize = { min: 10, max: 30 };
+const snowSpeed = { min: 0.3, max: 1.0 };
 
 // Debug overlay defaults for development builds.
 const debug = {
@@ -176,6 +179,9 @@ window.Config = {
   forceLandingOnCarImpact,
   snowScreenDistance,
   snowScreenDensity,
+  snowDensity,
+  snowSize,
+  snowSpeed,
 };
 
 Object.freeze(window.Config);

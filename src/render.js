@@ -21,6 +21,9 @@
     build = {},
     snowScreenDistance = 0,
     snowScreenDensity = 1,
+    snowDensity = 1,
+    snowSize = { min: 10, max: 30 },
+    snowSpeed = { min: 0.3, max: 1.0 },
   } = Config;
 
   const {
@@ -57,6 +60,35 @@
 
   const snowScreenCache = new Map();
 
+  function numericOr(value, fallback){
+    const num = Number(value);
+    return Number.isFinite(num) ? num : fallback;
+  }
+
+  function orderedRange(minVal, maxVal){
+    return minVal <= maxVal
+      ? { min: minVal, max: maxVal }
+      : { min: maxVal, max: minVal };
+  }
+
+  function rangeFromConfig(value, fallbackMin, fallbackMax){
+    if (Array.isArray(value) && value.length >= 2){
+      const minVal = numericOr(value[0], fallbackMin);
+      const maxVal = numericOr(value[1], fallbackMax);
+      return orderedRange(minVal, maxVal);
+    }
+    if (value && typeof value === 'object'){
+      const minVal = numericOr(value.min, fallbackMin);
+      const maxVal = numericOr(value.max, fallbackMax);
+      return orderedRange(minVal, maxVal);
+    }
+    return orderedRange(fallbackMin, numericOr(value, fallbackMax));
+  }
+
+  const snowSizeRange = rangeFromConfig(snowSize, 10, 30);
+  const snowSpeedRange = rangeFromConfig(snowSpeed, 0.3, 1.0);
+  const snowDensityFactor = Math.max(0, numericOr(snowDensity, 1));
+
   function mulberry32(seed){
     let t = seed >>> 0;
     return function(){
@@ -71,17 +103,19 @@
     if (snowScreenCache.has(segIndex)) return snowScreenCache.get(segIndex);
     const seed = (segIndex * 0x45d9f3b) ^ 0x9E3779B9;
     const rng = mulberry32(seed);
-    const flakeCount = 80 + Math.floor(rng() * 40);
+    const baseCount = 80 * snowDensityFactor;
+    const variance = 40 * snowDensityFactor;
+    const flakeCount = Math.max(0, Math.round(baseCount + rng() * variance));
     const flakes = new Array(flakeCount);
     for (let i = 0; i < flakeCount; i++){
       flakes[i] = {
         baseX: rng(),
         baseY: rng(),
-        speed: 0.3 + rng() * 0.9,
+        speed: lerp(snowSpeedRange.min, snowSpeedRange.max, rng()),
         swayAmp: 0.05 + rng() * 0.08,
         swayFreq: 0.5 + rng() * 1.5,
         phase: rng() * Math.PI * 2,
-        size: 0.004 + rng() * 0.006,
+        size: rng(),
       };
     }
     const field = { flakes, phaseOffset: rng() * 1000 };
@@ -821,7 +855,9 @@
       const localY = normY - 0.5;
       const px = x + normX * size;
       const py = y + localY * size;
-      const flakeSizePx = Math.max(1, Math.round(size * flake.size));
+      const baseSizePx = lerp(snowSizeRange.min, snowSizeRange.max, clamp(flake.size, 0, 1));
+      const perspectiveScale = clamp(size / 256, 0.25, 2.0);
+      const flakeSizePx = Math.max(1, Math.round(baseSizePx * perspectiveScale));
       const fHalf = flakeSizePx * 0.5;
       const quad = {
         x1: px - fHalf, y1: py - fHalf,
