@@ -78,14 +78,6 @@
   };
   let CLIFF_READY = false;
 
-  function randomSnowScreenColor(){
-    const rand = () => 0.35 + Math.random() * 0.65;
-    const r = rand();
-    const g = rand();
-    const b = rand();
-    return [r, g, b, 1];
-  }
-
   function resetCliffSeries(){
     const total = segments.length * CLIFF_SECTIONS_PER_SEG;
     const clear = (arr) => {
@@ -116,7 +108,6 @@
       p1: { world: { y: prevY, z: n * segmentLength }, camera: {}, screen: {} },
       p2: { world: { y: y,    z: (n + 1) * segmentLength }, camera: {}, screen: {} },
       sprites: [], cars: [], pickups: [],
-      snowScreenColor: randomSnowScreenColor(),
     });
   }
 
