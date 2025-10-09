@@ -81,6 +81,7 @@ const snowScreenDensity = 2;
 const snowDensity = .5;
 const snowSize = { min: 1, max: 1.5 };
 const snowSpeed = { min: 0.1, max: .5 };
+const snowStretch = 1;
 
 // Debug overlay defaults for development builds.
 const debug = {
@@ -182,6 +183,7 @@ window.Config = {
   snowDensity,
   snowSize,
   snowSpeed,
+  snowStretch,
 };
 
 Object.freeze(window.Config);
