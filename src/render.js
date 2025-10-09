@@ -22,8 +22,8 @@
     snowScreenDistance = 0,
     snowScreenDensity = 1,
     snowDensity = 1,
-    snowSize = { min: 10, max: 30 },
-    snowSpeed = { min: 0.3, max: 1.0 },
+    snowSize = { min: 1, max: 1.5 },
+    snowSpeed = { min: 0.1, max: 0.2 },
     snowStretch = 1,
   } = Config;
 
@@ -86,7 +86,7 @@
     return orderedRange(fallbackMin, numericOr(value, fallbackMax));
   }
 
-  const SNOW_SCREEN_SIZE_MULTIPLIER = 5;
+  const SNOW_SCREEN_SIZE_MULTIPLIER = 1;
 
   const snowSizeRange = rangeFromConfig(snowSize, 10, 30);
   const snowSpeedRange = rangeFromConfig(snowSpeed, 0.3, 1.0);
