@@ -93,6 +93,12 @@
     CLIFF_READY = false;
   }
 
+  function randomSnowScreenColor(){
+    const phase = Math.random() * Math.PI * 2;
+    const sample = (offset) => 0.5 + 0.5 * Math.cos(phase + offset);
+    return [sample(0), sample((2 * Math.PI) / 3), sample((4 * Math.PI) / 3), 1];
+  }
+
   function addSegment(curve, y, features = {}){
     const n = segments.length;
     const prevY = segments.length ? segments[n - 1].p2.world.y : 0;
@@ -108,6 +114,7 @@
       p1: { world: { y: prevY, z: n * segmentLength }, camera: {}, screen: {} },
       p2: { world: { y: y,    z: (n + 1) * segmentLength }, camera: {}, screen: {} },
       sprites: [], cars: [], pickups: [],
+      snowScreen: { color: randomSnowScreenColor() },
     });
   }
 
