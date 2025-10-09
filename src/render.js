@@ -771,12 +771,8 @@
     const scale1 = (p1 && p1.screen && typeof p1.screen.scale === 'number') ? p1.screen.scale : 0;
     const scale2Base = (p2 && p2.screen && typeof p2.screen.scale === 'number') ? p2.screen.scale : scale1;
     const scale2 = visibleRoad ? scale2Base : scale1;
-    const perspectiveScale = Math.max(0, lerp(scale1, scale2, 0.5));
-    const camHeight = (camera && typeof camera.height === 'number' && camera.height > 0)
-      ? camera.height
-      : 1;
-    const distanceScale = Math.max(0, perspectiveScale * camHeight);
-    const spriteScale = distanceScale * spriteFarScaleFromZ(zMid);
+    const baseScale = lerp(scale1, scale2, 0.5);
+    const spriteScale = Math.max(0, baseScale) * spriteFarScaleFromZ(zMid);
     const size = Math.max(1, SNOW_SCREEN_SIZE * spriteScale);
     const stroke = Math.max(1, SNOW_SCREEN_STROKE * spriteScale);
     const fogVals = fogArray(zMid);
