@@ -845,6 +845,16 @@
     const alpha = Array.isArray(color) && color.length >= 4 ? color[3] : 1;
     const flakeColor = [1, 1, 1, alpha];
 
+    const topSpeed = (player && Number.isFinite(player.topSpeed) && player.topSpeed !== 0)
+      ? Math.abs(player.topSpeed)
+      : 1;
+    const phys = state && state.phys ? state.phys : null;
+    const speedPct = clamp(Math.abs(phys && Number.isFinite(phys.vtan) ? phys.vtan : 0) / topSpeed, 0, 1);
+    const closeness = clamp(1 - fogFactorFromZ(z || 0), 0, 1);
+    const viewCenterX = (HALF_VIEW && HALF_VIEW > 0) ? HALF_VIEW : (W * 0.5);
+    const viewCenterY = (H && H > 0) ? H * 0.5 : y;
+    const maxRadius = Math.max(1, Math.hypot(viewCenterX || 0, viewCenterY || 0));
+
     for (let i = 0; i < flakes.length; i++){
       const flake = flakes[i];
       const fallT = animTime * flake.speed;
@@ -859,12 +869,48 @@
       const perspectiveScale = clamp(size / 256, 0.25, 2.0);
       const flakeSizePx = Math.max(1, Math.round(baseSizePx * perspectiveScale));
       const fHalf = flakeSizePx * 0.5;
-      const quad = {
-        x1: px - fHalf, y1: py - fHalf,
-        x2: px + fHalf, y2: py - fHalf,
-        x3: px + fHalf, y3: py + fHalf,
-        x4: px - fHalf, y4: py + fHalf,
-      };
+
+      const quadVerts = [
+        { keyX: 'x1', keyY: 'y1', x: px - fHalf, y: py - fHalf },
+        { keyX: 'x2', keyY: 'y2', x: px + fHalf, y: py - fHalf },
+        { keyX: 'x3', keyY: 'y3', x: px + fHalf, y: py + fHalf },
+        { keyX: 'x4', keyY: 'y4', x: px - fHalf, y: py + fHalf },
+      ];
+
+      if (speedPct > 0 && closeness > 0){
+        const dirX = px - viewCenterX;
+        const dirY = py - viewCenterY;
+        const dirLen = Math.hypot(dirX, dirY);
+        if (dirLen > 1e-3){
+          const normDirX = dirX / dirLen;
+          const normDirY = dirY / dirLen;
+          const radialFactor = clamp(dirLen / maxRadius, 0, 1);
+          const stretchBase = flakeSizePx * speedPct * closeness;
+          const stretchAmount = Math.min(flakeSizePx * 4, stretchBase * (0.3 + radialFactor * 0.9));
+
+          if (stretchAmount > 0.01){
+            const vertsByDot = quadVerts
+              .map((v) => ({
+                vert: v,
+                dot: (v.x - viewCenterX) * normDirX + (v.y - viewCenterY) * normDirY,
+              }))
+              .sort((a, b) => a.dot - b.dot);
+
+            for (let j = 2; j < vertsByDot.length; j++){
+              const { vert } = vertsByDot[j];
+              vert.x += normDirX * stretchAmount;
+              vert.y += normDirY * stretchAmount;
+            }
+          }
+        }
+      }
+
+      const quad = quadVerts.reduce((acc, v) => {
+        acc[v.keyX] = v.x;
+        acc[v.keyY] = v.y;
+        return acc;
+      }, {});
+
       glr.drawQuadSolid(quad, flakeColor, fogVals);
     }
   }
