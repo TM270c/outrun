@@ -19,6 +19,8 @@
     drift,
     tilt: tiltConfig = {},
     build = {},
+    snowScreenDistance = 0,
+    snowScreenDensity = 1,
   } = Config;
 
   const {
@@ -448,6 +450,10 @@
     const drawList = [];
     const trackLength = getTrackLength();
     const SPRITE_META = state.spriteMeta;
+    const snowMaxSegments = Number.isFinite(snowScreenDistance)
+      ? Math.max(0, Math.floor(snowScreenDistance))
+      : track.drawDistance;
+    const snowStride = Math.max(1, Math.floor(snowScreenDensity || 1));
     let x = 0;
     let dx = -(baseSeg.curve * basePct);
 
@@ -559,6 +565,38 @@
         p1RS,
         p2RS,
       });
+
+      const snowScreenActive =
+        seg && seg.snowScreen && snowMaxSegments > 0 && n < snowMaxSegments && (seg.index % snowStride === 0);
+      if (snowScreenActive){
+        const midT = 0.5;
+        const scaleMid = lerp(p1.screen.scale, p2.screen.scale, midT);
+        const rwMid = lerp(rw1, rw2, midT);
+        const centerX = lerp(p1.screen.x, p2.screen.x, midT);
+        const centerY = lerp(p1.screen.y, p2.screen.y, midT);
+        const zMid = lerp(p1.camera.z, p2.camera.z, midT);
+        const farScale = spriteFarScaleFromZ(zMid);
+        const baseHalf = Math.max(12, scaleMid * rwMid * HALF_VIEW * 0.8);
+        const halfSize = baseHalf * farScale;
+        const sizePx = halfSize * 2;
+        const strokePx = Math.max(4, Math.min(sizePx, sizePx * 0.12));
+        const color = (seg.snowScreen && Array.isArray(seg.snowScreen.color))
+          ? seg.snowScreen.color
+          : [1, 1, 1, 1];
+        if (sizePx > 0){
+          drawList.push({
+            type: 'snowScreen',
+            depth: zMid + 1e-3,
+            x: centerX,
+            y: centerY,
+            size: sizePx,
+            stroke: strokePx,
+            color,
+            z: zMid,
+            segIndex: seg.index,
+          });
+        }
+      }
 
       for (let i = 0; i < seg.cars.length; i++){
         const car = seg.cars[i];
@@ -715,10 +753,52 @@
         drawBillboard(item.x, item.y, item.w, item.h, item.z, item.tint, item.tex);
       } else if (item.type === 'pickup'){
         drawBillboard(item.x, item.y - item.h * 0.2, item.w, item.h, item.z, item.tint, item.tex);
+      } else if (item.type === 'snowScreen'){
+        renderSnowScreen(item);
       } else if (item.type === 'player'){
         renderPlayer(item, SPRITE_META);
       }
     }
+  }
+
+  function renderSnowScreen(item){
+    if (!glr) return;
+    const { x, y, size, stroke, color = [1, 1, 1, 1], z } = item;
+    if (!(size > 0) || !(stroke > 0)) return;
+    const half = size * 0.5;
+    if (!(half > 0)) return;
+    const thickness = Math.max(1, Math.min(stroke, half));
+    const fogVals = fogArray(z || 0);
+
+    const top = {
+      x1: x - half, y1: y - half,
+      x2: x + half, y2: y - half,
+      x3: x + half, y3: y - half + thickness,
+      x4: x - half, y4: y - half + thickness,
+    };
+    const bottom = {
+      x1: x - half, y1: y + half - thickness,
+      x2: x + half, y2: y + half - thickness,
+      x3: x + half, y3: y + half,
+      x4: x - half, y4: y + half,
+    };
+    const left = {
+      x1: x - half, y1: y - half + thickness,
+      x2: x - half + thickness, y2: y - half + thickness,
+      x3: x - half + thickness, y3: y + half - thickness,
+      x4: x - half, y4: y + half - thickness,
+    };
+    const right = {
+      x1: x + half - thickness, y1: y - half + thickness,
+      x2: x + half, y2: y - half + thickness,
+      x3: x + half, y3: y + half - thickness,
+      x4: x + half - thickness, y4: y + half - thickness,
+    };
+
+    glr.drawQuadSolid(top, color, fogVals);
+    glr.drawQuadSolid(bottom, color, fogVals);
+    if (left.y3 > left.y1) glr.drawQuadSolid(left, color, fogVals);
+    if (right.y3 > right.y1) glr.drawQuadSolid(right, color, fogVals);
   }
 
   function renderStrip(it){
