@@ -17,7 +17,10 @@ World.data.cliffTexZones = cliffTexZones;
 async function loadAssets() {
   await Promise.all(
     Object.entries(World.assets.manifest).map(async ([key, url]) => {
-      const tex = await glr.loadTexture(url);
+      const resolvedUrl = (typeof World.resolveAssetUrl === 'function')
+        ? World.resolveAssetUrl(url)
+        : url;
+      const tex = await glr.loadTexture(resolvedUrl);
       World.assets.textures[key] = tex;
     }),
   );
