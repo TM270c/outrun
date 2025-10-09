@@ -771,10 +771,23 @@
     const scale1 = (p1 && p1.screen && typeof p1.screen.scale === 'number') ? p1.screen.scale : 0;
     const scale2Base = (p2 && p2.screen && typeof p2.screen.scale === 'number') ? p2.screen.scale : scale1;
     const scale2 = visibleRoad ? scale2Base : scale1;
-    const baseScale = lerp(scale1, scale2, 0.5);
-    const spriteScale = Math.max(0, baseScale) * spriteFarScaleFromZ(zMid);
-    const size = Math.max(1, SNOW_SCREEN_SIZE * spriteScale);
-    const stroke = Math.max(1, SNOW_SCREEN_STROKE * spriteScale);
+    const baseScale = Math.max(0, lerp(scale1, scale2, 0.5));
+    const z1 = (p1 && p1.world && Number.isFinite(p1.world.z)) ? p1.world.z : 0;
+    const z2Raw = (p2 && p2.world && Number.isFinite(p2.world.z)) ? p2.world.z : z1;
+    const z2 = visibleRoad ? z2Raw : z1;
+    const roadWidth1 = roadWidthAt(z1);
+    const roadWidth2 = roadWidthAt(z2);
+    const roadWidthMid = Math.max(0, lerp(roadWidth1, roadWidth2, 0.5));
+    const roadWidthScale = track.roadWidth > 0 ? (roadWidthMid / track.roadWidth) : 1;
+    const snowKindScaleRaw = (state && typeof state.getKindScale === 'function')
+      ? state.getKindScale('SNOW_SCREEN')
+      : 1;
+    const snowKindScale = Math.max(0, Number.isFinite(snowKindScaleRaw) ? snowKindScaleRaw : 1);
+    const farScale = spriteFarScaleFromZ(zMid);
+    const baseSize = Math.max(1, SNOW_SCREEN_SIZE * baseScale * roadWidthScale * snowKindScale);
+    const size = Math.max(1, baseSize * farScale);
+    const baseStroke = Math.max(1, SNOW_SCREEN_STROKE * baseScale * roadWidthScale * snowKindScale);
+    const stroke = Math.max(1, baseStroke * farScale);
     const fogVals = fogArray(zMid);
 
     drawSquareOutline(cx, cy, size, stroke, color, fogVals);
