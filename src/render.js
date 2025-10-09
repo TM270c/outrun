@@ -645,7 +645,9 @@
         const centerY = lerp(p1.screen.y, p2.screen.y, midT);
         const zMid = lerp(p1.camera.z, p2.camera.z, midT);
         const farScale = spriteFarScaleFromZ(zMid);
-        const baseHalf = Math.max(12, scaleMid * rwMid * HALF_VIEW * 0.8);
+        const snowScreenBaseExpansion = 5; // expand the base snow screen footprint without altering per-axis scaling math
+        const baseHalfOriginal = Math.max(12, scaleMid * rwMid * HALF_VIEW * 0.8);
+        const baseHalf = baseHalfOriginal * snowScreenBaseExpansion;
         const halfSize = baseHalf * farScale;
         const sizePx = halfSize * 2;
         const color = (seg.snowScreen && Array.isArray(seg.snowScreen.color))
