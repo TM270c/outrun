@@ -55,7 +55,8 @@
     semi:      resolveAssetUrl('tex/semi.png'),
     tree:      resolveAssetUrl('tex/tree.png'),
     sign:      resolveAssetUrl('tex/billboard.png'),
-    animPlate: resolveAssetUrl('sprites/anim-plate.png'),
+    animPlate01: resolveAssetUrl('sprites/anim-plate-01.png'),
+    animPlate02: resolveAssetUrl('sprites/anim-plate-02.png'),
   };
 
   const textures = {};

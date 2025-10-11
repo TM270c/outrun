@@ -102,9 +102,16 @@
       wN: 0.24,
       aspect: 1.0,
       tint: [1, 1, 1, 1],
-      tex: () => (World && World.assets && World.assets.textures)
-        ? World.assets.textures.animPlate
-        : null,
+      tex(spr) {
+        const textures = (World && World.assets && World.assets.textures)
+          ? World.assets.textures
+          : null;
+        if (!textures) return null;
+        if (spr && spr.textureKey && textures[spr.textureKey]) {
+          return textures[spr.textureKey];
+        }
+        return textures.animPlate01 || textures.animPlate02 || null;
+      },
       frameCount: 16,
       framesPerRow: 4,
       frameUv(frameIndex = 0){
@@ -774,19 +781,24 @@
     const pHalf = playerHalfWN();
     for (const spr of seg.sprites) {
       if (!spr) continue;
-      if (spr.interactable && spr.animation) {
+      if (spr.interactable && !spr.interacted) {
         const meta = getSpriteMeta(spr.kind);
         const spriteHalf = Math.max(0, (meta.wN || 0) * 0.5);
         if (spriteHalf > 0 && overlap(state.playerN, pHalf, spr.offset, spriteHalf, 1)) {
-          if (spr.animation.finished && spr.impactable) {
-            spr.animation.frame = 0;
-            spr.animation.accumulator = 0;
-            spr.animation.finished = false;
+          const anim = spr.animation;
+          spr.interacted = true;
+          spr.interactable = false;
+          if (anim) {
+            anim.frame = 0;
+            anim.accumulator = 0;
+            anim.finished = false;
+            anim.playing = true;
+            spr.animFrame = anim.frame;
           }
-          if (!spr.animation.finished) {
-            spr.animation.playing = true;
+          if (spr.impactable) {
+            applyImpactPushToSprite(spr);
+            spr.impactable = false;
           }
-          if (spr.impactable) applyImpactPushToSprite(spr);
         }
       } else if (spr.impactable) {
         const meta = getSpriteMeta(spr.kind);
@@ -1281,6 +1293,7 @@
         finished: animConfig.finished === true && startFrame === totalFrames - 1,
       };
       sprite.animFrame = sprite.animation.frame;
+      if (!('interacted' in sprite)) sprite.interacted = false;
     }
     if (sprite.impactable) {
       if (!Number.isFinite(sprite.baseOffset)) sprite.baseOffset = sprite.offset;
@@ -1310,13 +1323,27 @@
       }
     }
 
-    const plateCount = Math.max(4, Math.floor(segCount / 40));
-    for (let i = 0; i < plateCount; i += 1) {
+    const plateTextures = ['animPlate01', 'animPlate02'];
+    const basePlateCount = Math.max(4, Math.floor(segCount / 40));
+    const plateCount = Math.max(basePlateCount, plateTextures.length);
+    const textureQueue = plateTextures.slice();
+    while (textureQueue.length < plateCount) {
+      const randomTex = plateTextures[Math.floor(Math.random() * plateTextures.length)];
+      textureQueue.push(randomTex);
+    }
+    for (let i = textureQueue.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = textureQueue[i];
+      textureQueue[i] = textureQueue[j];
+      textureQueue[j] = tmp;
+    }
+    for (const textureKey of textureQueue) {
       const segIdx = Math.floor(Math.random() * Math.max(1, segCount));
       const centerOffset = (Math.random() - 0.5) * 0.6;
       addProp(segIdx, 'ANIM_PLATE', centerOffset, {
         interactable: true,
         impactable: true,
+        textureKey,
         animation: { totalFrames: 16, frameDuration: 1 / 60, frame: 0 },
       });
     }
