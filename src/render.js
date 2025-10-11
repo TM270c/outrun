@@ -394,11 +394,11 @@
     }
   }
 
-  function drawBillboard(xCenter, baseY, wPx, hPx, fogZ, tint=[1,1,1,1], texture=null){
+  function drawBillboard(xCenter, baseY, wPx, hPx, fogZ, tint=[1,1,1,1], texture=null, uvOverride=null){
     if (!glr) return;
     const x1 = xCenter - wPx/2, x2 = xCenter + wPx/2;
     const y1 = baseY - hPx, y2 = baseY;
-    const uv = {u1:0,v1:0,u2:1,v2:0,u3:1,v3:1,u4:0,v4:1};
+    const uv = uvOverride || {u1:0,v1:0,u2:1,v2:0,u3:1,v3:1,u4:0,v4:1};
     const fog = fogArray(fogZ);
     const quad = {x1:x1, y1:y1, x2:x2, y2:y1, x3:x2, y3:y2, x4:x1, y4:y2};
     if (texture) glr.drawQuadTextured(texture, quad, uv, tint, fog);
@@ -740,6 +740,16 @@
         let hPx = Math.max(10, wPx * meta.aspect);
         wPx *= farS;
         hPx *= farS;
+        const texture = typeof meta.tex === 'function' ? meta.tex(spr) : (meta.tex || null);
+        let uv = null;
+        if (texture && typeof meta.frameUv === 'function'){
+          const frameIdx = Number.isFinite(spr && spr.animFrame)
+            ? spr.animFrame
+            : ((spr && spr.animation && Number.isFinite(spr.animation.frame)) ? spr.animation.frame : 0);
+          uv = meta.frameUv.call(meta, frameIdx, spr);
+        } else if (spr && spr.uv) {
+          uv = spr.uv;
+        }
         drawList.push({
           type: 'prop',
           depth: zObj,
@@ -749,7 +759,8 @@
           h: hPx,
           z: zObj,
           tint: meta.tint,
-          tex: meta.tex ? meta.tex() : null,
+          tex: texture,
+          uv,
         });
       }
 
@@ -819,9 +830,9 @@
       if (item.type === 'strip'){
         renderStrip(item);
       } else if (item.type === 'npc' || item.type === 'prop'){
-        drawBillboard(item.x, item.y, item.w, item.h, item.z, item.tint, item.tex);
+        drawBillboard(item.x, item.y, item.w, item.h, item.z, item.tint, item.tex, item.uv);
       } else if (item.type === 'pickup'){
-        drawBillboard(item.x, item.y - item.h * 0.2, item.w, item.h, item.z, item.tint, item.tex);
+        drawBillboard(item.x, item.y - item.h * 0.2, item.w, item.h, item.z, item.tint, item.tex, item.uv);
       } else if (item.type === 'snowScreen'){
         renderSnowScreen(item);
       } else if (item.type === 'player'){
