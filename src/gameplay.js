@@ -126,7 +126,7 @@
   const CAR_COLLISION_COOLDOWN = 1 / 120;
   const COLLISION_PUSH_DURATION = 0.45;
   const COLLISION_PUSH_FORWARD_MAX_SEGMENTS = 10;
-  const COLLISION_PUSH_LATERAL_MAX = 0.5;
+  const COLLISION_PUSH_LATERAL_MAX = 0.85;
   const CAR_COLLISION_STAMP = Symbol('carCollisionStamp');
 
   const defaultGetKindScale = (kind) => (kind === 'PLAYER' ? player.scale : 1);
