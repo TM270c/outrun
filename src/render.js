@@ -696,47 +696,57 @@
       for (let i = 0; i < seg.sprites.length; i++){
         const spr = seg.sprites[i];
         const meta = SPRITE_META[spr.kind] || SPRITE_META.SIGN;
-        const scale = p1.screen.scale;
+        const spriteS = Number.isFinite(spr.s) ? spr.s : seg.p1.world.z;
+        const deltaS = (spriteS - seg.p1.world.z + trackLength) % trackLength;
+        const t = clamp(deltaS / Math.max(1e-6, segmentLength), 0, 1);
+        const scale = lerp(p1.screen.scale, p2.screen.scale, t);
+        const rw = lerp(rw1, rw2, t);
+        const baseX = lerp(p1.screen.x, p2.screen.x, t);
+        const baseY = lerp(p1.screen.y, p2.screen.y, t);
         const sAbs = Math.abs(spr.offset);
         let xCenter;
         let yBase;
         if (sAbs <= 1.0){
-          xCenter = p1.screen.x + scale * spr.offset * rw1 * HALF_VIEW;
-          yBase = p1.screen.y;
+          xCenter = baseX + scale * spr.offset * rw * HALF_VIEW;
+          yBase = baseY;
         } else {
           const sideLeft = spr.offset < 0;
           const o = Math.min(2, Math.max(0, sAbs - 1.0));
           if (sideLeft){
-            const { x1_inner, x1_A, x1_B } = L;
-            const yInner = p1.screen.y;
-            const yA = p1LA.screen.y;
-            const yB = p1LB.screen.y;
+            const xInner = lerp(L.x1_inner, L.x2_inner, t);
+            const xA = lerp(L.x1_A, L.x2_A, t);
+            const xB = lerp(L.x1_B, L.x2_B, t);
+            const yInner = lerp(p1.screen.y, p2.screen.y, t);
+            const yA = lerp(p1LA.screen.y, p2LA.screen.y, t);
+            const yB = lerp(p1LB.screen.y, p2LB.screen.y, t);
             if (o <= 1){
-              xCenter = lerp(x1_inner, x1_A, o);
+              xCenter = lerp(xInner, xA, o);
               yBase = lerp(yInner, yA, o);
             } else {
               const t2 = o - 1;
-              xCenter = lerp(x1_A, x1_B, t2);
+              xCenter = lerp(xA, xB, t2);
               yBase = lerp(yA, yB, t2);
             }
           } else {
-            const { x1_inner, x1_A, x1_B } = R;
-            const yInner = p1.screen.y;
-            const yA = p1RA.screen.y;
-            const yB = p1RB.screen.y;
+            const xInner = lerp(R.x1_inner, R.x2_inner, t);
+            const xA = lerp(R.x1_A, R.x2_A, t);
+            const xB = lerp(R.x1_B, R.x2_B, t);
+            const yInner = lerp(p1.screen.y, p2.screen.y, t);
+            const yA = lerp(p1RA.screen.y, p2RA.screen.y, t);
+            const yB = lerp(p1RB.screen.y, p2RB.screen.y, t);
             if (o <= 1){
-              xCenter = lerp(x1_inner, x1_A, o);
+              xCenter = lerp(xInner, xA, o);
               yBase = lerp(yInner, yA, o);
             } else {
               const t2 = o - 1;
-              xCenter = lerp(x1_A, x1_B, t2);
+              xCenter = lerp(xA, xB, t2);
               yBase = lerp(yA, yB, t2);
             }
           }
         }
-        const zObj = p1.camera.z + 1e-3;
+        const zObj = lerp(p1.camera.z, p2.camera.z, t) + 1e-3;
         const farS = spriteFarScaleFromZ(zObj);
-        let wPx = Math.max(6, scale * meta.wN * rw1 * HALF_VIEW);
+        let wPx = Math.max(6, scale * meta.wN * rw * HALF_VIEW);
         let hPx = Math.max(10, wPx * meta.aspect);
         wPx *= farS;
         hPx *= farS;
