@@ -125,6 +125,10 @@
 
   const CAR_COLLISION_COOLDOWN = 1 / 120;
   const CAR_COLLISION_REWIND = -2;
+  const NPC_COLLISION_PUSH_DURATION = 0.45;
+  const NPC_COLLISION_PUSH_LATERAL_SPEED = 2.25;
+  const NPC_COLLISION_PUSH_FORWARD_BASE = 0.1;
+  const NPC_COLLISION_PUSH_FORWARD_SCALE = 1.25;
   const CAR_COLLISION_STAMP = Symbol('carCollisionStamp');
 
   const defaultGetKindScale = (kind) => (kind === 'PLAYER' ? player.scale : 1);
@@ -296,6 +300,34 @@
     const n = (car && Number.isFinite(car.offset)) ? car.offset : 0;
     const baseY = floorElevationAt ? floorElevationAt(s, n) : elevationAt(s);
     return baseY + carHitboxHeight(car, s);
+  }
+
+  function applyNpcCollisionPush(car, playerOffset, playerForwardSpeed, npcForwardSpeed) {
+    if (!car) return;
+    const speedDelta = Math.max(0, playerForwardSpeed - npcForwardSpeed);
+    if (!(speedDelta > 0)) return;
+
+    const combinedHalfWidth = playerHalfWN() + carHalfWN(car);
+    const offsetDelta = playerOffset - car.offset;
+    const absDelta = Math.abs(offsetDelta);
+    const normalizedDelta = combinedHalfWidth > 0
+      ? clamp(absDelta / combinedHalfWidth, 0, 1)
+      : clamp(absDelta, 0, 1);
+    const centerBias = 1 - normalizedDelta;
+    const lateralDirection = offsetDelta > 0 ? -1 : (offsetDelta < 0 ? 1 : 0);
+    const speedFactor = clamp(speedDelta / Math.max(1, player.topSpeed), 0, 1);
+    const lateralStrength = normalizedDelta;
+    const forwardStrength = 0.25 + 0.75 * centerBias;
+    const lateralVelocity = lateralDirection * NPC_COLLISION_PUSH_LATERAL_SPEED * speedFactor * lateralStrength;
+    const forwardBase = player.topSpeed * NPC_COLLISION_PUSH_FORWARD_BASE;
+    const forwardVelocity = (forwardBase + speedDelta * NPC_COLLISION_PUSH_FORWARD_SCALE) * forwardStrength;
+
+    if (!car.collisionPush) {
+      car.collisionPush = { lateralVel: 0, forwardVel: 0, timer: 0 };
+    }
+    car.collisionPush.lateralVel = lateralVelocity;
+    car.collisionPush.forwardVel = forwardVelocity;
+    car.collisionPush.timer = NPC_COLLISION_PUSH_DURATION;
   }
 
   function playerBaseHeight() {
@@ -679,6 +711,8 @@
       phys.vx = landingTangent.tx * vt + landingTangent.nx * perpComponent;
       phys.vy = landingTangent.ty * vt + landingTangent.ny * perpComponent;
 
+      applyNpcCollisionPush(car, state.playerN, playerForwardSpeed, npcForwardSpeed);
+
       car[CAR_COLLISION_STAMP] = now;
       return true;
     }
@@ -1037,7 +1071,18 @@
       const oldSeg = segmentAtS(car.z);
       const avoidance = steerAvoidance(car, oldSeg, playerSeg, playerHalfWN());
       car.offset += avoidance;
-      car.z = wrapDistance(car.z, dt * car.speed, trackLengthRef());
+      let forwardTravel = dt * car.speed;
+      if (car.collisionPush && car.collisionPush.timer > 0) {
+        const push = car.collisionPush;
+        const pushDt = Math.min(dt, push.timer);
+        car.offset += push.lateralVel * pushDt;
+        forwardTravel += push.forwardVel * pushDt;
+        push.timer = Math.max(0, push.timer - pushDt);
+        if (push.timer <= 1e-4) delete car.collisionPush;
+      } else if (car.collisionPush) {
+        delete car.collisionPush;
+      }
+      car.z = wrapDistance(car.z, forwardTravel, trackLengthRef());
       const newSeg = segmentAtS(car.z);
       if (oldSeg && newSeg && oldSeg !== newSeg) {
         const idx = oldSeg.cars.indexOf(car);
