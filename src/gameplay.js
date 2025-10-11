@@ -884,33 +884,35 @@
     for (const seg of segments) {
       if (!seg || !Array.isArray(seg.sprites) || !seg.sprites.length) continue;
       for (const spr of seg.sprites) {
-        if (!spr || !spr.animation) continue;
-        const anim = spr.animation;
-        const frameDuration = (anim && anim.frameDuration > 0) ? anim.frameDuration : (1 / 60);
-        if (anim.frameDuration !== frameDuration) anim.frameDuration = frameDuration;
-        const totalFrames = (anim && Number.isFinite(anim.totalFrames) && anim.totalFrames > 0)
-          ? Math.floor(anim.totalFrames)
-          : 1;
-        if (anim.totalFrames !== totalFrames) anim.totalFrames = totalFrames;
-        if (anim.playing && !anim.finished) {
-          anim.accumulator += dt;
-          while (anim.accumulator >= frameDuration && !anim.finished) {
-            anim.accumulator -= frameDuration;
-            if (anim.frame < totalFrames - 1) {
-              anim.frame += 1;
-            } else {
-              anim.frame = totalFrames - 1;
-              anim.finished = true;
-              anim.playing = false;
-              anim.accumulator = 0;
+        if (!spr) continue;
+        if (spr.animation) {
+          const anim = spr.animation;
+          const frameDuration = (anim && anim.frameDuration > 0) ? anim.frameDuration : (1 / 60);
+          if (anim.frameDuration !== frameDuration) anim.frameDuration = frameDuration;
+          const totalFrames = (anim && Number.isFinite(anim.totalFrames) && anim.totalFrames > 0)
+            ? Math.floor(anim.totalFrames)
+            : 1;
+          if (anim.totalFrames !== totalFrames) anim.totalFrames = totalFrames;
+          if (anim.playing && !anim.finished) {
+            anim.accumulator += dt;
+            while (anim.accumulator >= frameDuration && !anim.finished) {
+              anim.accumulator -= frameDuration;
+              if (anim.frame < totalFrames - 1) {
+                anim.frame += 1;
+              } else {
+                anim.frame = totalFrames - 1;
+                anim.finished = true;
+                anim.playing = false;
+                anim.accumulator = 0;
+              }
             }
           }
+          if (!Number.isFinite(anim.frame) || anim.frame < 0) anim.frame = 0;
+          if (anim.frame >= totalFrames) anim.frame = totalFrames - 1;
+          spr.animFrame = anim.frame;
         }
-        if (!Number.isFinite(anim.frame) || anim.frame < 0) anim.frame = 0;
-        if (anim.frame >= totalFrames) anim.frame = totalFrames - 1;
-        spr.animFrame = anim.frame;
+        updateImpactableSprite(spr, dt);
       }
-      updateImpactableSprite(spr, dt);
     }
   }
 
