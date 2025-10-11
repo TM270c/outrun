@@ -797,7 +797,6 @@
           }
           if (spr.impactable) {
             applyImpactPushToSprite(spr);
-            spr.impactable = false;
           }
         }
       } else if (spr.impactable) {
