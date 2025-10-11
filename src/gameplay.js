@@ -126,9 +126,9 @@
   const CAR_COLLISION_COOLDOWN = 1 / 120;
   const CAR_COLLISION_REWIND = -2;
   const NPC_COLLISION_PUSH_DURATION = 0.45;
-  const NPC_COLLISION_PUSH_LATERAL_SPEED = 2.25;
-  const NPC_COLLISION_PUSH_FORWARD_BASE = 0.1;
-  const NPC_COLLISION_PUSH_FORWARD_SCALE = 1.25;
+  const NPC_COLLISION_PUSH_LATERAL_SPEED = 2.4;
+  const NPC_COLLISION_PUSH_FORWARD_BASE = 0.06;
+  const NPC_COLLISION_PUSH_FORWARD_SCALE = 0.85;
   const CAR_COLLISION_STAMP = Symbol('carCollisionStamp');
 
   const defaultGetKindScale = (kind) => (kind === 'PLAYER' ? player.scale : 1);
@@ -304,8 +304,14 @@
 
   function applyNpcCollisionPush(car, playerOffset, playerForwardSpeed, npcForwardSpeed) {
     if (!car) return;
-    const speedDelta = Math.max(0, playerForwardSpeed - npcForwardSpeed);
-    if (!(speedDelta > 0)) return;
+
+    const minPushSpeed = npcForwardSpeed * 0.5;
+    if (playerForwardSpeed < minPushSpeed) return;
+
+    const speedDelta = playerForwardSpeed - npcForwardSpeed;
+    const forwardDelta = Math.max(0, speedDelta);
+    const approachSpeed = Math.max(playerForwardSpeed, npcForwardSpeed);
+    const speedFactor = clamp(approachSpeed / Math.max(1, player.topSpeed), 0, 1);
 
     const combinedHalfWidth = playerHalfWN() + carHalfWN(car);
     const offsetDelta = playerOffset - car.offset;
@@ -315,12 +321,11 @@
       : clamp(absDelta, 0, 1);
     const centerBias = 1 - normalizedDelta;
     const lateralDirection = offsetDelta > 0 ? -1 : (offsetDelta < 0 ? 1 : 0);
-    const speedFactor = clamp(speedDelta / Math.max(1, player.topSpeed), 0, 1);
-    const lateralStrength = normalizedDelta;
-    const forwardStrength = 0.25 + 0.75 * centerBias;
+    const lateralStrength = 0.5 + 0.5 * normalizedDelta;
+    const forwardStrength = 0.15 + 0.45 * centerBias;
     const lateralVelocity = lateralDirection * NPC_COLLISION_PUSH_LATERAL_SPEED * speedFactor * lateralStrength;
     const forwardBase = player.topSpeed * NPC_COLLISION_PUSH_FORWARD_BASE;
-    const forwardVelocity = (forwardBase + speedDelta * NPC_COLLISION_PUSH_FORWARD_SCALE) * forwardStrength;
+    const forwardVelocity = (forwardBase + forwardDelta * NPC_COLLISION_PUSH_FORWARD_SCALE) * forwardStrength;
 
     if (!car.collisionPush) {
       car.collisionPush = { lateralVel: 0, forwardVel: 0, timer: 0 };
