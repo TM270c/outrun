@@ -74,6 +74,22 @@
     return obj[key];
   };
 
+  function atlasFrameUv(frameIndex, columns, totalFrames){
+    const total = Math.max(1, Math.floor(totalFrames));
+    const cols = Math.max(1, Math.floor(columns));
+    const rows = Math.max(1, Math.ceil(total / cols));
+    const idx = Math.max(0, Math.min(total - 1, Math.floor(frameIndex)));
+    const uStep = 1 / cols;
+    const vStep = 1 / rows;
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+    const u0 = col * uStep;
+    const v0 = row * vStep;
+    const u1 = u0 + uStep;
+    const v1 = v0 + vStep;
+    return { u1: u0, v1: v0, u2: u1, v2: v0, u3: u1, v3: v1, u4: u0, v4: v1 };
+  }
+
   const DEFAULT_SPRITE_META = {
     PLAYER: { wN: 0.16, aspect: 0.7, tint: [0.9, 0.22, 0.21, 1], tex: () => null },
     CAR:    { wN: 0.28, aspect: 0.7, tint: [0.2, 0.7, 1.0, 1], tex: () => null },
@@ -82,6 +98,25 @@
     SIGN:   { wN: 0.55, aspect: 1.0, tint: [1, 1, 1, 1], tex: () => null },
     PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
     PICKUP: { wN: 0.10, aspect: 1.0, tint: [1, 0.92, 0.2, 1], tex: () => null },
+    ANIM_PLATE: {
+      wN: 0.24,
+      aspect: 1.0,
+      tint: [1, 1, 1, 1],
+      tex: () => (World && World.assets && World.assets.textures)
+        ? World.assets.textures.animPlate
+        : null,
+      frameCount: 16,
+      framesPerRow: 4,
+      frameUv(frameIndex = 0){
+        const cols = Number.isFinite(this.framesPerRow) && this.framesPerRow > 0
+          ? this.framesPerRow
+          : 4;
+        const total = Number.isFinite(this.frameCount) && this.frameCount > 0
+          ? this.frameCount
+          : 16;
+        return atlasFrameUv(frameIndex, cols, total);
+      },
+    },
   };
 
   const NPC_DEFAULTS = { total: 20, edgePad: 0.02, avoidLookaheadSegs: 20 };
@@ -583,6 +618,22 @@
     }
   }
 
+  function resolveSpriteInteractionsInSeg(seg) {
+    if (!seg || !Array.isArray(seg.sprites) || !seg.sprites.length) return;
+    const pHalf = playerHalfWN();
+    for (const spr of seg.sprites) {
+      if (!spr || !spr.interactable || !spr.animation) continue;
+      const meta = getSpriteMeta(spr.kind);
+      const spriteHalf = Math.max(0, (meta.wN || 0) * 0.5);
+      if (spriteHalf <= 0) continue;
+      if (overlap(state.playerN, pHalf, spr.offset, spriteHalf, 1)) {
+        if (!spr.animation.finished) {
+          spr.animation.playing = true;
+        }
+      }
+    }
+  }
+
   function resolveCarCollisionsInSeg(seg) {
     const { phys } = state;
     if (!seg || !Array.isArray(seg.cars) || !seg.cars.length) return false;
@@ -638,6 +689,7 @@
     if (!seg) return false;
     const carHit = resolveCarCollisionsInSeg(seg);
     resolvePickupCollisionsAround(seg);
+    resolveSpriteInteractionsInSeg(seg);
     return carHit;
   }
 
@@ -645,6 +697,40 @@
     const seg = segmentAtS(state.phys.s);
     if (!seg) return false;
     return resolveSegmentCollisions(seg);
+  }
+
+  function updateSpriteAnimations(dt) {
+    if (!hasSegments()) return;
+    for (const seg of segments) {
+      if (!seg || !Array.isArray(seg.sprites) || !seg.sprites.length) continue;
+      for (const spr of seg.sprites) {
+        if (!spr || !spr.animation) continue;
+        const anim = spr.animation;
+        const frameDuration = (anim && anim.frameDuration > 0) ? anim.frameDuration : (1 / 60);
+        if (anim.frameDuration !== frameDuration) anim.frameDuration = frameDuration;
+        const totalFrames = (anim && Number.isFinite(anim.totalFrames) && anim.totalFrames > 0)
+          ? Math.floor(anim.totalFrames)
+          : 1;
+        if (anim.totalFrames !== totalFrames) anim.totalFrames = totalFrames;
+        if (anim.playing && !anim.finished) {
+          anim.accumulator += dt;
+          while (anim.accumulator >= frameDuration && !anim.finished) {
+            anim.accumulator -= frameDuration;
+            if (anim.frame < totalFrames - 1) {
+              anim.frame += 1;
+            } else {
+              anim.frame = totalFrames - 1;
+              anim.finished = true;
+              anim.playing = false;
+              anim.accumulator = 0;
+            }
+          }
+        }
+        if (!Number.isFinite(anim.frame) || anim.frame < 0) anim.frame = 0;
+        if (anim.frame >= totalFrames) anim.frame = totalFrames - 1;
+        spr.animFrame = anim.frame;
+      }
+    }
   }
 
   function collectSegmentsCrossed(startS, endS) {
@@ -861,6 +947,8 @@
       resolveSegmentCollisions(landingSeg);
     }
 
+    updateSpriteAnimations(dt);
+
     if (!state.resetMatteActive) {
       const roadY = elevationAt(phys.s);
       const bodyY = phys.grounded ? (floorElevationAt ? floorElevationAt(phys.s, state.playerN) : phys.y) : phys.y;
@@ -963,16 +1051,45 @@
     }
   }
 
-  function addProp(segIdx, kind, offset) {
+  function addProp(segIdx, kind, offset, options = {}) {
     if (!hasSegments()) return;
     const seg = segmentAtIndex(segIdx);
     if (!seg) return;
-    ensureArray(seg, 'sprites').push({ kind, offset });
+    const sprite = { kind, offset };
+    if (options && typeof options === 'object') {
+      Object.assign(sprite, options);
+    }
+    if (sprite.interactable) {
+      const animConfig = (options && options.animation) || {};
+      const totalFrames = Number.isFinite(animConfig.totalFrames) && animConfig.totalFrames > 0
+        ? Math.floor(animConfig.totalFrames)
+        : 1;
+      const duration = Number.isFinite(animConfig.frameDuration) && animConfig.frameDuration > 0
+        ? animConfig.frameDuration
+        : (1 / 60);
+      const startFrame = Number.isFinite(animConfig.frame)
+        ? Math.max(0, Math.min(totalFrames - 1, Math.floor(animConfig.frame)))
+        : 0;
+      sprite.animation = {
+        frame: startFrame,
+        totalFrames,
+        frameDuration: duration,
+        accumulator: 0,
+        playing: !!animConfig.playing,
+        finished: animConfig.finished === true && startFrame === totalFrames - 1,
+      };
+      sprite.animFrame = sprite.animation.frame;
+    }
+    ensureArray(seg, 'sprites').push(sprite);
+    return sprite;
   }
 
   function spawnProps() {
     if (!hasSegments()) return;
     const segCount = segments.length;
+    for (const seg of segments) {
+      if (seg && Array.isArray(seg.sprites)) seg.sprites.length = 0;
+    }
     for (let i = 8; i < segCount; i += 6) {
       addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', -1.25 - Math.random() * 0.15);
       addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', 1.25 + Math.random() * 0.15);
@@ -985,6 +1102,16 @@
         addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', -extra);
         addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', extra);
       }
+    }
+
+    const plateCount = Math.max(4, Math.floor(segCount / 40));
+    for (let i = 0; i < plateCount; i += 1) {
+      const segIdx = Math.floor(Math.random() * Math.max(1, segCount));
+      const centerOffset = (Math.random() - 0.5) * 0.6;
+      addProp(segIdx, 'ANIM_PLATE', centerOffset, {
+        interactable: true,
+        animation: { totalFrames: 16, frameDuration: 1 / 60, frame: 0 },
+      });
     }
   }
 
