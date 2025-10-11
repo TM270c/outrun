@@ -125,8 +125,10 @@
 
   const CAR_COLLISION_COOLDOWN = 1 / 120;
   const COLLISION_PUSH_DURATION = 0.45;
-  const COLLISION_PUSH_FORWARD_MAX_SEGMENTS = 10;
-  const COLLISION_PUSH_LATERAL_MAX = 0.85;
+  const NPC_COLLISION_PUSH_FORWARD_MAX_SEGMENTS = 10;
+  const NPC_COLLISION_PUSH_LATERAL_MAX = 0.85;
+  const INTERACTABLE_COLLISION_PUSH_FORWARD_MAX_SEGMENTS = 12;
+  const INTERACTABLE_COLLISION_PUSH_LATERAL_MAX = 1;
   const CAR_COLLISION_STAMP = Symbol('carCollisionStamp');
 
   const defaultGetKindScale = (kind) => (kind === 'PLAYER' ? player.scale : 1);
@@ -291,7 +293,13 @@
     return Math.max(0, car.speed);
   }
 
-  function computeCollisionPush(forwardSpeed, playerOffset, targetOffset) {
+  function computeCollisionPush(
+    forwardSpeed,
+    playerOffset,
+    targetOffset,
+    forwardMaxSegments = NPC_COLLISION_PUSH_FORWARD_MAX_SEGMENTS,
+    lateralMax = NPC_COLLISION_PUSH_LATERAL_MAX,
+  ) {
     const baseSpeed = Math.max(0, Number.isFinite(forwardSpeed) ? forwardSpeed : 0);
     const maxSpeed = (player && Number.isFinite(player.topSpeed)) ? Math.max(player.topSpeed, 0) : 0;
     if (baseSpeed <= 1e-4 || maxSpeed <= 1e-4 || !Number.isFinite(segmentLength) || segmentLength <= 0) {
@@ -299,7 +307,7 @@
     }
 
     const speedRatio = clamp01(baseSpeed / maxSpeed);
-    const forwardDistance = speedRatio * COLLISION_PUSH_FORWARD_MAX_SEGMENTS * segmentLength;
+    const forwardDistance = speedRatio * forwardMaxSegments * segmentLength;
 
     let lateralDistance = 0;
     let lateralDir = 0;
@@ -309,7 +317,7 @@
       if (absDelta > 1e-4) {
         lateralDir = -(Math.sign(delta) || 1);
         const offsetRatio = 1 - clamp01(absDelta);
-        lateralDistance = speedRatio * COLLISION_PUSH_LATERAL_MAX * offsetRatio;
+        lateralDistance = speedRatio * lateralMax * offsetRatio;
       }
     }
 
@@ -343,7 +351,13 @@
     const impact = configureImpactableSprite(sprite);
     if (!impact) return;
 
-    const push = computeCollisionPush(currentPlayerForwardSpeed(), state.playerN, sprite.offset);
+    const push = computeCollisionPush(
+      currentPlayerForwardSpeed(),
+      state.playerN,
+      sprite.offset,
+      INTERACTABLE_COLLISION_PUSH_FORWARD_MAX_SEGMENTS,
+      INTERACTABLE_COLLISION_PUSH_LATERAL_MAX,
+    );
     if (!push) return;
 
     impact.lateralVel = push.lateralVel;
@@ -361,8 +375,13 @@
     if (impact.timer > 0 && dt > 0) {
       const step = Math.min(dt, impact.timer);
 
+      const duration = Math.max(COLLISION_PUSH_DURATION, 1e-4);
+      const startRatio = clamp01(impact.timer / duration);
+      const endRatio = clamp01((impact.timer - step) / duration);
+      const avgRatio = 0.5 * (startRatio + endRatio);
+
       if (impact.lateralVel) {
-        sprite.offset += impact.lateralVel * step;
+        sprite.offset += impact.lateralVel * avgRatio * step;
       }
 
       if (impact.forwardVel) {
@@ -372,7 +391,7 @@
           const baseS = Number.isFinite(sprite.s)
             ? sprite.s
             : (baseSeg ? baseSeg.p1.world.z : state.phys.s);
-          const nextS = wrapDistance(baseS, impact.forwardVel * step, trackLength);
+          const nextS = wrapDistance(baseS, impact.forwardVel * avgRatio * step, trackLength);
           sprite.s = nextS;
           const candidate = segmentAtS(nextS);
           if (candidate && currentSeg && candidate !== currentSeg) {
@@ -413,7 +432,13 @@
   function applyNpcCollisionPush(car, playerForwardSpeed) {
     if (!car) return;
 
-    const push = computeCollisionPush(playerForwardSpeed, state.playerN, car.offset);
+    const push = computeCollisionPush(
+      playerForwardSpeed,
+      state.playerN,
+      car.offset,
+      NPC_COLLISION_PUSH_FORWARD_MAX_SEGMENTS,
+      NPC_COLLISION_PUSH_LATERAL_MAX,
+    );
     if (!push) return;
 
     if (!car.collisionPush) {
@@ -1199,8 +1224,12 @@
       if (car.collisionPush && car.collisionPush.timer > 0) {
         const push = car.collisionPush;
         const pushDt = Math.min(dt, push.timer);
-        car.offset += push.lateralVel * pushDt;
-        forwardTravel += push.forwardVel * pushDt;
+        const duration = Math.max(COLLISION_PUSH_DURATION, 1e-4);
+        const startRatio = clamp01(push.timer / duration);
+        const endRatio = clamp01((push.timer - pushDt) / duration);
+        const avgRatio = 0.5 * (startRatio + endRatio);
+        car.offset += push.lateralVel * avgRatio * pushDt;
+        forwardTravel += push.forwardVel * avgRatio * pushDt;
         push.timer = Math.max(0, push.timer - pushDt);
         if (push.timer <= 1e-4) delete car.collisionPush;
       } else if (car.collisionPush) {
