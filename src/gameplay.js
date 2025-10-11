@@ -913,6 +913,7 @@
         }
         updateImpactableSprite(spr, dt);
       }
+      updateImpactableSprite(spr, dt);
     }
   }
 
