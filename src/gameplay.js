@@ -129,6 +129,9 @@
   const NPC_COLLISION_PUSH_LATERAL_SPEED = 2.4;
   const NPC_COLLISION_PUSH_FORWARD_BASE = 0.06;
   const NPC_COLLISION_PUSH_FORWARD_SCALE = 0.85;
+  const SPRITE_IMPACT_PUSH_DURATION = 0.4;
+  const SPRITE_IMPACT_PUSH_LATERAL_SPEED = 2.2;
+  const SPRITE_IMPACT_RETURN_SPEED = 1.25;
   const CAR_COLLISION_STAMP = Symbol('carCollisionStamp');
 
   const defaultGetKindScale = (kind) => (kind === 'PLAYER' ? player.scale : 1);
@@ -281,6 +284,131 @@
   function carHalfWN(car) {
     const meta = carMeta(car);
     return (meta.wN || 0) * 0.5;
+  }
+
+  function configureImpactableSprite(sprite, impactOptions = null) {
+    if (!sprite || !sprite.impactable) return null;
+
+    if (!sprite.impactState) {
+      sprite.impactState = { timer: 0, lateralVel: 0 };
+    }
+
+    const impact = sprite.impactState;
+    const config = (impactOptions && typeof impactOptions === 'object') ? impactOptions : {};
+
+    if (!Number.isFinite(impact.baseOffset)) {
+      if (Number.isFinite(config.baseOffset)) {
+        impact.baseOffset = config.baseOffset;
+      } else if (Number.isFinite(sprite.baseOffset)) {
+        impact.baseOffset = sprite.baseOffset;
+      } else if (Number.isFinite(sprite.offset)) {
+        impact.baseOffset = sprite.offset;
+      } else {
+        impact.baseOffset = 0;
+      }
+    }
+
+    if (Number.isFinite(config.pushDuration) && config.pushDuration > 0) {
+      impact.pushDuration = config.pushDuration;
+    } else if (!Number.isFinite(impact.pushDuration) || impact.pushDuration <= 0) {
+      impact.pushDuration = SPRITE_IMPACT_PUSH_DURATION;
+    }
+
+    if (Number.isFinite(config.pushSpeed) && config.pushSpeed !== 0) {
+      impact.pushSpeed = Math.abs(config.pushSpeed);
+    } else if (!Number.isFinite(impact.pushSpeed) || impact.pushSpeed <= 0) {
+      impact.pushSpeed = SPRITE_IMPACT_PUSH_LATERAL_SPEED;
+    }
+
+    if (Number.isFinite(config.returnSpeed) && config.returnSpeed >= 0) {
+      impact.returnSpeed = config.returnSpeed;
+    } else if (!Number.isFinite(impact.returnSpeed) || impact.returnSpeed < 0) {
+      impact.returnSpeed = SPRITE_IMPACT_RETURN_SPEED;
+    }
+
+    if (config.clampMin != null && Number.isFinite(config.clampMin)) {
+      impact.clampMin = config.clampMin;
+    } else if (impact.clampMin == null) {
+      impact.clampMin = null;
+    }
+
+    if (config.clampMax != null && Number.isFinite(config.clampMax)) {
+      impact.clampMax = config.clampMax;
+    } else if (impact.clampMax == null) {
+      impact.clampMax = null;
+    }
+
+    return impact;
+  }
+
+  function applyImpactPushToSprite(sprite) {
+    if (!sprite || !sprite.impactable) return;
+
+    const impact = configureImpactableSprite(sprite);
+    if (!impact) return;
+
+    const forwardSpeed = Math.abs(state.phys?.vtan ?? 0);
+    const speedFactor = clamp(forwardSpeed / Math.max(1, player.topSpeed), 0, 1);
+    if (speedFactor <= 1e-4) return;
+
+    const playerHalf = playerHalfWN();
+    const spriteMeta = getSpriteMeta(sprite.kind);
+    const spriteHalf = Math.max(0, (spriteMeta.wN || 0) * 0.5);
+    const combinedHalf = playerHalf + spriteHalf;
+    const offsetDelta = sprite.offset - state.playerN;
+    const absDelta = Math.abs(offsetDelta);
+    const normalizedDelta = combinedHalf > 1e-4
+      ? clamp(absDelta / combinedHalf, 0, 1)
+      : clamp(absDelta, 0, 1);
+    const centerBias = 1 - normalizedDelta;
+
+    let direction = 0;
+    if (offsetDelta > 0) direction = 1;
+    else if (offsetDelta < 0) direction = -1;
+    else direction = (state.playerN >= 0) ? 1 : -1;
+
+    const baseSpeed = impact.pushSpeed * (0.35 + 0.65 * speedFactor);
+    const lateralStrength = 0.4 + 0.6 * centerBias;
+    impact.lateralVel = direction * baseSpeed * lateralStrength;
+    impact.timer = impact.pushDuration;
+  }
+
+  function updateImpactableSprite(sprite, dt) {
+    if (!sprite || !sprite.impactable) return;
+    const impact = configureImpactableSprite(sprite);
+    if (!impact) return;
+
+    if (impact.timer > 0 && dt > 0) {
+      const step = Math.min(dt, impact.timer);
+      sprite.offset += impact.lateralVel * step;
+      impact.timer = Math.max(0, impact.timer - dt);
+      if (impact.timer <= 0) {
+        impact.lateralVel = 0;
+      }
+    }
+
+    if (impact.clampMin != null && sprite.offset < impact.clampMin) {
+      sprite.offset = impact.clampMin;
+      if (impact.lateralVel < 0) impact.lateralVel = 0;
+    }
+    if (impact.clampMax != null && sprite.offset > impact.clampMax) {
+      sprite.offset = impact.clampMax;
+      if (impact.lateralVel > 0) impact.lateralVel = 0;
+    }
+
+    if (impact.timer <= 0 && impact.returnSpeed > 0) {
+      const diff = impact.baseOffset - sprite.offset;
+      if (Math.abs(diff) > 1e-4) {
+        const maxDelta = impact.returnSpeed * dt;
+        if (Math.abs(diff) <= maxDelta) {
+          sprite.offset = impact.baseOffset;
+        } else {
+          sprite.offset += Math.sign(diff) * maxDelta;
+        }
+      } else {
+        sprite.offset = impact.baseOffset;
+      }
+    }
   }
 
   function carHitboxHeight(car, s = state.phys.s) {
@@ -659,13 +787,26 @@
     if (!seg || !Array.isArray(seg.sprites) || !seg.sprites.length) return;
     const pHalf = playerHalfWN();
     for (const spr of seg.sprites) {
-      if (!spr || !spr.interactable || !spr.animation) continue;
-      const meta = getSpriteMeta(spr.kind);
-      const spriteHalf = Math.max(0, (meta.wN || 0) * 0.5);
-      if (spriteHalf <= 0) continue;
-      if (overlap(state.playerN, pHalf, spr.offset, spriteHalf, 1)) {
-        if (!spr.animation.finished) {
-          spr.animation.playing = true;
+      if (!spr) continue;
+      if (spr.interactable && spr.animation) {
+        const meta = getSpriteMeta(spr.kind);
+        const spriteHalf = Math.max(0, (meta.wN || 0) * 0.5);
+        if (spriteHalf > 0 && overlap(state.playerN, pHalf, spr.offset, spriteHalf, 1)) {
+          if (spr.animation.finished && spr.impactable) {
+            spr.animation.frame = 0;
+            spr.animation.accumulator = 0;
+            spr.animation.finished = false;
+          }
+          if (!spr.animation.finished) {
+            spr.animation.playing = true;
+          }
+          if (spr.impactable) applyImpactPushToSprite(spr);
+        }
+      } else if (spr.impactable) {
+        const meta = getSpriteMeta(spr.kind);
+        const spriteHalf = Math.max(0, (meta.wN || 0) * 0.5);
+        if (spriteHalf > 0 && overlap(state.playerN, pHalf, spr.offset, spriteHalf, 1)) {
+          applyImpactPushToSprite(spr);
         }
       }
     }
@@ -769,6 +910,7 @@
         if (anim.frame >= totalFrames) anim.frame = totalFrames - 1;
         spr.animFrame = anim.frame;
       }
+      updateImpactableSprite(spr, dt);
     }
   }
 
@@ -1106,11 +1248,16 @@
     const seg = segmentAtIndex(segIdx);
     if (!seg) return;
     const sprite = { kind, offset };
+    let animationConfig = null;
+    let impactConfig = null;
     if (options && typeof options === 'object') {
-      Object.assign(sprite, options);
+      const { animation, impact, ...rest } = options;
+      Object.assign(sprite, rest);
+      animationConfig = animation || null;
+      impactConfig = impact || null;
     }
     if (sprite.interactable) {
-      const animConfig = (options && options.animation) || {};
+      const animConfig = animationConfig || {};
       const totalFrames = Number.isFinite(animConfig.totalFrames) && animConfig.totalFrames > 0
         ? Math.floor(animConfig.totalFrames)
         : 1;
@@ -1129,6 +1276,10 @@
         finished: animConfig.finished === true && startFrame === totalFrames - 1,
       };
       sprite.animFrame = sprite.animation.frame;
+    }
+    if (sprite.impactable) {
+      if (!Number.isFinite(sprite.baseOffset)) sprite.baseOffset = sprite.offset;
+      configureImpactableSprite(sprite, impactConfig);
     }
     ensureArray(seg, 'sprites').push(sprite);
     return sprite;
@@ -1160,6 +1311,7 @@
       const centerOffset = (Math.random() - 0.5) * 0.6;
       addProp(segIdx, 'ANIM_PLATE', centerOffset, {
         interactable: true,
+        impactable: true,
         animation: { totalFrames: 16, frameDuration: 1 / 60, frame: 0 },
       });
     }
