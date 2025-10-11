@@ -125,13 +125,8 @@
 
   const CAR_COLLISION_COOLDOWN = 1 / 120;
   const CAR_COLLISION_REWIND = -2;
-  const NPC_COLLISION_PUSH_DURATION = 0.45;
-  const NPC_COLLISION_PUSH_LATERAL_SPEED = 2.4;
-  const NPC_COLLISION_PUSH_FORWARD_BASE = 0.06;
-  const NPC_COLLISION_PUSH_FORWARD_SCALE = 0.85;
-  const SPRITE_IMPACT_PUSH_DURATION = 0.4;
-  const SPRITE_IMPACT_PUSH_LATERAL_SPEED = 2.2;
-  const SPRITE_IMPACT_RETURN_SPEED = 1.25;
+  const COLLISION_PUSH_DURATION = 0.45;
+  const COLLISION_PUSH_SPEED_MULTIPLIER = 1.25;
   const CAR_COLLISION_STAMP = Symbol('carCollisionStamp');
 
   const defaultGetKindScale = (kind) => (kind === 'PLAYER' ? player.scale : 1);
@@ -286,57 +281,50 @@
     return (meta.wN || 0) * 0.5;
   }
 
-  function configureImpactableSprite(sprite, impactOptions = null) {
-    if (!sprite || !sprite.impactable) return null;
+  function currentPlayerForwardSpeed() {
+    const vt = state && state.phys ? state.phys.vtan : 0;
+    return Math.max(0, Number.isFinite(vt) ? vt : 0);
+  }
 
-    if (!sprite.impactState) {
-      sprite.impactState = { timer: 0, lateralVel: 0 };
-    }
+  function npcForwardSpeed(car) {
+    if (!car || !Number.isFinite(car.speed)) return 0;
+    return Math.max(0, car.speed);
+  }
 
-    const impact = sprite.impactState;
-    const config = (impactOptions && typeof impactOptions === 'object') ? impactOptions : {};
+  function computeCollisionPush(forwardSpeed, playerOffset, targetOffset) {
+    const baseSpeed = Math.max(0, Number.isFinite(forwardSpeed) ? forwardSpeed : 0);
+    if (baseSpeed <= 1e-4) return null;
 
-    if (!Number.isFinite(impact.baseOffset)) {
-      if (Number.isFinite(config.baseOffset)) {
-        impact.baseOffset = config.baseOffset;
-      } else if (Number.isFinite(sprite.baseOffset)) {
-        impact.baseOffset = sprite.baseOffset;
-      } else if (Number.isFinite(sprite.offset)) {
-        impact.baseOffset = sprite.offset;
+    const pushSpeed = baseSpeed * COLLISION_PUSH_SPEED_MULTIPLIER;
+    let lateralDir = 0;
+    if (Number.isFinite(playerOffset) && Number.isFinite(targetOffset)) {
+      const delta = playerOffset - targetOffset;
+      if (Math.abs(delta) > 1e-4) {
+        lateralDir = delta > 0 ? -1 : 1;
+      } else if (playerOffset !== 0) {
+        lateralDir = playerOffset > 0 ? -1 : 1;
       } else {
-        impact.baseOffset = 0;
+        lateralDir = 1;
       }
     }
 
-    if (Number.isFinite(config.pushDuration) && config.pushDuration > 0) {
-      impact.pushDuration = config.pushDuration;
-    } else if (!Number.isFinite(impact.pushDuration) || impact.pushDuration <= 0) {
-      impact.pushDuration = SPRITE_IMPACT_PUSH_DURATION;
+    return {
+      forwardVel: pushSpeed,
+      lateralVel: pushSpeed * lateralDir,
+    };
+  }
+
+  function configureImpactableSprite(sprite) {
+    if (!sprite || !sprite.impactable) return null;
+
+    if (!sprite.impactState) {
+      sprite.impactState = { timer: 0, lateralVel: 0, forwardVel: 0 };
     }
 
-    if (Number.isFinite(config.pushSpeed) && config.pushSpeed !== 0) {
-      impact.pushSpeed = Math.abs(config.pushSpeed);
-    } else if (!Number.isFinite(impact.pushSpeed) || impact.pushSpeed <= 0) {
-      impact.pushSpeed = SPRITE_IMPACT_PUSH_LATERAL_SPEED;
-    }
-
-    if (Number.isFinite(config.returnSpeed) && config.returnSpeed >= 0) {
-      impact.returnSpeed = config.returnSpeed;
-    } else if (!Number.isFinite(impact.returnSpeed) || impact.returnSpeed < 0) {
-      impact.returnSpeed = SPRITE_IMPACT_RETURN_SPEED;
-    }
-
-    if (config.clampMin != null && Number.isFinite(config.clampMin)) {
-      impact.clampMin = config.clampMin;
-    } else if (impact.clampMin == null) {
-      impact.clampMin = null;
-    }
-
-    if (config.clampMax != null && Number.isFinite(config.clampMax)) {
-      impact.clampMax = config.clampMax;
-    } else if (impact.clampMax == null) {
-      impact.clampMax = null;
-    }
+    const impact = sprite.impactState;
+    if (!Number.isFinite(impact.timer)) impact.timer = 0;
+    if (!Number.isFinite(impact.lateralVel)) impact.lateralVel = 0;
+    if (!Number.isFinite(impact.forwardVel)) impact.forwardVel = 0;
 
     return impact;
   }
@@ -347,68 +335,52 @@
     const impact = configureImpactableSprite(sprite);
     if (!impact) return;
 
-    const forwardSpeed = Math.abs(state.phys?.vtan ?? 0);
-    const speedFactor = clamp(forwardSpeed / Math.max(1, player.topSpeed), 0, 1);
-    if (speedFactor <= 1e-4) return;
+    const push = computeCollisionPush(currentPlayerForwardSpeed(), state.playerN, sprite.offset);
+    if (!push) return;
 
-    const playerHalf = playerHalfWN();
-    const spriteMeta = getSpriteMeta(sprite.kind);
-    const spriteHalf = Math.max(0, (spriteMeta.wN || 0) * 0.5);
-    const combinedHalf = playerHalf + spriteHalf;
-    const offsetDelta = sprite.offset - state.playerN;
-    const absDelta = Math.abs(offsetDelta);
-    const normalizedDelta = combinedHalf > 1e-4
-      ? clamp(absDelta / combinedHalf, 0, 1)
-      : clamp(absDelta, 0, 1);
-    const centerBias = 1 - normalizedDelta;
-
-    let direction = 0;
-    if (offsetDelta > 0) direction = 1;
-    else if (offsetDelta < 0) direction = -1;
-    else direction = (state.playerN >= 0) ? 1 : -1;
-
-    const baseSpeed = impact.pushSpeed * (0.35 + 0.65 * speedFactor);
-    const lateralStrength = 0.4 + 0.6 * centerBias;
-    impact.lateralVel = direction * baseSpeed * lateralStrength;
-    impact.timer = impact.pushDuration;
+    impact.lateralVel = push.lateralVel;
+    impact.forwardVel = push.forwardVel;
+    impact.timer = COLLISION_PUSH_DURATION;
   }
 
-  function updateImpactableSprite(sprite, dt) {
-    if (!sprite || !sprite.impactable) return;
+  function updateImpactableSprite(sprite, dt, currentSeg = null) {
+    if (!sprite || !sprite.impactable) return null;
     const impact = configureImpactableSprite(sprite);
-    if (!impact) return;
+    if (!impact) return null;
+
+    let nextSeg = null;
 
     if (impact.timer > 0 && dt > 0) {
       const step = Math.min(dt, impact.timer);
-      sprite.offset += impact.lateralVel * step;
-      impact.timer = Math.max(0, impact.timer - dt);
+
+      if (impact.lateralVel) {
+        sprite.offset += impact.lateralVel * step;
+      }
+
+      if (impact.forwardVel) {
+        const trackLength = trackLengthRef();
+        if (trackLength > 0) {
+          const baseSeg = currentSeg || segmentAtIndex(sprite.segIndex ?? 0);
+          const baseS = Number.isFinite(sprite.s)
+            ? sprite.s
+            : (baseSeg ? baseSeg.p1.world.z : state.phys.s);
+          const nextS = wrapDistance(baseS, impact.forwardVel * step, trackLength);
+          sprite.s = nextS;
+          const candidate = segmentAtS(nextS);
+          if (candidate && currentSeg && candidate !== currentSeg) {
+            nextSeg = candidate;
+          }
+        }
+      }
+
+      impact.timer = Math.max(0, impact.timer - step);
       if (impact.timer <= 0) {
         impact.lateralVel = 0;
+        impact.forwardVel = 0;
       }
     }
 
-    if (impact.clampMin != null && sprite.offset < impact.clampMin) {
-      sprite.offset = impact.clampMin;
-      if (impact.lateralVel < 0) impact.lateralVel = 0;
-    }
-    if (impact.clampMax != null && sprite.offset > impact.clampMax) {
-      sprite.offset = impact.clampMax;
-      if (impact.lateralVel > 0) impact.lateralVel = 0;
-    }
-
-    if (impact.timer <= 0 && impact.returnSpeed > 0) {
-      const diff = impact.baseOffset - sprite.offset;
-      if (Math.abs(diff) > 1e-4) {
-        const maxDelta = impact.returnSpeed * dt;
-        if (Math.abs(diff) <= maxDelta) {
-          sprite.offset = impact.baseOffset;
-        } else {
-          sprite.offset += Math.sign(diff) * maxDelta;
-        }
-      } else {
-        sprite.offset = impact.baseOffset;
-      }
-    }
+    return nextSeg;
   }
 
   function carHitboxHeight(car, s = state.phys.s) {
@@ -430,37 +402,18 @@
     return baseY + carHitboxHeight(car, s);
   }
 
-  function applyNpcCollisionPush(car, playerOffset, playerForwardSpeed, npcForwardSpeed) {
+  function applyNpcCollisionPush(car, playerForwardSpeed) {
     if (!car) return;
 
-    const minPushSpeed = npcForwardSpeed * 0.5;
-    if (playerForwardSpeed < minPushSpeed) return;
-
-    const speedDelta = playerForwardSpeed - npcForwardSpeed;
-    const forwardDelta = Math.max(0, speedDelta);
-    const approachSpeed = Math.max(playerForwardSpeed, npcForwardSpeed);
-    const speedFactor = clamp(approachSpeed / Math.max(1, player.topSpeed), 0, 1);
-
-    const combinedHalfWidth = playerHalfWN() + carHalfWN(car);
-    const offsetDelta = playerOffset - car.offset;
-    const absDelta = Math.abs(offsetDelta);
-    const normalizedDelta = combinedHalfWidth > 0
-      ? clamp(absDelta / combinedHalfWidth, 0, 1)
-      : clamp(absDelta, 0, 1);
-    const centerBias = 1 - normalizedDelta;
-    const lateralDirection = offsetDelta > 0 ? -1 : (offsetDelta < 0 ? 1 : 0);
-    const lateralStrength = 0.5 + 0.5 * normalizedDelta;
-    const forwardStrength = 0.15 + 0.45 * centerBias;
-    const lateralVelocity = lateralDirection * NPC_COLLISION_PUSH_LATERAL_SPEED * speedFactor * lateralStrength;
-    const forwardBase = player.topSpeed * NPC_COLLISION_PUSH_FORWARD_BASE;
-    const forwardVelocity = (forwardBase + forwardDelta * NPC_COLLISION_PUSH_FORWARD_SCALE) * forwardStrength;
+    const push = computeCollisionPush(playerForwardSpeed, state.playerN, car.offset);
+    if (!push) return;
 
     if (!car.collisionPush) {
       car.collisionPush = { lateralVel: 0, forwardVel: 0, timer: 0 };
     }
-    car.collisionPush.lateralVel = lateralVelocity;
-    car.collisionPush.forwardVel = forwardVelocity;
-    car.collisionPush.timer = NPC_COLLISION_PUSH_DURATION;
+    car.collisionPush.lateralVel = push.lateralVel;
+    car.collisionPush.forwardVel = push.forwardVel;
+    car.collisionPush.timer = COLLISION_PUSH_DURATION;
   }
 
   function playerBaseHeight() {
@@ -833,12 +786,13 @@
       const wasGrounded = phys.grounded;
       const currentVx = phys.vx;
       const currentVy = phys.vy;
-      const playerForwardSpeed = wasGrounded ? phys.vtan : (currentVx * tangent.tx + currentVy * tangent.ty);
-      const npcForwardSpeed = Number.isFinite(car.speed) ? car.speed : 0;
+      const rawPlayerForward = wasGrounded ? phys.vtan : (currentVx * tangent.tx + currentVy * tangent.ty);
+      const playerForwardSpeed = Math.max(0, Number.isFinite(rawPlayerForward) ? rawPlayerForward : 0);
+      const npcForward = npcForwardSpeed(car);
 
-      if (!(playerForwardSpeed > npcForwardSpeed)) continue;
+      if (!(playerForwardSpeed > npcForward)) continue;
 
-      const vt = Math.min(playerForwardSpeed, npcForwardSpeed);
+      const vt = Math.min(playerForwardSpeed, npcForward);
       phys.s = wrapDistance(car.z, CAR_COLLISION_REWIND, trackLength);
       phys.vtan = vt;
 
@@ -857,7 +811,7 @@
       phys.vx = landingTangent.tx * vt + landingTangent.nx * perpComponent;
       phys.vy = landingTangent.ty * vt + landingTangent.ny * perpComponent;
 
-      applyNpcCollisionPush(car, state.playerN, playerForwardSpeed, npcForwardSpeed);
+      applyNpcCollisionPush(car, playerForwardSpeed);
 
       car[CAR_COLLISION_STAMP] = now;
       return true;
@@ -883,8 +837,15 @@
     if (!hasSegments()) return;
     for (const seg of segments) {
       if (!seg || !Array.isArray(seg.sprites) || !seg.sprites.length) continue;
-      for (const spr of seg.sprites) {
-        if (!spr) continue;
+      for (let i = 0; i < seg.sprites.length; ) {
+        const spr = seg.sprites[i];
+        if (!spr) {
+          i += 1;
+          continue;
+        }
+
+        spr.segIndex = seg.index;
+
         if (spr.animation) {
           const anim = spr.animation;
           const frameDuration = (anim && anim.frameDuration > 0) ? anim.frameDuration : (1 / 60);
@@ -911,7 +872,15 @@
           if (anim.frame >= totalFrames) anim.frame = totalFrames - 1;
           spr.animFrame = anim.frame;
         }
-        updateImpactableSprite(spr, dt);
+        const transferSeg = updateImpactableSprite(spr, dt, seg);
+        if (transferSeg && transferSeg !== seg) {
+          const destination = ensureArray(transferSeg, 'sprites');
+          seg.sprites.splice(i, 1);
+          destination.push(spr);
+          spr.segIndex = transferSeg.index;
+          continue;
+        }
+        i += 1;
       }
     }
   }
@@ -1249,14 +1218,13 @@
     if (!hasSegments()) return;
     const seg = segmentAtIndex(segIdx);
     if (!seg) return;
-    const sprite = { kind, offset };
+    const baseZ = seg.p1 && seg.p1.world ? seg.p1.world.z : segIdx * segmentLength;
+    const sprite = { kind, offset, segIndex: seg.index, s: baseZ };
     let animationConfig = null;
-    let impactConfig = null;
     if (options && typeof options === 'object') {
-      const { animation, impact, ...rest } = options;
+      const { animation, ...rest } = options;
       Object.assign(sprite, rest);
       animationConfig = animation || null;
-      impactConfig = impact || null;
     }
     if (sprite.interactable) {
       const animConfig = animationConfig || {};
@@ -1281,7 +1249,7 @@
     }
     if (sprite.impactable) {
       if (!Number.isFinite(sprite.baseOffset)) sprite.baseOffset = sprite.offset;
-      configureImpactableSprite(sprite, impactConfig);
+      configureImpactableSprite(sprite);
     }
     ensureArray(seg, 'sprites').push(sprite);
     return sprite;
