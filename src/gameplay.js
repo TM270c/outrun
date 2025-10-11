@@ -124,9 +124,9 @@
   const CAR_TYPES = ['CAR', 'SEMI'];
 
   const CAR_COLLISION_COOLDOWN = 1 / 120;
-  const CAR_COLLISION_REWIND = -2;
   const COLLISION_PUSH_DURATION = 0.45;
-  const COLLISION_PUSH_SPEED_MULTIPLIER = 1.25;
+  const COLLISION_PUSH_FORWARD_MAX_SEGMENTS = 10;
+  const COLLISION_PUSH_LATERAL_MAX = 0.5;
   const CAR_COLLISION_STAMP = Symbol('carCollisionStamp');
 
   const defaultGetKindScale = (kind) => (kind === 'PLAYER' ? player.scale : 1);
@@ -293,24 +293,32 @@
 
   function computeCollisionPush(forwardSpeed, playerOffset, targetOffset) {
     const baseSpeed = Math.max(0, Number.isFinite(forwardSpeed) ? forwardSpeed : 0);
-    if (baseSpeed <= 1e-4) return null;
+    const maxSpeed = (player && Number.isFinite(player.topSpeed)) ? Math.max(player.topSpeed, 0) : 0;
+    if (baseSpeed <= 1e-4 || maxSpeed <= 1e-4 || !Number.isFinite(segmentLength) || segmentLength <= 0) {
+      return null;
+    }
 
-    const pushSpeed = baseSpeed * COLLISION_PUSH_SPEED_MULTIPLIER;
+    const speedRatio = clamp01(baseSpeed / maxSpeed);
+    const forwardDistance = speedRatio * COLLISION_PUSH_FORWARD_MAX_SEGMENTS * segmentLength;
+
+    let lateralDistance = 0;
     let lateralDir = 0;
     if (Number.isFinite(playerOffset) && Number.isFinite(targetOffset)) {
       const delta = playerOffset - targetOffset;
-      if (Math.abs(delta) > 1e-4) {
-        lateralDir = delta > 0 ? -1 : 1;
-      } else if (playerOffset !== 0) {
-        lateralDir = playerOffset > 0 ? -1 : 1;
-      } else {
-        lateralDir = 1;
+      const absDelta = Math.abs(delta);
+      if (absDelta > 1e-4) {
+        lateralDir = Math.sign(delta) || 1;
+        const offsetRatio = clamp01(absDelta);
+        lateralDistance = speedRatio * COLLISION_PUSH_LATERAL_MAX * offsetRatio;
       }
     }
 
+    if (forwardDistance <= 1e-4 && lateralDistance <= 1e-4) return null;
+
+    const duration = Math.max(COLLISION_PUSH_DURATION, 1e-4);
     return {
-      forwardVel: pushSpeed,
-      lateralVel: pushSpeed * lateralDir,
+      forwardVel: forwardDistance / duration,
+      lateralVel: (lateralDistance * lateralDir) / duration,
     };
   }
 
@@ -769,7 +777,6 @@
     const { phys } = state;
     if (!seg || !Array.isArray(seg.cars) || !seg.cars.length) return false;
     const pHalf = playerHalfWN();
-    const trackLength = trackLengthRef();
     for (let i = 0; i < seg.cars.length; i += 1) {
       const car = seg.cars[i];
       if (!car) continue;
@@ -792,8 +799,7 @@
 
       if (!(playerForwardSpeed > npcForward)) continue;
 
-      const vt = Math.min(playerForwardSpeed, npcForward);
-      phys.s = wrapDistance(car.z, CAR_COLLISION_REWIND, trackLength);
+      const vt = npcForward;
       phys.vtan = vt;
 
       const landingProfile = groundProfileAt(phys.s);
