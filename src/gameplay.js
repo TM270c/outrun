@@ -307,8 +307,8 @@
       const delta = playerOffset - targetOffset;
       const absDelta = Math.abs(delta);
       if (absDelta > 1e-4) {
-        lateralDir = Math.sign(delta) || 1;
-        const offsetRatio = clamp01(absDelta);
+        lateralDir = -(Math.sign(delta) || 1);
+        const offsetRatio = 1 - clamp01(absDelta);
         lateralDistance = speedRatio * COLLISION_PUSH_LATERAL_MAX * offsetRatio;
       }
     }
