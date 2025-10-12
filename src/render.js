@@ -89,6 +89,17 @@
   const snowSpeedRange = rangeFromConfig(snowSpeed, 0.3, 1.0);
   const snowDensityFactor = Math.max(0, numericOr(snowDensity, 1));
   const snowStretchFactor = Math.max(0, numericOr(snowStretch, 1));
+  const SNOW_SCREEN_MIN_RADIUS = 12;
+  const SNOW_SCREEN_FOOTPRINT_SCALE = 0.8;
+  const SNOW_SCREEN_BASE_EXPANSION = 5; // expand the base snow screen footprint without altering per-axis scaling math
+
+  function computeSnowScreenBaseRadius(scale, roadWidth){
+    const base = Math.max(
+      SNOW_SCREEN_MIN_RADIUS,
+      scale * roadWidth * HALF_VIEW * SNOW_SCREEN_FOOTPRINT_SCALE,
+    );
+    return base * SNOW_SCREEN_BASE_EXPANSION;
+  }
 
   function mulberry32(seed){
     let t = seed >>> 0;
@@ -645,11 +656,8 @@
         const centerY = lerp(p1.screen.y, p2.screen.y, midT);
         const zMid = lerp(p1.camera.z, p2.camera.z, midT);
         const farScale = spriteFarScaleFromZ(zMid);
-        const snowScreenBaseExpansion = 5; // expand the base snow screen footprint without altering per-axis scaling math
-        const baseHalfOriginal = Math.max(12, scaleMid * rwMid * HALF_VIEW * 0.8);
-        const baseHalf = baseHalfOriginal * snowScreenBaseExpansion;
-        const halfSize = baseHalf * farScale;
-        const sizePx = halfSize * 2;
+        const baseRadius = computeSnowScreenBaseRadius(scaleMid, rwMid);
+        const sizePx = baseRadius * farScale * 2;
         const color = (seg.snowScreen && Array.isArray(seg.snowScreen.color))
           ? seg.snowScreen.color
           : [1, 1, 1, 1];
@@ -854,9 +862,9 @@
   function renderSnowScreen(item){
     if (!glr) return;
     const { x, y, size, color = [1, 1, 1, 1], z, segIndex } = item;
-    if (!(size > 0)) return;
-    const half = size * 0.5;
-    if (!(half > 0)) return;
+    if (size <= 0) return;
+    const radius = size * 0.5;
+    const diameter = radius * 2;
 
     const fogVals = fogArray(z || 0);
     const { flakes, phaseOffset } = snowFieldFor(segIndex);
@@ -887,10 +895,10 @@
       const sway = Math.sin(animTime * flake.swayFreq + flake.phase) * flake.swayAmp;
       const normX = clamp((flake.baseX - 0.5) + sway, -0.6, 0.6);
       const localY = normY - 0.5;
-      const px = x + normX * size;
-      const py = y + localY * size;
+      const px = x + normX * diameter;
+      const py = y + localY * diameter;
       const baseSizePx = lerp(snowSizeRange.min, snowSizeRange.max, clamp(flake.size, 0, 1));
-      const perspectiveScale = clamp(size / 256, 0.25, 2.0);
+      const perspectiveScale = clamp(radius / 128, 0.25, 2.0);
       const flakeSizePx = Math.max(1, Math.round(baseSizePx * perspectiveScale));
       const fHalf = flakeSizePx * 0.5;
 
