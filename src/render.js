@@ -24,7 +24,6 @@
     snowDensity = 1,
     snowSize = { min: 1, max: 1.5 },
     snowSpeed = { min: 0.1, max: 0.2 },
-    snowStretch = 1,
   } = Config;
 
   const {
@@ -88,7 +87,6 @@
   const snowSizeRange = rangeFromConfig(snowSize, 10, 30);
   const snowSpeedRange = rangeFromConfig(snowSpeed, 0.3, 1.0);
   const snowDensityFactor = Math.max(0, numericOr(snowDensity, 1));
-  const snowStretchFactor = Math.max(0, numericOr(snowStretch, 1));
   const SNOW_SCREEN_MIN_RADIUS = 12;
   const SNOW_SCREEN_FOOTPRINT_SCALE = 0.8;
   const SNOW_SCREEN_BASE_EXPANSION = 5; // expand the base snow screen footprint without altering per-axis scaling math
@@ -117,15 +115,14 @@
     const rng = mulberry32(seed);
     const baseCount = 80 * snowDensityFactor;
     const variance = 40 * snowDensityFactor;
-    const flakeCount = Math.max(0, Math.round(baseCount + rng() * variance));
+    const flakeCount = Math.max(0, Math.round(baseCount + (rng() - 0.5) * variance));
     const flakes = new Array(flakeCount);
     for (let i = 0; i < flakeCount; i++){
       flakes[i] = {
         baseX: rng(),
         baseY: rng(),
         speed: lerp(snowSpeedRange.min, snowSpeedRange.max, rng()),
-        swayAmp: 0.05 + rng() * 0.08,
-        swayFreq: 0.5 + rng() * 1.5,
+        drift: lerp(-0.3, 0.3, rng()),
         phase: rng() * Math.PI * 2,
         size: rng(),
       };
@@ -859,94 +856,51 @@
     }
   }
 
+  function getSnowAnimationTime(){
+    if (state && state.phys && typeof state.phys.t === 'number') return state.phys.t;
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function'){
+      return performance.now() / 1000;
+    }
+    return 0;
+  }
+
   function renderSnowScreen(item){
     if (!glr) return;
     const { x, y, size, color = [1, 1, 1, 1], z, segIndex } = item;
     if (size <= 0) return;
+
     const radius = size * 0.5;
     const diameter = radius * 2;
-
     const fogVals = fogArray(z || 0);
     const { flakes, phaseOffset } = snowFieldFor(segIndex);
-    const time = (state && state.phys && typeof state.phys.t === 'number')
-      ? state.phys.t
-      : ((typeof performance !== 'undefined' && typeof performance.now === 'function')
-        ? performance.now() / 1000
-        : 0);
-    const animTime = time + phaseOffset;
+    const animTime = getSnowAnimationTime() + phaseOffset;
     const alpha = Array.isArray(color) && color.length >= 4 ? color[3] : 1;
     const flakeColor = [1, 1, 1, alpha];
 
-    const topSpeed = (player && Number.isFinite(player.topSpeed) && player.topSpeed !== 0)
-      ? Math.abs(player.topSpeed)
-      : 1;
-    const phys = state && state.phys ? state.phys : null;
-    const speedPct = clamp(Math.abs(phys && Number.isFinite(phys.vtan) ? phys.vtan : 0) / topSpeed, 0, 1);
-    const closeness = clamp(1 - fogFactorFromZ(z || 0), 0, 1);
-    const viewCenterX = (HALF_VIEW && HALF_VIEW > 0) ? HALF_VIEW : (W * 0.5);
-    const viewCenterY = (H && H > 0) ? H * 0.5 : y;
-    const maxRadius = Math.max(1, Math.hypot(viewCenterX || 0, viewCenterY || 0));
-
     for (let i = 0; i < flakes.length; i++){
       const flake = flakes[i];
-      const fallT = animTime * flake.speed;
-      let normY = (flake.baseY + fallT) % 1;
+      let normY = (flake.baseY + animTime * flake.speed) % 1;
       if (normY < 0) normY += 1;
-      const sway = Math.sin(animTime * flake.swayFreq + flake.phase) * flake.swayAmp;
+      const sway = Math.sin(animTime + flake.phase) * flake.drift;
       const normX = clamp((flake.baseX - 0.5) + sway, -0.6, 0.6);
-      const localY = normY - 0.5;
       const px = x + normX * diameter;
-      const py = y + localY * diameter;
-      const baseSizePx = lerp(snowSizeRange.min, snowSizeRange.max, clamp(flake.size, 0, 1));
-      const perspectiveScale = clamp(radius / 128, 0.25, 2.0);
-      const flakeSizePx = Math.max(1, Math.round(baseSizePx * perspectiveScale));
-      const fHalf = flakeSizePx * 0.5;
+      const py = y + (normY - 0.5) * diameter;
+      const flakeSizePx = Math.max(
+        1,
+        Math.round(lerp(snowSizeRange.min, snowSizeRange.max, clamp(flake.size, 0, 1)))
+      );
+      const halfSize = flakeSizePx * 0.5;
 
-      const quadVerts = [
-        { keyX: 'x1', keyY: 'y1', x: px - fHalf, y: py - fHalf },
-        { keyX: 'x2', keyY: 'y2', x: px + fHalf, y: py - fHalf },
-        { keyX: 'x3', keyY: 'y3', x: px + fHalf, y: py + fHalf },
-        { keyX: 'x4', keyY: 'y4', x: px - fHalf, y: py + fHalf },
-      ];
-
-      if (speedPct > 0 && closeness > 0){
-        const dirX = px - viewCenterX;
-        const dirY = py - viewCenterY;
-        const dirLen = Math.hypot(dirX, dirY);
-        if (dirLen > 1e-3){
-          const normDirX = dirX / dirLen;
-          const normDirY = dirY / dirLen;
-          const radialFactor = clamp(dirLen / maxRadius, 0, 1);
-          const stretchScale = snowStretchFactor;
-          const stretchBase = flakeSizePx * speedPct * closeness * stretchScale;
-          const edgeBias = Math.pow(radialFactor, 1.75);
-          const stretchAmount = Math.min(
-            flakeSizePx * 4 * stretchScale,
-            stretchBase * lerp(0.05, 1.5, edgeBias)
-          );
-
-          if (stretchAmount > 0.01){
-            const vertsByDot = quadVerts
-              .map((v) => ({
-                vert: v,
-                dot: (v.x - viewCenterX) * normDirX + (v.y - viewCenterY) * normDirY,
-              }))
-              .sort((a, b) => a.dot - b.dot);
-
-            for (let j = 2; j < vertsByDot.length; j++){
-              const { vert } = vertsByDot[j];
-              vert.x += normDirX * stretchAmount;
-              vert.y += normDirY * stretchAmount;
-            }
-          }
-        }
-      }
-
-      const quad = quadVerts.reduce((acc, v) => {
-        acc[v.keyX] = v.x;
-        acc[v.keyY] = v.y;
-        return acc;
-      }, {});
+      const quad = {
+        x1: px - halfSize,
+        y1: py - halfSize,
+        x2: px + halfSize,
+        y2: py - halfSize,
+        x3: px + halfSize,
+        y3: py + halfSize,
+        x4: px - halfSize,
+        y4: py + halfSize,
+      };
 
       glr.drawQuadSolid(quad, flakeColor, fogVals);
     }
