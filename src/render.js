@@ -24,6 +24,7 @@
     snowDensity = 1,
     snowSize = { min: 1, max: 1.5 },
     snowSpeed = { min: 0.1, max: 0.2 },
+    snowStretch = { base: 1, speedScale: 6, flakeScale: 2, driftScale: 1.5, min: 1, max: 12 },
   } = Config;
 
   const {
@@ -87,9 +88,20 @@
   const snowSizeRange = rangeFromConfig(snowSize, 10, 30);
   const snowSpeedRange = rangeFromConfig(snowSpeed, 0.3, 1.0);
   const snowDensityFactor = Math.max(0, numericOr(snowDensity, 1));
+  const snowSpeedSpan = Math.max(1e-3, snowSpeedRange.max - snowSpeedRange.min);
+  const snowStretchBase = Math.max(0, numericOr(snowStretch.base, 1));
+  const snowStretchSpeedScale = Math.max(0, numericOr(snowStretch.speedScale, 6));
+  const snowStretchFlakeScale = Math.max(0, numericOr(snowStretch.flakeScale, 2));
+  const snowStretchDriftScale = Math.max(0, numericOr(snowStretch.driftScale, 1.5));
+  const snowStretchMin = Math.max(0, numericOr(snowStretch.min, snowStretchBase));
+  const snowStretchMax = numericOr(snowStretch.max, Infinity);
+  const snowStretchMaxBound = Number.isFinite(snowStretchMax)
+    ? Math.max(snowStretchMin, snowStretchMax)
+    : snowStretchMax;
   const SNOW_SCREEN_MIN_RADIUS = 12;
   const SNOW_SCREEN_FOOTPRINT_SCALE = 0.8;
   const SNOW_SCREEN_BASE_EXPANSION = 5; // expand the base snow screen footprint without altering per-axis scaling math
+  const SNOW_DRIFT_ABS_MAX = 0.35;
 
   function computeSnowScreenBaseRadius(scale, roadWidth){
     const base = Math.max(
@@ -874,6 +886,9 @@
     const fogVals = fogArray(z || 0);
     const { flakes, phaseOffset } = snowFieldFor(segIndex);
     const animTime = getSnowAnimationTime() + phaseOffset;
+    const playerSpeed = state && state.phys ? Math.abs(state.phys.vtan) : 0;
+    const topSpeed = Math.max(1e-3, player && player.topSpeed ? player.topSpeed : 1);
+    const playerSpeedRatio = clamp(playerSpeed / topSpeed, 0, 1);
     const alpha = Array.isArray(color) && color.length >= 4 ? color[3] : 1;
     const flakeColor = [1, 1, 1, alpha];
 
@@ -881,7 +896,8 @@
       const flake = flakes[i];
       let normY = (flake.baseY + animTime * flake.speed) % 1;
       if (normY < 0) normY += 1;
-      const sway = Math.sin(animTime + flake.phase) * flake.drift;
+      const swayPhase = animTime + flake.phase;
+      const sway = Math.sin(swayPhase) * flake.drift;
       const normX = clamp((flake.baseX - 0.5) + sway, -0.6, 0.6);
       const px = x + normX * diameter;
       const py = y + (normY - 0.5) * diameter;
@@ -889,19 +905,34 @@
         1,
         Math.round(lerp(snowSizeRange.min, snowSizeRange.max, clamp(flake.size, 0, 1)))
       );
-      const halfSize = flakeSizePx * 0.5;
-
-      const quad = {
-        x1: px - halfSize,
-        y1: py - halfSize,
-        x2: px + halfSize,
-        y2: py - halfSize,
-        x3: px + halfSize,
-        y3: py + halfSize,
-        x4: px - halfSize,
-        y4: py + halfSize,
-      };
-
+      const flakeSpeedRatio = clamp((flake.speed - snowSpeedRange.min) / snowSpeedSpan, 0, 1);
+      const driftRatio = clamp(Math.abs(flake.drift) / SNOW_DRIFT_ABS_MAX, 0, 1);
+      const stretchRaw = snowStretchBase
+        + playerSpeedRatio * snowStretchSpeedScale
+        + flakeSpeedRatio * snowStretchFlakeScale
+        + driftRatio * snowStretchDriftScale;
+      const maxStretch = Number.isFinite(snowStretchMaxBound) ? snowStretchMaxBound : stretchRaw;
+      const stretchFactor = clamp(stretchRaw, snowStretchMin, maxStretch);
+      const flakeHeightPx = Math.max(1, flakeSizePx * stretchFactor);
+      const motionX = Math.cos(swayPhase) * flake.drift * diameter;
+      const motionY = Math.max(0.01, flake.speed) * diameter;
+      let dirX = motionX;
+      let dirY = motionY;
+      let dirLen = Math.hypot(dirX, dirY);
+      if (!(dirLen > 1e-4)){
+        dirX = 0;
+        dirY = 1;
+        dirLen = 1;
+      }
+      dirX /= dirLen;
+      dirY /= dirLen;
+      const baseHalf = flakeSizePx * 0.5;
+      const stretchHalf = flakeHeightPx * 0.5;
+      const halfDelta = Math.max(0, stretchHalf - baseHalf);
+      const cx = px - dirX * halfDelta;
+      const cy = py - dirY * halfDelta;
+      const angle = Math.atan2(dirY, dirX) - Math.PI * 0.5;
+      const quad = makeRotatedQuad(cx, cy, flakeSizePx, flakeHeightPx, angle);
       glr.drawQuadSolid(quad, flakeColor, fogVals);
     }
   }
