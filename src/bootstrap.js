@@ -5,6 +5,7 @@ const dom = {
 };
 
 const glr = new RenderGL.GLRenderer(dom.canvas);
+const App = window.App || null;
 
 const roadTexZones = [];
 const railTexZones = [];
@@ -43,13 +44,27 @@ function setupCallbacks() {
 await loadAssets();
 
 Renderer.attach(glr, dom);
+if (App && typeof App.init === 'function') {
+  App.init();
+}
 setupCallbacks();
 
 await Gameplay.resetScene();
 
-addEventListener('keydown', Gameplay.keydownHandler);
-addEventListener('keyup', Gameplay.keyupHandler);
+const keydownHandler = (App && typeof App.handleKeyDown === 'function')
+  ? App.handleKeyDown
+  : Gameplay.keydownHandler;
+const keyupHandler = (App && typeof App.handleKeyUp === 'function')
+  ? App.handleKeyUp
+  : Gameplay.keyupHandler;
+
+addEventListener('keydown', keydownHandler);
+addEventListener('keyup', keyupHandler);
 
 Renderer.frame((dt) => {
-  Gameplay.step(dt);
+  if (App && typeof App.step === 'function') {
+    App.step(dt);
+  } else {
+    Gameplay.step(dt);
+  }
 });
