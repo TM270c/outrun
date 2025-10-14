@@ -25,6 +25,7 @@
     snowSize = { min: 1, max: 1.5 },
     snowSpeed = { min: 0.1, max: 0.2 },
     snowStretch = 1,
+    snowScreenSize = 1,
   } = Config;
 
   const {
@@ -59,8 +60,6 @@
   const textures = assets ? assets.textures : {};
   const state = Gameplay.state;
 
-  const snowScreenCache = new Map();
-
   function numericOr(value, fallback){
     const num = Number(value);
     return Number.isFinite(num) ? num : fallback;
@@ -89,16 +88,20 @@
   const snowSpeedRange = rangeFromConfig(snowSpeed, 0.3, 1.0);
   const snowDensityFactor = Math.max(0, numericOr(snowDensity, 1));
   const snowStretchFactor = Math.max(0, numericOr(snowStretch, 1));
+  const snowScreenSizeFactor = Math.max(0, numericOr(snowScreenSize, 1));
   const SNOW_SCREEN_MIN_RADIUS = 12;
   const SNOW_SCREEN_FOOTPRINT_SCALE = 0.8;
   const SNOW_SCREEN_BASE_EXPANSION = 5; // expand the base snow screen footprint without altering per-axis scaling math
+  const SNOW_FIELD_POOL_SIZE = 12;
+  const SNOW_FIELD_SEED_STEP = 0x45d9f3b;
+  const EMPTY_SNOW_FIELD = { flakes: [], phaseOffset: 0 };
 
   function computeSnowScreenBaseRadius(scale, roadWidth){
     const base = Math.max(
       SNOW_SCREEN_MIN_RADIUS,
       scale * roadWidth * HALF_VIEW * SNOW_SCREEN_FOOTPRINT_SCALE,
     );
-    return base * SNOW_SCREEN_BASE_EXPANSION;
+    return base * SNOW_SCREEN_BASE_EXPANSION * snowScreenSizeFactor;
   }
 
   function mulberry32(seed){
@@ -111,9 +114,9 @@
     };
   }
 
-  function snowFieldFor(segIndex = 0){
-    if (snowScreenCache.has(segIndex)) return snowScreenCache.get(segIndex);
-    const seed = (segIndex * 0x45d9f3b) ^ 0x9E3779B9;
+  const snowFieldPool = [];
+
+  function buildSnowField(seed){
     const rng = mulberry32(seed);
     const baseCount = 80 * snowDensityFactor;
     const variance = 40 * snowDensityFactor;
@@ -130,9 +133,22 @@
         size: rng(),
       };
     }
-    const field = { flakes, phaseOffset: rng() * 1000 };
-    snowScreenCache.set(segIndex, field);
-    return field;
+    return { flakes, phaseOffset: rng() * 1000 };
+  }
+
+  function ensureSnowFieldPool(){
+    if (snowFieldPool.length > 0) return;
+    for (let i = 0; i < SNOW_FIELD_POOL_SIZE; i++){
+      const seed = 0x9E3779B9 ^ ((i + 1) * SNOW_FIELD_SEED_STEP);
+      snowFieldPool.push(buildSnowField(seed));
+    }
+  }
+
+  function snowFieldFor(segIndex = 0){
+    ensureSnowFieldPool();
+    if (snowFieldPool.length === 0) return EMPTY_SNOW_FIELD;
+    const idx = Math.abs(segIndex) % snowFieldPool.length;
+    return snowFieldPool[idx] || EMPTY_SNOW_FIELD;
   }
 
   const segments = data.segments;
