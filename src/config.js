@@ -78,6 +78,7 @@ const colors = {
 // Snow screen rendering controls.
 const snowScreenDistance = 40;
 const snowScreenDensity = 2;
+const snowScreenSize = 1;
 const snowDensity = .6;
 const snowSize = { min: 0.75, max: 1.25 };
 const snowSpeed = { min: 0.1, max: .2 };
@@ -180,6 +181,7 @@ window.Config = {
   forceLandingOnCarImpact,
   snowScreenDistance,
   snowScreenDensity,
+  snowScreenSize,
   snowDensity,
   snowSize,
   snowSpeed,
