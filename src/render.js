@@ -60,6 +60,19 @@
   const textures = assets ? assets.textures : {};
   const state = Gameplay.state;
 
+  function isSnowFeatureEnabled(){
+    const app = global.App;
+    if (app && typeof app.isSnowEnabled === 'function') {
+      try {
+        return !!app.isSnowEnabled();
+      } catch (err) {
+        console.warn('App.isSnowEnabled threw', err);
+        return true;
+      }
+    }
+    return true;
+  }
+
   function numericOr(value, fallback){
     const num = Number(value);
     return Number.isFinite(num) ? num : fallback;
@@ -663,7 +676,8 @@
       });
 
       const snowScreenActive =
-        seg && seg.snowScreen && snowMaxSegments > 0 && n < snowMaxSegments && (seg.index % snowStride === 0);
+        isSnowFeatureEnabled()
+        && seg && seg.snowScreen && snowMaxSegments > 0 && n < snowMaxSegments && (seg.index % snowStride === 0);
       if (snowScreenActive){
         const midT = 0.5;
         const scaleMid = lerp(p1.screen.scale, p2.screen.scale, midT);
@@ -877,6 +891,7 @@
 
   function renderSnowScreen(item){
     if (!glr) return;
+    if (!isSnowFeatureEnabled()) return;
     const { x, y, size, color = [1, 1, 1, 1], z, segIndex } = item;
     if (size <= 0) return;
     const radius = size * 0.5;
