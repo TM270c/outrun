@@ -1,8 +1,8 @@
 (function (global) {
-  const { Gameplay } = global;
+  const { Gameplay, AppScreens } = global;
 
-  if (!Gameplay) {
-    throw new Error('App module requires Gameplay global');
+  if (!Gameplay || !AppScreens) {
+    throw new Error('App module requires Gameplay and AppScreens globals');
   }
 
   const mainMenuOptions = [
@@ -38,8 +38,6 @@
       menuLayer: null,
       menuPanel: null,
       attractVideo: null,
-      leaderboardAnimationFrame: null,
-      leaderboardShouldAnimate: false,
     },
   };
 
@@ -79,18 +77,6 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
-  }
-
-  function wrapPanel({ title, subtitle = '', body = '', footer = '', modifier = '' }) {
-    const subtitleHtml = subtitle ? `<div class="menu-subtitle">${subtitle}</div>` : '';
-    return `
-      <div class="menu-panel-inner ${modifier}">
-        ${title ? `<div class="menu-title">${title}</div>` : ''}
-        ${subtitleHtml}
-        <div class="menu-body">${body}</div>
-        ${footer ? `<div class="menu-footer">${footer}</div>` : ''}
-      </div>
-    `;
   }
 
   function formatTimeMs(value) {
@@ -147,94 +133,6 @@
     return entry;
   }
 
-  function leaderboardRowsHtml(entries, highlightId = null) {
-    return entries
-      .map((entry) => {
-        if (!entry) return '';
-        if (entry.type === 'ellipsis') {
-          return `
-            <li class="leaderboard-row is-ellipsis">
-              <span class="leaderboard-row-rank"></span>
-              <span class="menu-option-label">…</span>
-              <span class="menu-option-value"></span>
-            </li>
-          `;
-        }
-        const rank = entry.rank != null ? entry.rank : '';
-        const rankLabel = rank ? String(rank).padStart(2, '0') : '';
-        const isHighlight = highlightId && entry.id === highlightId;
-        const highlightClass = isHighlight ? ' is-player' : '';
-        return `
-          <li class="leaderboard-row${highlightClass}">
-            <span class="leaderboard-row-rank">${escapeHtml(rankLabel)}</span>
-            <span class="menu-option-label">${escapeHtml(entry.name)}</span>
-            <span class="menu-option-value">${escapeHtml(entry.displayValue)}</span>
-          </li>
-        `;
-      })
-      .join('');
-  }
-
-  function buildLeaderboardPlayerAreaEntries(entries, highlightIndex) {
-    if (highlightIndex < 0) return [];
-    const totalEntries = entries.length;
-    const minStart = Math.min(15, totalEntries);
-    if (totalEntries <= minStart) {
-      return [];
-    }
-    const available = totalEntries - minStart;
-    const windowSize = Math.max(1, Math.min(5, available));
-    const halfWindow = Math.floor(windowSize / 2);
-    let start = highlightIndex - halfWindow;
-    start = Math.max(minStart, start);
-    if (start + windowSize > totalEntries) {
-      start = Math.max(minStart, totalEntries - windowSize);
-    }
-    const end = Math.min(totalEntries, start + windowSize);
-    return entries.slice(start, end);
-  }
-
-  function buildLeaderboardComposite(entries, highlightId) {
-    const topEntries = entries.slice(0, Math.min(15, entries.length));
-    const topHtml = leaderboardRowsHtml(topEntries, highlightId);
-    const highlightIndex = findLeaderboardEntryIndexById(highlightId);
-    const highlightEntry = highlightIndex >= 0 ? entries[highlightIndex] : null;
-    const hasPlayerArea = Boolean(highlightEntry && highlightEntry.rank > 15);
-    let playerHtml = '';
-    if (hasPlayerArea) {
-      const playerEntries = buildLeaderboardPlayerAreaEntries(entries, highlightIndex);
-      playerHtml = leaderboardRowsHtml(playerEntries, highlightId);
-    }
-
-    const sections = [`
-      <div class="leaderboard-section leaderboard-section--top">
-        <div class="leaderboard-section-title">Top 15</div>
-        <ul class="leaderboard-list leaderboard-list--top">${topHtml}</ul>
-      </div>
-    `];
-
-    if (hasPlayerArea) {
-      sections.push('<div class="leaderboard-gap"></div>');
-      sections.push(`
-        <div class="leaderboard-section leaderboard-section--player">
-          <div class="leaderboard-section-title">Your Standings</div>
-          <ul class="leaderboard-list leaderboard-list--player">${playerHtml}</ul>
-        </div>
-      `);
-    }
-
-    const shouldAnimate = hasPlayerArea;
-    const html = `
-      <div class="leaderboard-scroll" data-animate="${shouldAnimate ? '1' : '0'}">
-        <div class="leaderboard-scroll-strip">
-          ${sections.join('')}
-        </div>
-      </div>
-    `;
-
-    return { html, shouldAnimate };
-  }
-
   function setMode(nextMode) {
     if (!nextMode || state.mode === nextMode) return;
     const prevMode = state.mode;
@@ -267,41 +165,47 @@
   }
 
   function renderMainMenu() {
-    const optionsHtml = mainMenuOptions
-      .map((option, idx) => {
-        const selected = idx === state.mainMenuIndex ? ' is-selected' : '';
-        return `
-          <li class="menu-option${selected}" data-key="${option.key}">
-            <span class="menu-option-label">${escapeHtml(option.label)}</span>
-          </li>
-        `;
-      })
-      .join('');
-    const body = `<ul class="menu-options">${optionsHtml}</ul>`;
-    const footer = 'Arrow Keys to Navigate · Space to Select';
-    return wrapPanel({ title: 'Outrun', subtitle: 'Neon Grand Prix', body, footer });
+    if (!AppScreens.mainMenu) return '';
+    return AppScreens.mainMenu(
+      {
+        title: 'Outrun',
+        subtitle: 'Neon Grand Prix',
+        options: mainMenuOptions,
+        selectedIndex: state.mainMenuIndex,
+      },
+      { escapeHtml },
+    );
   }
 
   function renderLeaderboard() {
-    const { loading, error, entries } = state.leaderboard;
-    let body = '';
-    state.dom.leaderboardShouldAnimate = false;
-    if (loading) {
-      body = '<div class="menu-message">Loading leaderboard…</div>';
-    } else if (error) {
-      body = '<div class="menu-message">Leaderboard unavailable</div>';
-    } else if (!entries.length) {
-      body = '<div class="menu-message">No leaderboard data</div>';
-    } else {
-      const composite = buildLeaderboardComposite(entries, state.leaderboard.highlightId);
-      state.dom.leaderboardShouldAnimate = composite.shouldAnimate;
-      body = composite.html;
-    }
-    const footer = 'Space or Esc to Return';
-    return wrapPanel({ title: 'Leaderboard', body, footer, modifier: 'is-leaderboard' });
+    if (!AppScreens.leaderboard) return '';
+    const { loading, error, entries, highlightId } = state.leaderboard;
+    const topEntries = entries
+      .slice(0, Math.min(10, entries.length))
+      .map((entry) => {
+        if (!entry) {
+          return { rank: '', name: '', score: '', isHighlight: false };
+        }
+        return {
+          rank: entry.rank,
+          name: entry.name,
+          score: entry.displayValue,
+          isHighlight: highlightId && entry.id === highlightId,
+        };
+      });
+
+    return AppScreens.leaderboard(
+      {
+        loading,
+        error,
+        entries: topEntries,
+      },
+      { escapeHtml },
+    );
   }
 
   function renderSettings() {
+    if (!AppScreens.settingsMenu) return '';
     const options = [
       {
         key: 'snow',
@@ -311,126 +215,51 @@
       {
         key: 'back',
         label: 'Back',
-        value: '',
       },
     ];
 
-    const optionsHtml = options
-      .map((option, idx) => {
-        const selected = idx === state.settingsMenuIndex ? ' is-selected' : '';
-        const valueHtml = option.value
-          ? `<span class="menu-option-value">${escapeHtml(option.value)}</span>`
-          : '';
-        return `
-          <li class="menu-option${selected}" data-key="${option.key}">
-            <span class="menu-option-label">${escapeHtml(option.label)}</span>
-            ${valueHtml}
-          </li>
-        `;
-      })
-      .join('');
-
-    const body = `<ul class="menu-options">${optionsHtml}</ul>`;
-    const footer = 'Arrow Keys to Adjust · Space to Toggle · Esc to Return';
-    return wrapPanel({ title: 'Settings', body, footer, modifier: 'is-settings' });
+    return AppScreens.settingsMenu(
+      {
+        options,
+        selectedIndex: state.settingsMenuIndex,
+      },
+      { escapeHtml },
+    );
   }
 
   function renderPauseMenu() {
-    const optionsHtml = pauseMenuOptions
-      .map((option, idx) => {
-        const selected = idx === state.pauseMenuIndex ? ' is-selected' : '';
-        return `
-          <li class="menu-option${selected}" data-key="${option.key}">
-            <span class="menu-option-label">${escapeHtml(option.label)}</span>
-          </li>
-        `;
-      })
-      .join('');
-    const body = `<ul class="menu-options">${optionsHtml}</ul>`;
-    const footer = 'Space to Confirm · Esc to Resume';
-    return wrapPanel({ title: 'Paused', body, footer, modifier: 'is-paused' });
+    if (!AppScreens.pauseMenu) return '';
+    return AppScreens.pauseMenu(
+      {
+        options: pauseMenuOptions,
+        selectedIndex: state.pauseMenuIndex,
+      },
+      { escapeHtml },
+    );
   }
 
   function renderAttract() {
-    const body = `
-      <div class="attract-video-shell">
-        <video id="appAttractVideo" class="attract-video" autoplay muted loop playsinline>
-          <source src="video/attract-loop.mp4" type="video/mp4" />
-        </video>
-      </div>
-    `;
-    return wrapPanel({ title: '', body, modifier: 'is-attract-video' });
-  }
-
-  function buildRaceCompletePlayerRows() {
-    const idx = findLeaderboardEntryIndexById(state.raceComplete.entryId);
-    if (idx < 0) {
-      return state.leaderboard.entries.slice(0, Math.min(10, state.leaderboard.entries.length));
-    }
-    const start = Math.max(0, idx - 5);
-    return state.leaderboard.entries.slice(start, idx + 1);
-  }
-
-  function buildRaceCompleteTopRows() {
-    const { entryId } = state.raceComplete;
-    const entries = state.leaderboard.entries;
-    const idx = findLeaderboardEntryIndexById(entryId);
-    const top = entries.slice(0, Math.min(10, entries.length));
-    if (idx < 0) {
-      return top;
-    }
-    if (idx < top.length) {
-      return top;
-    }
-    const includeEllipsis = idx >= 15;
-    const rows = [...top];
-    if (includeEllipsis) {
-      rows.push({ type: 'ellipsis', key: 'gap' });
-    }
-    rows.push(entries[idx]);
-    return rows;
+    if (!AppScreens.attract) return '';
+    return AppScreens.attract({ videoSrc: 'video/attract-loop.mp4' });
   }
 
   function renderRaceComplete() {
+    if (!AppScreens.raceComplete) return '';
     const rc = state.raceComplete;
     const timeLabel = formatTimeMs(rc.timeMs);
-    if (!rc.active) {
-      const body = '<div class="menu-message">Preparing results…</div>';
-      return wrapPanel({ title: 'Race Complete', body, modifier: 'is-race-complete' });
-    }
-    if (rc.phase === 'entry') {
-      const lettersHtml = rc.letters
-        .map((letter, idx) => {
-          const classes = ['name-entry-letter'];
-          if (idx === rc.currentIndex) classes.push('is-active');
-          if (rc.confirmed[idx]) classes.push('is-locked');
-          return `<span class="${classes.join(' ')}">${escapeHtml(letter)}</span>`;
-        })
-        .join('');
-      const body = `
-        <div class="race-complete-score">${escapeHtml(timeLabel)}</div>
-        <div class="race-complete-message">Enter Your Name</div>
-        <div class="name-entry">${lettersHtml}</div>
-      `;
-      const footer = 'Arrow Up/Down to Change · Space to Lock Letter';
-      return wrapPanel({ title: 'Race Complete', subtitle: 'Final Time', body, footer, modifier: 'is-race-complete' });
-    }
 
-    const showingTop = rc.phase === 'revealTop' || rc.phase === 'complete';
-    const rows = showingTop ? buildRaceCompleteTopRows() : buildRaceCompletePlayerRows();
-    const listHtml = leaderboardRowsHtml(rows, rc.entryId);
-    const footer = showingTop
-      ? 'Showing top contenders…'
-      : 'Highlighting your position…';
-    const footerFinal = rc.phase === 'complete' ? 'Returning to attract mode…' : footer;
-    const body = `<ul class="leaderboard-list">${listHtml}</ul>`;
-    return wrapPanel({
-      title: 'Leaderboard',
-      subtitle: `Final Time · ${escapeHtml(timeLabel)}`,
-      body,
-      footer: footerFinal,
-      modifier: 'is-race-complete',
-    });
+    return AppScreens.raceComplete(
+      {
+        active: rc.active,
+        phase: rc.phase,
+        timeLabel,
+        letters: rc.letters,
+        confirmed: rc.confirmed,
+        currentIndex: rc.currentIndex,
+        playerRank: rc.playerRank,
+      },
+      { escapeHtml },
+    );
   }
 
   function startAttractPlayback(video) {
@@ -455,40 +284,6 @@
     }
   }
 
-  function cancelLeaderboardScrollAnimation() {
-    if (state.dom.leaderboardAnimationFrame != null) {
-      cancelAnimationFrame(state.dom.leaderboardAnimationFrame);
-      state.dom.leaderboardAnimationFrame = null;
-    }
-  }
-
-  function setupLeaderboardScrollAnimation() {
-    cancelLeaderboardScrollAnimation();
-    const { menuPanel } = state.dom;
-    if (!menuPanel) return;
-    const viewport = menuPanel.querySelector('.leaderboard-scroll');
-    const strip = menuPanel.querySelector('.leaderboard-scroll-strip');
-    if (!viewport || !strip) return;
-
-    strip.style.transition = 'none';
-    const viewportHeight = viewport.clientHeight;
-    const stripHeight = strip.scrollHeight;
-    const offset = Math.min(0, viewportHeight - stripHeight);
-
-    if (!state.dom.leaderboardShouldAnimate || offset === 0) {
-      strip.style.transform = 'translateY(0)';
-      return;
-    }
-
-    strip.style.transform = `translateY(${offset}px)`;
-    const frameId = requestAnimationFrame(() => {
-      state.dom.leaderboardAnimationFrame = null;
-      strip.style.transition = 'transform 9s ease-in-out';
-      strip.style.transform = 'translateY(0)';
-    });
-    state.dom.leaderboardAnimationFrame = frameId;
-  }
-
   function updateMenuLayer() {
     ensureDom();
     const { menuLayer, menuPanel } = state.dom;
@@ -497,8 +292,6 @@
     menuLayer.classList.toggle('is-hidden', !menuVisible);
     menuLayer.dataset.mode = state.mode;
     menuPanel.dataset.mode = state.mode;
-    cancelLeaderboardScrollAnimation();
-    state.dom.leaderboardShouldAnimate = false;
 
     let html = '';
     if (state.mode === 'menu') {
@@ -527,10 +320,6 @@
     } else {
       stopAttractPlayback();
       state.dom.attractVideo = null;
-    }
-
-    if (state.mode === 'leaderboard') {
-      setupLeaderboardScrollAnimation();
     }
   }
 
