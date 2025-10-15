@@ -38,10 +38,8 @@
       menuLayer: null,
       menuPanel: null,
       attractVideo: null,
-      attractCanvas: null,
-      attractCtx: null,
-      attractStream: null,
-      attractAnimationId: null,
+      leaderboardAnimationFrame: null,
+      leaderboardShouldAnimate: false,
     },
   };
 
@@ -177,6 +175,66 @@
       .join('');
   }
 
+  function buildLeaderboardPlayerAreaEntries(entries, highlightIndex) {
+    if (highlightIndex < 0) return [];
+    const totalEntries = entries.length;
+    const minStart = Math.min(15, totalEntries);
+    if (totalEntries <= minStart) {
+      return [];
+    }
+    const available = totalEntries - minStart;
+    const windowSize = Math.max(1, Math.min(5, available));
+    const halfWindow = Math.floor(windowSize / 2);
+    let start = highlightIndex - halfWindow;
+    start = Math.max(minStart, start);
+    if (start + windowSize > totalEntries) {
+      start = Math.max(minStart, totalEntries - windowSize);
+    }
+    const end = Math.min(totalEntries, start + windowSize);
+    return entries.slice(start, end);
+  }
+
+  function buildLeaderboardComposite(entries, highlightId) {
+    const topEntries = entries.slice(0, Math.min(15, entries.length));
+    const topHtml = leaderboardRowsHtml(topEntries, highlightId);
+    const highlightIndex = findLeaderboardEntryIndexById(highlightId);
+    const highlightEntry = highlightIndex >= 0 ? entries[highlightIndex] : null;
+    const hasPlayerArea = Boolean(highlightEntry && highlightEntry.rank > 15);
+    let playerHtml = '';
+    if (hasPlayerArea) {
+      const playerEntries = buildLeaderboardPlayerAreaEntries(entries, highlightIndex);
+      playerHtml = leaderboardRowsHtml(playerEntries, highlightId);
+    }
+
+    const sections = [`
+      <div class="leaderboard-section leaderboard-section--top">
+        <div class="leaderboard-section-title">Top 15</div>
+        <ul class="leaderboard-list leaderboard-list--top">${topHtml}</ul>
+      </div>
+    `];
+
+    if (hasPlayerArea) {
+      sections.push('<div class="leaderboard-gap"></div>');
+      sections.push(`
+        <div class="leaderboard-section leaderboard-section--player">
+          <div class="leaderboard-section-title">Your Standings</div>
+          <ul class="leaderboard-list leaderboard-list--player">${playerHtml}</ul>
+        </div>
+      `);
+    }
+
+    const shouldAnimate = hasPlayerArea;
+    const html = `
+      <div class="leaderboard-scroll" data-animate="${shouldAnimate ? '1' : '0'}">
+        <div class="leaderboard-scroll-strip">
+          ${sections.join('')}
+        </div>
+      </div>
+    `;
+
+    return { html, shouldAnimate };
+  }
+
   function setMode(nextMode) {
     if (!nextMode || state.mode === nextMode) return;
     const prevMode = state.mode;
@@ -227,6 +285,7 @@
   function renderLeaderboard() {
     const { loading, error, entries } = state.leaderboard;
     let body = '';
+    state.dom.leaderboardShouldAnimate = false;
     if (loading) {
       body = '<div class="menu-message">Loading leaderboard…</div>';
     } else if (error) {
@@ -234,8 +293,9 @@
     } else if (!entries.length) {
       body = '<div class="menu-message">No leaderboard data</div>';
     } else {
-      const rows = leaderboardRowsHtml(entries, state.leaderboard.highlightId);
-      body = `<ul class="leaderboard-list">${rows}</ul>`;
+      const composite = buildLeaderboardComposite(entries, state.leaderboard.highlightId);
+      state.dom.leaderboardShouldAnimate = composite.shouldAnimate;
+      body = composite.html;
     }
     const footer = 'Space or Esc to Return';
     return wrapPanel({ title: 'Leaderboard', body, footer, modifier: 'is-leaderboard' });
@@ -292,23 +352,14 @@
   }
 
   function renderAttract() {
-    const videoHtml = `
-      <div class="attract-video-wrap">
+    const body = `
+      <div class="attract-video-shell">
         <video id="appAttractVideo" class="attract-video" autoplay muted loop playsinline>
-          <source src="data/attract.webm" type="video/webm" />
+          <source src="video/attract-loop.mp4" type="video/mp4" />
         </video>
-        <div class="attract-overlay">
-          <span>Press Any Key</span>
-          <span>Neon Grand Prix</span>
-        </div>
       </div>
     `;
-    const body = `
-      <div class="attract-title">Neon Grand Prix</div>
-      ${videoHtml}
-    `;
-    const footer = 'Press Any Key to Continue';
-    return wrapPanel({ title: 'Outrun', body, footer, modifier: 'is-attract' });
+    return wrapPanel({ title: '', body, modifier: 'is-attract-video' });
   }
 
   function buildRaceCompletePlayerRows() {
@@ -382,112 +433,60 @@
     });
   }
 
-  function drawAttractFrame(ctx, width, height, t) {
-    if (!ctx) return;
-    const hueBase = (t * 20) % 360;
-    const gradient = ctx.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, `hsl(${hueBase}, 80%, 48%)`);
-    gradient.addColorStop(1, `hsl(${(hueBase + 180) % 360}, 80%, 30%)`);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, height);
-
-    const gridTop = height * 0.55;
-    ctx.fillStyle = 'rgba(3, 7, 16, 0.75)';
-    ctx.fillRect(0, gridTop, width, height - gridTop);
-
-    ctx.strokeStyle = 'rgba(200, 220, 255, 0.2)';
-    ctx.lineWidth = 1.5;
-    ctx.save();
-    ctx.translate(width / 2, gridTop);
-    for (let i = -6; i <= 6; i += 1) {
-      ctx.beginPath();
-      ctx.moveTo(i * 40, 0);
-      ctx.lineTo(i * 120, height - gridTop);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    const laneCount = 12;
-    ctx.strokeStyle = 'rgba(140, 180, 255, 0.3)';
-    for (let i = 0; i < laneCount; i += 1) {
-      const progress = (t * 0.5 + i / laneCount) % 1;
-      const y = gridTop + (height - gridTop) * progress * progress;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
-    }
-
-    const pulse = 0.5 + 0.5 * Math.sin(t * 2);
-    const orbRadius = (width * 0.08) * (0.8 + 0.2 * Math.sin(t * 1.5));
-    const orbX = width * 0.5 + Math.sin(t * 0.7) * width * 0.3;
-    const orbY = gridTop * (0.3 + 0.2 * Math.cos(t * 1.2));
-    const orbGradient = ctx.createRadialGradient(orbX, orbY, orbRadius * 0.1, orbX, orbY, orbRadius);
-    orbGradient.addColorStop(0, `rgba(255, 255, 255, ${0.65 + pulse * 0.2})`);
-    orbGradient.addColorStop(1, 'rgba(160, 220, 255, 0)');
-    ctx.fillStyle = orbGradient;
-    ctx.beginPath();
-    ctx.arc(orbX, orbY, orbRadius, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
   function startAttractPlayback(video) {
     if (!video) return;
-    if (state.dom.attractStream && video.srcObject === state.dom.attractStream) {
-      return;
-    }
-    stopAttractPlayback();
-    const width = 640;
-    const height = 360;
-    let canvas = state.dom.attractCanvas;
-    if (!canvas) {
-      canvas = document.createElement('canvas');
-      state.dom.attractCanvas = canvas;
-    }
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    state.dom.attractCtx = ctx;
-    if (typeof canvas.captureStream !== 'function') {
-      video.srcObject = null;
-      return;
-    }
-    const stream = canvas.captureStream(30);
-    state.dom.attractStream = stream;
-    video.srcObject = stream;
+    video.loop = true;
     video.muted = true;
-    const playResult = video.play();
-    if (playResult && typeof playResult.catch === 'function') {
-      playResult.catch(() => {});
+    video.playsInline = true;
+    const playPromise = video.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => {});
     }
-    const startTime = performance.now();
-    drawAttractFrame(ctx, width, height, 0);
-    const render = (time) => {
-      drawAttractFrame(ctx, width, height, (time - startTime) / 1000);
-      state.dom.attractAnimationId = requestAnimationFrame(render);
-    };
-    state.dom.attractAnimationId = requestAnimationFrame(render);
   }
 
   function stopAttractPlayback() {
-    if (state.dom.attractAnimationId) {
-      cancelAnimationFrame(state.dom.attractAnimationId);
-      state.dom.attractAnimationId = null;
-    }
-    if (state.dom.attractStream) {
-      const tracks = state.dom.attractStream.getTracks();
-      tracks.forEach((track) => track.stop());
-      state.dom.attractStream = null;
-    }
     if (state.dom.attractVideo) {
       try {
         state.dom.attractVideo.pause();
       } catch (err) {
         // ignore
       }
-      state.dom.attractVideo.srcObject = null;
+      state.dom.attractVideo.currentTime = 0;
     }
-    state.dom.attractCtx = null;
+  }
+
+  function cancelLeaderboardScrollAnimation() {
+    if (state.dom.leaderboardAnimationFrame != null) {
+      cancelAnimationFrame(state.dom.leaderboardAnimationFrame);
+      state.dom.leaderboardAnimationFrame = null;
+    }
+  }
+
+  function setupLeaderboardScrollAnimation() {
+    cancelLeaderboardScrollAnimation();
+    const { menuPanel } = state.dom;
+    if (!menuPanel) return;
+    const viewport = menuPanel.querySelector('.leaderboard-scroll');
+    const strip = menuPanel.querySelector('.leaderboard-scroll-strip');
+    if (!viewport || !strip) return;
+
+    strip.style.transition = 'none';
+    const viewportHeight = viewport.clientHeight;
+    const stripHeight = strip.scrollHeight;
+    const offset = Math.min(0, viewportHeight - stripHeight);
+
+    if (!state.dom.leaderboardShouldAnimate || offset === 0) {
+      strip.style.transform = 'translateY(0)';
+      return;
+    }
+
+    strip.style.transform = `translateY(${offset}px)`;
+    const frameId = requestAnimationFrame(() => {
+      state.dom.leaderboardAnimationFrame = null;
+      strip.style.transition = 'transform 9s ease-in-out';
+      strip.style.transform = 'translateY(0)';
+    });
+    state.dom.leaderboardAnimationFrame = frameId;
   }
 
   function updateMenuLayer() {
@@ -498,6 +497,8 @@
     menuLayer.classList.toggle('is-hidden', !menuVisible);
     menuLayer.dataset.mode = state.mode;
     menuPanel.dataset.mode = state.mode;
+    cancelLeaderboardScrollAnimation();
+    state.dom.leaderboardShouldAnimate = false;
 
     let html = '';
     if (state.mode === 'menu') {
@@ -526,6 +527,10 @@
     } else {
       stopAttractPlayback();
       state.dom.attractVideo = null;
+    }
+
+    if (state.mode === 'leaderboard') {
+      setupLeaderboardScrollAnimation();
     }
   }
 

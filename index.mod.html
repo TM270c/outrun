@@ -34,14 +34,22 @@
     #appMenuLayer .leaderboard-row.is-player{background:linear-gradient(120deg,rgba(82,196,255,.35),rgba(168,122,255,.4));color:#fff;border-color:rgba(180,228,255,.7);box-shadow:0 0 24px rgba(82,196,255,.35)}
     #appMenuLayer .leaderboard-row.is-ellipsis{justify-content:center;color:rgba(212,230,255,.4);font-style:italic;letter-spacing:.5em}
     #appMenuLayer .menu-message{text-align:center;font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:rgba(200,220,255,.6)}
-    #appMenuLayer .menu-panel[data-mode="attract"]{max-width:720px;padding:24px 24px 32px;border-radius:30px;background:rgba(6,8,16,.92);}
+    #appMenuLayer .menu-panel-inner.is-leaderboard{align-items:center;width:100%}
+    #appMenuLayer .menu-panel-inner.is-leaderboard .menu-body{align-items:center;width:100%}
+    #appMenuLayer .leaderboard-scroll{width:100%;max-width:420px;aspect-ratio:4/6;margin:0 auto;position:relative;border-radius:28px;overflow:hidden;background:linear-gradient(180deg,rgba(14,20,36,.92),rgba(6,10,22,.96));box-shadow:0 24px 60px rgba(0,0,0,.5),0 0 0 1px rgba(120,160,255,.14)}
+    #appMenuLayer .leaderboard-scroll-strip{display:flex;flex-direction:column;gap:24px;min-height:100%;padding:32px 28px;transform:translateY(0)}
+    #appMenuLayer .leaderboard-section{display:flex;flex-direction:column;gap:16px}
+    #appMenuLayer .leaderboard-section-title{text-transform:uppercase;letter-spacing:.22em;font-size:14px;color:rgba(196,220,255,.68);text-align:center}
+    #appMenuLayer .leaderboard-gap{height:48px}
+    #appMenuLayer .leaderboard-list--player .leaderboard-row{background:rgba(24,36,62,.7)}
+    #appMenuLayer[data-mode="attract"] .menu-bg{display:none}
+    #appMenuLayer .menu-panel[data-mode="attract"]{max-width:880px;padding:0;border-radius:0;background:transparent;box-shadow:none}
     #appMenuLayer .menu-panel[data-mode="attract"]::before{display:none}
-    #appMenuLayer .menu-panel[data-mode="attract"] .menu-panel-inner{gap:18px;padding:0;background:transparent}
-    #appMenuLayer .menu-panel-inner.is-attract{gap:18px}
-    #appMenuLayer .attract-video-wrap{position:relative;overflow:hidden;border-radius:24px;box-shadow:0 18px 60px rgba(0,0,0,.55)}
-    #appMenuLayer .attract-video{width:100%;height:auto;display:block;background:#02040a}
-    #appMenuLayer .attract-overlay{position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:space-between;padding:20px 28px;background:linear-gradient(180deg,rgba(2,4,10,0) 0%,rgba(2,4,10,.8) 100%);color:#c8ddff;letter-spacing:.28em;text-transform:uppercase;font-size:12px}
-    #appMenuLayer .attract-title{font-size:24px;letter-spacing:.36em;text-transform:uppercase;text-align:center;color:#d1e7ff}
+    #appMenuLayer .menu-panel[data-mode="attract"] .menu-panel-inner{gap:0;padding:0;background:transparent}
+    #appMenuLayer .menu-panel-inner.is-attract-video{gap:0;align-items:center;width:100%}
+    #appMenuLayer .menu-panel-inner.is-attract-video .menu-body{width:100%;gap:0;align-items:center}
+    #appMenuLayer .attract-video-shell{width:100%;max-width:960px;aspect-ratio:16/9;border-radius:32px;overflow:hidden;box-shadow:0 22px 70px rgba(0,0,0,.6)}
+    #appMenuLayer .attract-video{display:block;width:100%;height:100%;object-fit:cover;background:#000}
     #appMenuLayer .race-complete-score{font-size:24px;text-align:center;color:#8be4ff;letter-spacing:.24em;text-transform:uppercase;text-shadow:0 0 24px rgba(34,196,255,.45)}
     #appMenuLayer .name-entry{display:flex;justify-content:center;gap:18px}
     #appMenuLayer .name-entry-letter{width:68px;height:68px;border-radius:18px;border:2px solid rgba(104,156,255,.4);display:flex;align-items:center;justify-content:center;font-size:36px;letter-spacing:.3em;text-transform:uppercase;color:#c5d8ff;background:rgba(22,32,54,.6);box-shadow:0 16px 36px rgba(0,0,0,.3);transition:transform .2s ease,border .2s ease,color .2s ease}
