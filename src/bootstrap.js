@@ -39,6 +39,11 @@ function setupCallbacks() {
   Gameplay.state.callbacks.onResetScene = () => {
     Gameplay.resetScene().catch((err) => console.error('Reset failed', err));
   };
+  Gameplay.state.callbacks.onRaceFinish = (timeMs) => {
+    if (App && typeof App.handleRaceFinish === 'function') {
+      App.handleRaceFinish(timeMs);
+    }
+  };
 }
 
 await loadAssets();

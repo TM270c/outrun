@@ -159,6 +159,13 @@
     pendingRespawn: null,
     pickupCollected: 0,
     pickupTotal: 0,
+    race: {
+      active: false,
+      targetLaps: 1,
+      lapsCompleted: 0,
+      startTime: 0,
+      finishTime: null,
+    },
     cars: [],
     spriteMeta: DEFAULT_SPRITE_META,
     getKindScale: defaultGetKindScale,
@@ -168,6 +175,7 @@
       onToggleOverlay: null,
       onResetScene: null,
       onQueueRespawn: null,
+      onRaceFinish: null,
     },
     camera: {
       fieldOfView: camera.fovDeg,
@@ -1100,8 +1108,29 @@
     phys.t += dt;
 
     const length = trackLengthRef();
+    let lapIncrements = 0;
     if (length > 0) {
-      phys.s = ((phys.s % length) + length) % length;
+      const rawS = phys.s;
+      const startLap = Math.floor(startS / length);
+      const endLap = Math.floor(rawS / length);
+      lapIncrements = endLap - startLap;
+      phys.s = ((rawS % length) + length) % length;
+    }
+
+    if (state.race.active && lapIncrements > 0) {
+      state.race.lapsCompleted += lapIncrements;
+      if (state.race.lapsCompleted >= state.race.targetLaps && state.race.finishTime == null) {
+        state.race.finishTime = phys.t;
+        state.race.active = false;
+        const elapsed = Math.max(0, state.race.finishTime - state.race.startTime);
+        if (typeof state.callbacks.onRaceFinish === 'function') {
+          try {
+            state.callbacks.onRaceFinish(Math.round(elapsed * 1000));
+          } catch (err) {
+            console.warn('Race finish callback failed', err);
+          }
+        }
+      }
     }
 
     const aY = 1 - Math.exp(-dt / camera.heightEase);
@@ -1551,6 +1580,11 @@
       playerN: 0,
       timers: { t: 0, nextHopTime: 0, boostFlashTimer: 0 },
     });
+    state.race.active = false;
+    state.race.targetLaps = 1;
+    state.race.lapsCompleted = 0;
+    state.race.startTime = 0;
+    state.race.finishTime = null;
   }
 
   function queueReset() {
@@ -1570,6 +1604,15 @@
     }
   }
 
+  function startRaceSession({ laps = 1 } = {}) {
+    const lapCount = Number.isFinite(laps) && laps > 0 ? Math.floor(laps) : 1;
+    state.race.active = true;
+    state.race.targetLaps = lapCount;
+    state.race.lapsCompleted = 0;
+    state.race.startTime = state.phys.t;
+    state.race.finishTime = null;
+  }
+
   function step(dt) {
     updatePhysics(dt);
     tickCars(dt);
@@ -1580,6 +1623,7 @@
     keydownHandler,
     keyupHandler,
     step,
+    startRaceSession,
     spawnCars,
     spawnProps,
     spawnPickups,
