@@ -90,6 +90,9 @@
     return { u1: u0, v1: v0, u2: u1, v2: v0, u3: u1, v3: v1, u4: u0, v4: v1 };
   }
 
+  const DRIFT_SMOKE_INTERVAL = 4 / 60;
+  const DRIFT_SMOKE_LIFETIME = 120 / 60;
+
   const DEFAULT_SPRITE_META = {
     PLAYER: { wN: 0.16, aspect: 0.7, tint: [0.9, 0.22, 0.21, 1], tex: () => null },
     CAR:    { wN: 0.28, aspect: 0.7, tint: [0.2, 0.7, 1.0, 1], tex: () => null },
@@ -98,6 +101,7 @@
     SIGN:   { wN: 0.55, aspect: 1.0, tint: [1, 1, 1, 1], tex: () => null },
     PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
     PICKUP: { wN: 0.10, aspect: 1.0, tint: [1, 0.92, 0.2, 1], tex: () => null },
+    DRIFT_SMOKE: { wN: 0.05, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], tex: () => null },
     ANIM_PLATE: {
       wN: 0.24,
       aspect: 1.0,
@@ -168,6 +172,7 @@
       startTime: 0,
       finishTime: null,
     },
+    driftSmokeTimer: 0,
     cars: [],
     spriteMeta: DEFAULT_SPRITE_META,
     getKindScale: defaultGetKindScale,
@@ -288,6 +293,29 @@
 
   function playerHalfWN() {
     return getSpriteMeta('PLAYER').wN * state.getKindScale('PLAYER') * 0.5;
+  }
+
+  function spawnDriftSmokeSprites() {
+    if (!hasSegments()) return;
+    const { phys } = state;
+    if (!phys || !phys.grounded) return;
+    const seg = segmentAtS(phys.s);
+    if (!seg) return;
+    const half = playerHalfWN();
+    const offsets = [state.playerN - half, state.playerN + half];
+    const sprites = ensureArray(seg, 'sprites');
+    const baseS = Number.isFinite(phys.s)
+      ? phys.s
+      : (seg.p1 && seg.p1.world ? seg.p1.world.z : 0);
+    for (const offset of offsets) {
+      sprites.push({
+        kind: 'DRIFT_SMOKE',
+        offset,
+        segIndex: seg.index,
+        s: baseS,
+        ttl: DRIFT_SMOKE_LIFETIME,
+      });
+    }
   }
 
   function carMeta(car) {
@@ -898,6 +926,14 @@
 
         spr.segIndex = seg.index;
 
+        if (Number.isFinite(spr.ttl)) {
+          spr.ttl -= dt;
+          if (spr.ttl <= 0) {
+            seg.sprites.splice(i, 1);
+            continue;
+          }
+        }
+
         if (spr.animation) {
           const anim = spr.animation;
           const frameDuration = (anim && anim.frameDuration > 0) ? anim.frameDuration : (1 / 60);
@@ -1104,6 +1140,16 @@
         state.allowedBoost = false;
         state.pendingDriftDir = 0;
       }
+    }
+
+    if (state.driftState === 'drifting') {
+      state.driftSmokeTimer += dt;
+      while (state.driftSmokeTimer >= DRIFT_SMOKE_INTERVAL) {
+        spawnDriftSmokeSprites();
+        state.driftSmokeTimer -= DRIFT_SMOKE_INTERVAL;
+      }
+    } else {
+      state.driftSmokeTimer = 0;
     }
 
     phys.t += dt;
@@ -1510,6 +1556,7 @@
     state.pendingDriftDir = 0;
     state.lastSteerDir = 0;
     state.boostTimer = 0;
+    state.driftSmokeTimer = 0;
 
     state.camRollDeg = 0;
     state.playerTiltDeg = 0;
