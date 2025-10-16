@@ -174,7 +174,10 @@
     padBottom: sprites.overlap.y,
   };
 
+  const UNIT_UV = { u1: 0, v1: 0, u2: 1, v2: 0, u3: 1, v3: 1, u4: 0, v4: 1 };
+
   let glr = null;
+  let texSmoke = null;
   let canvas3D = null;
   let canvasOverlay = null;
   let canvasHUD = null;
@@ -1109,6 +1112,46 @@
     }
   }
 
+  function renderDriftSmoke({ item, ang, bodyTop, bodyBottom, shH }){
+    if (!glr || !texSmoke) return;
+    if (!item) return;
+    if (state.driftState !== 'drifting') return;
+    if (!state.phys || !state.phys.grounded) return;
+
+    const driftDir = state.driftDirSnapshot || 0;
+    const bodyCX = item.x;
+    const shadowY = item.shadowY;
+    const baseSize = Math.max(6, item.w * 0.3);
+    const lateralSpacing = Math.max(6, item.w * 0.28);
+    const rearY = shadowY - shH * 0.15;
+    const fogVals = fogArray(item.zShadow || item.zBody || 0);
+    const turnStrength = clamp(Math.abs(state.lateralRate) / 0.012, 0, 1);
+    const rearAlpha = 0.42 * clamp(0.4 + turnStrength * 0.6, 0, 1);
+
+    const puffs = [
+      { x: bodyCX - lateralSpacing, y: rearY, size: baseSize, alpha: rearAlpha },
+      { x: bodyCX + lateralSpacing, y: rearY, size: baseSize, alpha: rearAlpha },
+    ];
+
+    if (driftDir !== 0){
+      const outsideSign = -driftDir;
+      const frontAlpha = 0.42 * turnStrength;
+      if (frontAlpha > 1e-2){
+        const frontSize = baseSize * lerp(0.7, 1.05, turnStrength);
+        const frontOffsetX = outsideSign * lateralSpacing * lerp(0.7, 1.1, turnStrength);
+        const frontY = bodyTop + (bodyBottom - bodyTop) * 0.3;
+        puffs.push({ x: bodyCX + frontOffsetX, y: frontY, size: frontSize, alpha: frontAlpha });
+      }
+    }
+
+    for (const puff of puffs){
+      if (!puff || puff.alpha <= 0) continue;
+      const quad = makeRotatedQuad(puff.x, puff.y, puff.size, puff.size, ang);
+      const tint = [0.9, 0.9, 0.95, puff.alpha];
+      glr.drawQuadTextured(texSmoke, quad, UNIT_UV, tint, fogVals);
+    }
+  }
+
   function renderPlayer(item, SPRITE_META){
     const fogShadow = fogArray(item.zShadow || 0);
     const fogBody = fogArray(item.zBody || 0);
@@ -1125,6 +1168,8 @@
 
     const shQuad = makeRotatedQuad(shCX, shCY, item.w, shH, ang);
     glr.drawQuadSolid(shQuad, [0.13, 0.13, 0.13, 1], fogShadow);
+
+    renderDriftSmoke({ item, ang, bodyTop, bodyBottom, shH });
 
     const bodyQuad = makeRotatedQuad(bodyCX, bodyCY, item.w, item.h, ang);
     glr.drawQuadSolid(bodyQuad, SPRITE_META.PLAYER.tint, fogBody);
@@ -1297,6 +1342,12 @@
     canvas3D = dom && dom.canvas || null;
     canvasOverlay = dom && dom.overlay || null;
     canvasHUD = dom && dom.hud || null;
+
+    if (glr && typeof glr.makeCircleTex === 'function'){
+      texSmoke = glr.makeCircleTex(48);
+    } else {
+      texSmoke = null;
+    }
 
     if (canvas3D){
       W = canvas3D.width;
