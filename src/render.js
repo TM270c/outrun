@@ -434,7 +434,17 @@
     }
   }
 
-  function drawBillboard(xCenter, baseY, wPx, hPx, fogZ, tint=[1,1,1,1], texture=null, uvOverride=null){
+  function drawBillboard(
+    xCenter,
+    baseY,
+    wPx,
+    hPx,
+    fogZ,
+    tint = [1, 1, 1, 1],
+    texture = null,
+    uvOverride = null,
+    drawShadow = true,
+  ){
     if (!glr) return;
     const x1 = xCenter - wPx/2, x2 = xCenter + wPx/2;
     const y1 = baseY - hPx, y2 = baseY;
@@ -443,9 +453,11 @@
     const quad = {x1:x1, y1:y1, x2:x2, y2:y1, x3:x2, y3:y2, x4:x1, y4:y2};
     if (texture) glr.drawQuadTextured(texture, quad, uv, tint, fog);
     else         glr.drawQuadSolid(quad, tint, fog);
-    const shadowH = Math.max(2, hPx*0.06);
-    const shQuad = {x1:x1, y1:y2-shadowH, x2:x2, y2:y2-shadowH, x3:x2, y3:y2, x4:x1, y4:y2};
-    glr.drawQuadSolid(shQuad, [0,0,0,0.25], fog);
+    if (drawShadow){
+      const shadowH = Math.max(2, hPx*0.06);
+      const shQuad = {x1:x1, y1:y2-shadowH, x2:x2, y2:y2-shadowH, x3:x2, y3:y2, x4:x1, y4:y2};
+      glr.drawQuadSolid(shQuad, [0,0,0,0.25], fog);
+    }
   }
 
   function segmentAtS(s) {
@@ -809,6 +821,7 @@
           tint: meta.tint,
           tex: texture,
           uv,
+          drawShadow: spr && spr.castShadow !== false,
         });
       }
 
@@ -878,7 +891,17 @@
       if (item.type === 'strip'){
         renderStrip(item);
       } else if (item.type === 'npc' || item.type === 'prop'){
-        drawBillboard(item.x, item.y, item.w, item.h, item.z, item.tint, item.tex, item.uv);
+        drawBillboard(
+          item.x,
+          item.y,
+          item.w,
+          item.h,
+          item.z,
+          item.tint,
+          item.tex,
+          item.uv,
+          item.drawShadow !== false,
+        );
       } else if (item.type === 'pickup'){
         drawBillboard(item.x, item.y - item.h * 0.2, item.w, item.h, item.z, item.tint, item.tex, item.uv);
       } else if (item.type === 'snowScreen'){
