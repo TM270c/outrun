@@ -1500,7 +1500,6 @@
   const ROCKWALL_ATLAS_COLUMNS = 4;
   const ROCKWALL_ATLAS_FRAMES = 16;
   const ROCKWALL_OFFSET_BASE = 1.0;
-  const ROCKWALL_OFFSET_JITTER = 0.06;
 
   function randomRockwallFrameData() {
     const frame = Math.floor(Math.random() * ROCKWALL_ATLAS_FRAMES);
@@ -1516,15 +1515,23 @@
     for (const seg of segments) {
       if (seg && Array.isArray(seg.sprites)) seg.sprites.length = 0;
     }
-    for (let i = 8; i < segCount; i += 6) {
+    for (let i = 8; i < segCount; i += 4) {
       addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', -1.25 - Math.random() * 0.15);
       addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', 1.25 + Math.random() * 0.15);
       const leftRockwall = randomRockwallFrameData();
       const rightRockwall = randomRockwallFrameData();
-      const leftOffset = -(ROCKWALL_OFFSET_BASE + Math.random() * ROCKWALL_OFFSET_JITTER);
-      const rightOffset = ROCKWALL_OFFSET_BASE + Math.random() * ROCKWALL_OFFSET_JITTER;
-      addProp(i, 'SIGN', leftOffset, { uv: leftRockwall.uv, atlasFrame: leftRockwall.frame });
-      addProp(i, 'SIGN', rightOffset, { uv: rightRockwall.uv, atlasFrame: rightRockwall.frame });
+      const leftOffset = -ROCKWALL_OFFSET_BASE;
+      const rightOffset = ROCKWALL_OFFSET_BASE;
+      addProp(i, 'SIGN', leftOffset, {
+        uv: leftRockwall.uv,
+        atlasFrame: leftRockwall.frame,
+        castShadow: false,
+      });
+      addProp(i, 'SIGN', rightOffset, {
+        uv: rightRockwall.uv,
+        atlasFrame: rightRockwall.frame,
+        castShadow: false,
+      });
       if (i % 18 === 0) {
         const extra = 1.6 + Math.random() * 1.6;
         addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', -extra);
