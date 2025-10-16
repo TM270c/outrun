@@ -90,8 +90,18 @@
     return { u1: u0, v1: v0, u2: u1, v2: v0, u3: u1, v3: v1, u4: u0, v4: v1 };
   }
 
-  const DRIFT_SMOKE_INTERVAL = 0.1 / 60;
-  const DRIFT_SMOKE_LIFETIME = 30 / 60;
+  const DRIFT_SMOKE_INTERVAL = 0.08 / 60;
+  const DRIFT_SMOKE_INTERVAL_JITTER = 0.35;
+  const DRIFT_SMOKE_LIFETIME = 24 / 60;
+  const DRIFT_SMOKE_SIDE_JITTER = 0.25;
+  const DRIFT_SMOKE_LONGITUDINAL_JITTER = segmentLength * 0.01;
+  const DRIFT_SMOKE_FORWARD_INHERITANCE = 0.65;
+  const DRIFT_SMOKE_FORWARD_DRAG = 1.75;
+  const DRIFT_SMOKE_LATERAL_SPEED = 0.35;
+  const DRIFT_SMOKE_LATERAL_DRAG = 1.25;
+  const DRIFT_SMOKE_TURBULENCE_AMPLITUDE = 0.02;
+  const DRIFT_SMOKE_TURBULENCE_SPEED_MIN = 0.4;
+  const DRIFT_SMOKE_TURBULENCE_SPEED_MAX = 1.0;
 
   const DEFAULT_SPRITE_META = {
     PLAYER: { wN: 0.16, aspect: 0.7, tint: [0.9, 0.22, 0.21, 1], tex: () => null },
@@ -129,6 +139,35 @@
       },
     },
   };
+
+  const driftSmokePool = [];
+
+  function computeDriftSmokeInterval() {
+    const base = Math.max(1e-4, DRIFT_SMOKE_INTERVAL);
+    const jitter = Math.max(0, DRIFT_SMOKE_INTERVAL_JITTER);
+    if (jitter <= 1e-6) return base;
+    const span = base * jitter;
+    return base + (Math.random() * 2 - 1) * span;
+  }
+
+  function allocDriftSmokeSprite() {
+    return driftSmokePool.length ? driftSmokePool.pop() : { kind: 'DRIFT_SMOKE' };
+  }
+
+  function recycleDriftSmokeSprite(sprite) {
+    if (!sprite || sprite.kind !== 'DRIFT_SMOKE') return;
+    sprite.animation = null;
+    sprite.impactState = null;
+    sprite.driftMotion = null;
+    sprite.interactable = false;
+    sprite.interacted = false;
+    sprite.impactable = false;
+    sprite.segIndex = 0;
+    sprite.s = 0;
+    sprite.ttl = 0;
+    sprite.offset = 0;
+    driftSmokePool.push(sprite);
+  }
 
   const NPC_DEFAULTS = { total: 20, edgePad: 0.02, avoidLookaheadSegs: 20 };
   const NPC = { ...NPC_DEFAULTS, ...trafficConfig };
@@ -173,6 +212,7 @@
       finishTime: null,
     },
     driftSmokeTimer: 0,
+    driftSmokeNextInterval: computeDriftSmokeInterval(),
     cars: [],
     spriteMeta: DEFAULT_SPRITE_META,
     getKindScale: defaultGetKindScale,
@@ -307,15 +347,95 @@
     const baseS = Number.isFinite(phys.s)
       ? phys.s
       : (seg.p1 && seg.p1.world ? seg.p1.world.z : 0);
-    for (const offset of offsets) {
-      sprites.push({
-        kind: 'DRIFT_SMOKE',
-        offset,
-        segIndex: seg.index,
-        s: baseS,
-        ttl: DRIFT_SMOKE_LIFETIME,
-      });
+    const trackLength = trackLengthRef();
+    const forwardSpeed = Math.max(0, Number.isFinite(phys.vtan) ? phys.vtan : 0);
+    for (const baseOffset of offsets) {
+      const sprite = allocDriftSmokeSprite();
+      const lateralJitter = (Math.random() * 2 - 1) * half * DRIFT_SMOKE_SIDE_JITTER;
+      const spawnOffset = baseOffset + lateralJitter;
+      const sJitter = (Math.random() * 2 - 1) * DRIFT_SMOKE_LONGITUDINAL_JITTER;
+      const spawnS = trackLength > 0 ? wrapDistance(baseS, sJitter, trackLength) : baseS + sJitter;
+      const inheritedForward = forwardSpeed * DRIFT_SMOKE_FORWARD_INHERITANCE * (0.8 + 0.4 * Math.random());
+      const lateralVel = (Math.random() * 2 - 1) * DRIFT_SMOKE_LATERAL_SPEED;
+      const turbulenceSpeed = DRIFT_SMOKE_TURBULENCE_SPEED_MIN
+        + Math.random() * (DRIFT_SMOKE_TURBULENCE_SPEED_MAX - DRIFT_SMOKE_TURBULENCE_SPEED_MIN);
+      const turbulenceAmp = DRIFT_SMOKE_TURBULENCE_AMPLITUDE * (0.5 + 0.5 * Math.random());
+      sprite.kind = 'DRIFT_SMOKE';
+      sprite.offset = spawnOffset;
+      sprite.segIndex = seg.index;
+      sprite.s = spawnS;
+      sprite.ttl = DRIFT_SMOKE_LIFETIME;
+      sprite.interactable = false;
+      sprite.interacted = false;
+      sprite.impactable = false;
+      sprite.driftMotion = {
+        forwardVel: inheritedForward,
+        forwardDrag: DRIFT_SMOKE_FORWARD_DRAG,
+        lateralVel,
+        lateralDrag: DRIFT_SMOKE_LATERAL_DRAG,
+        turbulenceAmp,
+        turbulenceSpeed,
+        turbulencePhase: Math.random() * Math.PI * 2,
+        turbulenceValue: 0,
+      };
+      sprites.push(sprite);
     }
+  }
+
+  function applyDriftSmokeMotion(sprite, dt, currentSeg = null) {
+    if (!sprite || sprite.kind !== 'DRIFT_SMOKE') return null;
+    const motion = sprite.driftMotion;
+    if (!motion) return null;
+    const step = Math.max(0, Number.isFinite(dt) ? dt : 0);
+    if (step <= 0) return null;
+
+    const trackLength = trackLengthRef();
+
+    if (Number.isFinite(motion.forwardVel) && motion.forwardVel !== 0) {
+      if (Number.isFinite(sprite.s)) {
+        const nextS = trackLength > 0
+          ? wrapDistance(sprite.s, motion.forwardVel * step, trackLength)
+          : sprite.s + motion.forwardVel * step;
+        sprite.s = nextS;
+      }
+      if (Number.isFinite(motion.forwardDrag) && motion.forwardDrag > 0) {
+        const decay = Math.max(0, 1 - motion.forwardDrag * step);
+        motion.forwardVel *= decay;
+        if (Math.abs(motion.forwardVel) <= 1e-4) motion.forwardVel = 0;
+      }
+    }
+
+    if (Number.isFinite(motion.lateralVel) && motion.lateralVel !== 0) {
+      sprite.offset += motion.lateralVel * step;
+      if (Number.isFinite(motion.lateralDrag) && motion.lateralDrag > 0) {
+        const decay = Math.max(0, 1 - motion.lateralDrag * step);
+        motion.lateralVel *= decay;
+        if (Math.abs(motion.lateralVel) <= 1e-4) motion.lateralVel = 0;
+      }
+    }
+
+    if (
+      Number.isFinite(motion.turbulenceAmp) && motion.turbulenceAmp > 0
+      && Number.isFinite(motion.turbulenceSpeed) && motion.turbulenceSpeed > 0
+    ) {
+      const phase = Number.isFinite(motion.turbulencePhase) ? motion.turbulencePhase : 0;
+      const prev = Number.isFinite(motion.turbulenceValue) ? motion.turbulenceValue : 0;
+      const time = (Number.isFinite(motion.turbulenceTime) ? motion.turbulenceTime : 0)
+        + motion.turbulenceSpeed * step;
+      const next = Math.sin(phase + time) * motion.turbulenceAmp;
+      sprite.offset += next - prev;
+      motion.turbulenceValue = next;
+      motion.turbulenceTime = time;
+    }
+
+    if (trackLength > 0 && Number.isFinite(sprite.s)) {
+      const seg = segmentAtS(sprite.s);
+      if (seg && currentSeg && seg !== currentSeg) {
+        return seg;
+      }
+    }
+
+    return null;
   }
 
   function carMeta(car) {
@@ -929,9 +1049,15 @@
         if (Number.isFinite(spr.ttl)) {
           spr.ttl -= dt;
           if (spr.ttl <= 0) {
+            if (spr.kind === 'DRIFT_SMOKE') recycleDriftSmokeSprite(spr);
             seg.sprites.splice(i, 1);
             continue;
           }
+        }
+
+        let transferSeg = null;
+        if (spr.kind === 'DRIFT_SMOKE') {
+          transferSeg = applyDriftSmokeMotion(spr, dt, seg);
         }
 
         if (spr.animation) {
@@ -960,7 +1086,10 @@
           if (anim.frame >= totalFrames) anim.frame = totalFrames - 1;
           spr.animFrame = anim.frame;
         }
-        const transferSeg = updateImpactableSprite(spr, dt, seg);
+        const impactTransfer = updateImpactableSprite(spr, dt, seg);
+        if (impactTransfer && impactTransfer !== seg) {
+          transferSeg = impactTransfer;
+        }
         if (transferSeg && transferSeg !== seg) {
           const destination = ensureArray(transferSeg, 'sprites');
           seg.sprites.splice(i, 1);
@@ -1144,12 +1273,18 @@
 
     if (state.driftState === 'drifting') {
       state.driftSmokeTimer += dt;
-      while (state.driftSmokeTimer >= DRIFT_SMOKE_INTERVAL) {
+      let interval = (Number.isFinite(state.driftSmokeNextInterval) && state.driftSmokeNextInterval > 0)
+        ? state.driftSmokeNextInterval
+        : computeDriftSmokeInterval();
+      while (state.driftSmokeTimer >= interval) {
         spawnDriftSmokeSprites();
-        state.driftSmokeTimer -= DRIFT_SMOKE_INTERVAL;
+        state.driftSmokeTimer -= interval;
+        interval = computeDriftSmokeInterval();
       }
+      state.driftSmokeNextInterval = interval;
     } else {
       state.driftSmokeTimer = 0;
+      state.driftSmokeNextInterval = computeDriftSmokeInterval();
     }
 
     phys.t += dt;
@@ -1557,6 +1692,7 @@
     state.lastSteerDir = 0;
     state.boostTimer = 0;
     state.driftSmokeTimer = 0;
+    state.driftSmokeNextInterval = computeDriftSmokeInterval();
 
     state.camRollDeg = 0;
     state.playerTiltDeg = 0;
