@@ -149,6 +149,8 @@
     driftDirSnapshot: 0,
     driftCharge: 0,
     allowedBoost: false,
+    pendingDriftDir: 0,
+    lastSteerDir: 0,
     boostTimer: 0,
     activeDriveZoneId: null,
     lateralRate: 0,
@@ -961,6 +963,12 @@
     }
 
     const steerAxis = (input.left && input.right) ? 0 : (input.left ? -1 : (input.right ? 1 : 0));
+    if (steerAxis !== 0) {
+      state.lastSteerDir = steerAxis;
+      if (state.hopHeld && state.driftState !== 'drifting') {
+        state.pendingDriftDir = steerAxis;
+      }
+    }
     const boosting = state.boostTimer > 0;
     if (boosting) state.boostTimer = Math.max(0, state.boostTimer - dt);
     const speed01 = clamp(Math.abs(phys.vtan) / player.topSpeed, 0, 1);
@@ -1066,25 +1074,17 @@
     segmentsCrossedDuringStep = collectSegmentsCrossed(startS, integrationEndS);
 
     if (!prevGrounded && phys.grounded) {
-      const steerAxis2 = (input.left && input.right) ? 0 : (input.left ? -1 : (input.right ? 1 : 0));
-      if (state.hopHeld) {
-        const dir = (steerAxis2 === 0) ? 0 : steerAxis2;
-        if (dir !== 0) {
-          state.driftState = 'drifting';
-          state.driftDirSnapshot = dir;
-          state.driftCharge = 0;
-          state.allowedBoost = false;
-        } else {
-          state.driftState = 'idle';
-          state.driftDirSnapshot = 0;
-          state.driftCharge = 0;
-          state.allowedBoost = false;
-        }
+      if (state.hopHeld && state.pendingDriftDir !== 0) {
+        state.driftState = 'drifting';
+        state.driftDirSnapshot = state.pendingDriftDir;
+        state.driftCharge = 0;
+        state.allowedBoost = false;
       } else {
         state.driftState = 'idle';
         state.driftDirSnapshot = 0;
         state.driftCharge = 0;
         state.allowedBoost = false;
+        if (!state.hopHeld) state.pendingDriftDir = 0;
       }
     }
 
@@ -1102,6 +1102,7 @@
         state.driftDirSnapshot = 0;
         state.driftCharge = 0;
         state.allowedBoost = false;
+        state.pendingDriftDir = 0;
       }
     }
 
@@ -1438,6 +1439,7 @@
           applyJumpZoneBoost(jumpZoneForPlayer());
         }
         state.input.hop = true;
+        if (state.lastSteerDir !== 0) state.pendingDriftDir = state.lastSteerDir;
       }
       state.hopHeld = true;
     },
@@ -1462,6 +1464,7 @@
       state.driftDirSnapshot = 0;
       state.driftCharge = 0;
       state.allowedBoost = false;
+      state.pendingDriftDir = 0;
     },
   };
 
@@ -1504,6 +1507,8 @@
     state.driftDirSnapshot = 0;
     state.driftCharge = 0;
     state.allowedBoost = false;
+    state.pendingDriftDir = 0;
+    state.lastSteerDir = 0;
     state.boostTimer = 0;
 
     state.camRollDeg = 0;
