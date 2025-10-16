@@ -104,7 +104,17 @@
     CAR:    { wN: 0.28, aspect: 0.7, tint: [0.2, 0.7, 1.0, 1], tex: () => null },
     SEMI:   { wN: 0.34, aspect: 1.6, tint: [0.85, 0.85, 0.85, 1], tex: () => null },
     TREE:   { wN: 0.5,  aspect: 3.0, tint: [0.22, 0.7, 0.22, 1], tex: () => null },
-    SIGN:   { wN: 0.55, aspect: 1.0, tint: [1, 1, 1, 1], tex: () => null },
+    SIGN:   {
+      wN: 0.55,
+      aspect: 1.0,
+      tint: [1, 1, 1, 1],
+      tex() {
+        const textures = (World && World.assets && World.assets.textures)
+          ? World.assets.textures
+          : null;
+        return (textures && textures.sign) || null;
+      },
+    },
     PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
     PICKUP: { wN: 0.10, aspect: 1.0, tint: [1, 0.92, 0.2, 1], tex: () => null },
     DRIFT_SMOKE: { wN: 0.1, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], tex: () => null },
@@ -1487,6 +1497,19 @@
     return sprite;
   }
 
+  const ROCKWALL_ATLAS_COLUMNS = 4;
+  const ROCKWALL_ATLAS_FRAMES = 16;
+  const ROCKWALL_OFFSET_BASE = 1.0;
+  const ROCKWALL_OFFSET_JITTER = 0.06;
+
+  function randomRockwallFrameData() {
+    const frame = Math.floor(Math.random() * ROCKWALL_ATLAS_FRAMES);
+    return {
+      frame,
+      uv: atlasFrameUv(frame, ROCKWALL_ATLAS_COLUMNS, ROCKWALL_ATLAS_FRAMES),
+    };
+  }
+
   function spawnProps() {
     if (!hasSegments()) return;
     const segCount = segments.length;
@@ -1496,10 +1519,12 @@
     for (let i = 8; i < segCount; i += 6) {
       addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', -1.25 - Math.random() * 0.15);
       addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', 1.25 + Math.random() * 0.15);
-      if (i % 12 === 0) {
-        addProp(i, 'SIGN', -1.05);
-        addProp(i, 'SIGN', 1.05);
-      }
+      const leftRockwall = randomRockwallFrameData();
+      const rightRockwall = randomRockwallFrameData();
+      const leftOffset = -(ROCKWALL_OFFSET_BASE + Math.random() * ROCKWALL_OFFSET_JITTER);
+      const rightOffset = ROCKWALL_OFFSET_BASE + Math.random() * ROCKWALL_OFFSET_JITTER;
+      addProp(i, 'SIGN', leftOffset, { uv: leftRockwall.uv, atlasFrame: leftRockwall.frame });
+      addProp(i, 'SIGN', rightOffset, { uv: rightRockwall.uv, atlasFrame: rightRockwall.frame });
       if (i % 18 === 0) {
         const extra = 1.6 + Math.random() * 1.6;
         addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', -extra);
