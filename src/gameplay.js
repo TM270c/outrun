@@ -96,12 +96,8 @@
   const DRIFT_SMOKE_SIDE_JITTER = 0.25;
   const DRIFT_SMOKE_LONGITUDINAL_JITTER = segmentLength * 0.01;
   const DRIFT_SMOKE_FORWARD_INHERITANCE = 0.65;
-  const DRIFT_SMOKE_FORWARD_DRAG = 1.75;
+  const DRIFT_SMOKE_DRAG = 1.75;
   const DRIFT_SMOKE_LATERAL_SPEED = 0.35;
-  const DRIFT_SMOKE_LATERAL_DRAG = 1.25;
-  const DRIFT_SMOKE_TURBULENCE_AMPLITUDE = 0.02;
-  const DRIFT_SMOKE_TURBULENCE_SPEED_MIN = 0.4;
-  const DRIFT_SMOKE_TURBULENCE_SPEED_MAX = 1.0;
 
   const DEFAULT_SPRITE_META = {
     PLAYER: { wN: 0.16, aspect: 0.7, tint: [0.9, 0.22, 0.21, 1], tex: () => null },
@@ -357,9 +353,6 @@
       const spawnS = trackLength > 0 ? wrapDistance(baseS, sJitter, trackLength) : baseS + sJitter;
       const inheritedForward = forwardSpeed * DRIFT_SMOKE_FORWARD_INHERITANCE * (0.8 + 0.4 * Math.random());
       const lateralVel = (Math.random() * 2 - 1) * DRIFT_SMOKE_LATERAL_SPEED;
-      const turbulenceSpeed = DRIFT_SMOKE_TURBULENCE_SPEED_MIN
-        + Math.random() * (DRIFT_SMOKE_TURBULENCE_SPEED_MAX - DRIFT_SMOKE_TURBULENCE_SPEED_MIN);
-      const turbulenceAmp = DRIFT_SMOKE_TURBULENCE_AMPLITUDE * (0.5 + 0.5 * Math.random());
       sprite.kind = 'DRIFT_SMOKE';
       sprite.offset = spawnOffset;
       sprite.segIndex = seg.index;
@@ -370,13 +363,8 @@
       sprite.impactable = false;
       sprite.driftMotion = {
         forwardVel: inheritedForward,
-        forwardDrag: DRIFT_SMOKE_FORWARD_DRAG,
+        drag: DRIFT_SMOKE_DRAG,
         lateralVel,
-        lateralDrag: DRIFT_SMOKE_LATERAL_DRAG,
-        turbulenceAmp,
-        turbulenceSpeed,
-        turbulencePhase: Math.random() * Math.PI * 2,
-        turbulenceValue: 0,
       };
       sprites.push(sprite);
     }
@@ -398,8 +386,8 @@
           : sprite.s + motion.forwardVel * step;
         sprite.s = nextS;
       }
-      if (Number.isFinite(motion.forwardDrag) && motion.forwardDrag > 0) {
-        const decay = Math.max(0, 1 - motion.forwardDrag * step);
+      if (Number.isFinite(motion.drag) && motion.drag > 0) {
+        const decay = Math.max(0, 1 - motion.drag * step);
         motion.forwardVel *= decay;
         if (Math.abs(motion.forwardVel) <= 1e-4) motion.forwardVel = 0;
       }
@@ -407,25 +395,11 @@
 
     if (Number.isFinite(motion.lateralVel) && motion.lateralVel !== 0) {
       sprite.offset += motion.lateralVel * step;
-      if (Number.isFinite(motion.lateralDrag) && motion.lateralDrag > 0) {
-        const decay = Math.max(0, 1 - motion.lateralDrag * step);
+      if (Number.isFinite(motion.drag) && motion.drag > 0) {
+        const decay = Math.max(0, 1 - motion.drag * step);
         motion.lateralVel *= decay;
         if (Math.abs(motion.lateralVel) <= 1e-4) motion.lateralVel = 0;
       }
-    }
-
-    if (
-      Number.isFinite(motion.turbulenceAmp) && motion.turbulenceAmp > 0
-      && Number.isFinite(motion.turbulenceSpeed) && motion.turbulenceSpeed > 0
-    ) {
-      const phase = Number.isFinite(motion.turbulencePhase) ? motion.turbulencePhase : 0;
-      const prev = Number.isFinite(motion.turbulenceValue) ? motion.turbulenceValue : 0;
-      const time = (Number.isFinite(motion.turbulenceTime) ? motion.turbulenceTime : 0)
-        + motion.turbulenceSpeed * step;
-      const next = Math.sin(phase + time) * motion.turbulenceAmp;
-      sprite.offset += next - prev;
-      motion.turbulenceValue = next;
-      motion.turbulenceTime = time;
     }
 
     if (trackLength > 0 && Number.isFinite(sprite.s)) {
