@@ -105,7 +105,7 @@
     SEMI:   { wN: 0.34, aspect: 1.6, tint: [0.85, 0.85, 0.85, 1], tex: () => null },
     TREE:   { wN: 0.5,  aspect: 3.0, tint: [0.22, 0.7, 0.22, 1], tex: () => null },
     SIGN:   {
-      wN: 0.55,
+      wN: 1.2,
       aspect: 1.0,
       tint: [1, 1, 1, 1],
       tex() {
@@ -119,7 +119,7 @@
     PICKUP: { wN: 0.10, aspect: 1.0, tint: [1, 0.92, 0.2, 1], tex: () => null },
     DRIFT_SMOKE: { wN: 0.1, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], tex: () => null },
     ANIM_PLATE: {
-      wN: 0.24,
+      wN: 0.1,
       aspect: 1.0,
       tint: [1, 1, 1, 1],
       tex(spr) {
