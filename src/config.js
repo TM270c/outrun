@@ -42,7 +42,7 @@ const track = {
 const camera = {
   fovDeg: 140,
   height: 700,
-  backSegments: 2,
+  backSegments: 3,
   heightEase: 0.1,
 };
 
