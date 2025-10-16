@@ -90,14 +90,14 @@
     return { u1: u0, v1: v0, u2: u1, v2: v0, u3: u1, v3: v1, u4: u0, v4: v1 };
   }
 
-  const DRIFT_SMOKE_INTERVAL = 0.08 / 60;
-  const DRIFT_SMOKE_INTERVAL_JITTER = 0.35;
-  const DRIFT_SMOKE_LIFETIME = 24 / 60;
+  const DRIFT_SMOKE_INTERVAL = 0.1 / 60;
+  const DRIFT_SMOKE_INTERVAL_JITTER = 0.25;
+  const DRIFT_SMOKE_LIFETIME = 30 / 60;
   const DRIFT_SMOKE_SIDE_JITTER = 0.25;
   const DRIFT_SMOKE_LONGITUDINAL_JITTER = segmentLength * 0.01;
-  const DRIFT_SMOKE_FORWARD_INHERITANCE = 0.65;
+  const DRIFT_SMOKE_FORWARD_INHERITANCE = 0.4;
   const DRIFT_SMOKE_DRAG = 1.75;
-  const DRIFT_SMOKE_LATERAL_SPEED = 0.35;
+  const DRIFT_SMOKE_LATERAL_SPEED = 0.2;
 
   const DEFAULT_SPRITE_META = {
     PLAYER: { wN: 0.16, aspect: 0.7, tint: [0.9, 0.22, 0.21, 1], tex: () => null },
