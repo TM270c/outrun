@@ -434,8 +434,14 @@
     }
   }
 
+  const SPRITE_ANCHOR = {
+    BOTTOM_CENTER: 'bottomCenter',
+    BOTTOM_LEFT: 'bottomLeft',
+    BOTTOM_RIGHT: 'bottomRight',
+  };
+
   function drawBillboard(
-    xCenter,
+    anchorX,
     baseY,
     wPx,
     hPx,
@@ -444,9 +450,21 @@
     texture = null,
     uvOverride = null,
     drawShadow = true,
+    anchor = SPRITE_ANCHOR.BOTTOM_CENTER,
   ){
     if (!glr) return;
-    const x1 = xCenter - wPx/2, x2 = xCenter + wPx/2;
+    let x1;
+    let x2;
+    if (anchor === SPRITE_ANCHOR.BOTTOM_LEFT){
+      x1 = anchorX;
+      x2 = anchorX + wPx;
+    } else if (anchor === SPRITE_ANCHOR.BOTTOM_RIGHT){
+      x1 = anchorX - wPx;
+      x2 = anchorX;
+    } else {
+      x1 = anchorX - wPx/2;
+      x2 = anchorX + wPx/2;
+    }
     const y1 = baseY - hPx, y2 = baseY;
     const uv = uvOverride || {u1:0,v1:0,u2:1,v2:0,u3:1,v3:1,u4:0,v4:1};
     const fog = fogArray(fogZ);
@@ -740,6 +758,7 @@
           z: zObj,
           tint: car.meta.tint,
           tex: car.meta.tex ? car.meta.tex() : null,
+          anchor: SPRITE_ANCHOR.BOTTOM_CENTER,
         });
       }
 
@@ -800,6 +819,17 @@
         let hPx = Math.max(10, wPx * meta.aspect);
         wPx *= farS;
         hPx *= farS;
+        let drawX = xCenter;
+        let anchor = SPRITE_ANCHOR.BOTTOM_CENTER;
+        if (sAbs > 1.0){
+          if (spr.offset < 0){
+            anchor = SPRITE_ANCHOR.BOTTOM_RIGHT;
+            drawX = xCenter + wPx * 0.5;
+          } else {
+            anchor = SPRITE_ANCHOR.BOTTOM_LEFT;
+            drawX = xCenter - wPx * 0.5;
+          }
+        }
         const texture = typeof meta.tex === 'function' ? meta.tex(spr) : (meta.tex || null);
         let uv = null;
         if (texture && typeof meta.frameUv === 'function'){
@@ -813,7 +843,7 @@
         drawList.push({
           type: 'prop',
           depth: zObj,
-          x: xCenter,
+          x: drawX,
           y: yBase,
           w: wPx,
           h: hPx,
@@ -822,6 +852,7 @@
           tex: texture,
           uv,
           drawShadow: spr && spr.castShadow !== false,
+          anchor,
         });
       }
 
@@ -848,6 +879,7 @@
             z: zObj,
             tint: pickupMeta.tint,
             tex: pickupMeta.tex ? pickupMeta.tex() : null,
+            anchor: SPRITE_ANCHOR.BOTTOM_CENTER,
           });
         }
       }
@@ -901,9 +933,21 @@
           item.tex,
           item.uv,
           item.drawShadow !== false,
+          item.anchor,
         );
       } else if (item.type === 'pickup'){
-        drawBillboard(item.x, item.y - item.h * 0.2, item.w, item.h, item.z, item.tint, item.tex, item.uv);
+        drawBillboard(
+          item.x,
+          item.y - item.h * 0.2,
+          item.w,
+          item.h,
+          item.z,
+          item.tint,
+          item.tex,
+          item.uv,
+          true,
+          item.anchor,
+        );
       } else if (item.type === 'snowScreen'){
         renderSnowScreen(item);
       } else if (item.type === 'player'){
