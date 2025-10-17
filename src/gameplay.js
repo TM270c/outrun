@@ -1515,7 +1515,7 @@
     for (const seg of segments) {
       if (seg && Array.isArray(seg.sprites)) seg.sprites.length = 0;
     }
-    for (let i = 8; i < segCount; i += 4) {
+    for (let i = 8; i < segCount; i += 1) {
       addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', -1.25 - Math.random() * 0.15);
       addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', 1.25 + Math.random() * 0.15);
       const leftRockwall = randomRockwallFrameData();
