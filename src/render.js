@@ -478,12 +478,6 @@
     }
   }
 
-  const SPRITE_ANCHOR = {
-    BOTTOM_CENTER: 'bottomCenter',
-    BOTTOM_LEFT: 'bottomLeft',
-    BOTTOM_RIGHT: 'bottomRight',
-  };
-
   function drawBillboard(
     anchorX,
     baseY,
@@ -493,21 +487,10 @@
     tint = [1, 1, 1, 1],
     texture = null,
     uvOverride = null,
-    anchor = SPRITE_ANCHOR.BOTTOM_CENTER,
   ){
     if (!glr) return;
-    let x1;
-    let x2;
-    if (anchor === SPRITE_ANCHOR.BOTTOM_LEFT){
-      x1 = anchorX;
-      x2 = anchorX + wPx;
-    } else if (anchor === SPRITE_ANCHOR.BOTTOM_RIGHT){
-      x1 = anchorX - wPx;
-      x2 = anchorX;
-    } else {
-      x1 = anchorX - wPx/2;
-      x2 = anchorX + wPx/2;
-    }
+    const x1 = anchorX - wPx/2;
+    const x2 = anchorX + wPx/2;
     const y1 = baseY - hPx, y2 = baseY;
     const uv = uvOverride || {u1:0,v1:0,u2:1,v2:0,u3:1,v3:1,u4:0,v4:1};
     const fog = fogArray(fogZ);
@@ -796,7 +779,6 @@
           z: zObj,
           tint: car.meta.tint,
           tex: car.meta.tex ? car.meta.tex() : null,
-          anchor: SPRITE_ANCHOR.BOTTOM_CENTER,
         });
       }
 
@@ -866,17 +848,7 @@
         hPx *= scaleFactor;
         wPx *= farS;
         hPx *= farS;
-        let drawX = xCenter;
-        let anchor = SPRITE_ANCHOR.BOTTOM_CENTER;
-        if (sAbs > 1.0){
-          if (spr.offset < 0){
-            anchor = SPRITE_ANCHOR.BOTTOM_RIGHT;
-            drawX = xCenter + wPx * 0.5;
-          } else {
-            anchor = SPRITE_ANCHOR.BOTTOM_LEFT;
-            drawX = xCenter - wPx * 0.5;
-          }
-        }
+        const drawX = xCenter;
         const texture = typeof meta.tex === 'function' ? meta.tex(spr) : (meta.tex || null);
         let uv = null;
         if (texture && typeof meta.frameUv === 'function'){
@@ -898,7 +870,6 @@
           tint: meta.tint,
           tex: texture,
           uv,
-          anchor,
         });
       }
 
@@ -925,7 +896,6 @@
             z: zObj,
             tint: pickupMeta.tint,
             tex: pickupMeta.tex ? pickupMeta.tex() : null,
-            anchor: SPRITE_ANCHOR.BOTTOM_CENTER,
           });
         }
       }
@@ -978,7 +948,6 @@
           item.tint,
           item.tex,
           item.uv,
-          item.anchor,
         );
       } else if (item.type === 'pickup'){
         drawBillboard(
@@ -990,7 +959,6 @@
           item.tint,
           item.tex,
           item.uv,
-          item.anchor,
         );
       } else if (item.type === 'snowScreen'){
         renderSnowScreen(item);
