@@ -16,7 +16,7 @@
     { key: 'quit', label: 'Quit to Menu' },
   ];
 
-  const settingsMenuKeys = ['snow', 'back'];
+  const settingsMenuKeys = ['crt', 'snow', 'back'];
   const IDLE_TIMEOUT_MS = 5000;
 
   const state = {
@@ -24,7 +24,7 @@
     mainMenuIndex: 0,
     pauseMenuIndex: 0,
     settingsMenuIndex: 0,
-    settings: { snowEnabled: true },
+    settings: { crtEnabled: true, snowEnabled: true },
     lastInteractionAt: Date.now(),
     leaderboard: {
       loading: false,
@@ -207,6 +207,11 @@
   function renderSettings() {
     if (!AppScreens.settingsMenu) return '';
     const options = [
+      {
+        key: 'crt',
+        label: 'CRT Overlay',
+        value: state.settings.crtEnabled ? 'ON' : 'OFF',
+      },
       {
         key: 'snow',
         label: 'Snow Effects',
@@ -429,6 +434,24 @@
     setMode('attract');
   }
 
+  function applyCrtOverlaySetting() {
+    const filter = global.CrtFilter;
+    if (!filter || typeof filter.setEnabled !== 'function') {
+      return;
+    }
+    try {
+      filter.setEnabled(!!state.settings.crtEnabled);
+    } catch (err) {
+      console.warn('CrtFilter.setEnabled threw', err);
+    }
+  }
+
+  function toggleCrtSetting() {
+    state.settings.crtEnabled = !state.settings.crtEnabled;
+    applyCrtOverlaySetting();
+    updateMenuLayer();
+  }
+
   function toggleSnowSetting() {
     state.settings.snowEnabled = !state.settings.snowEnabled;
     updateMenuLayer();
@@ -514,7 +537,9 @@
 
   function activateSettingsSelection() {
     const key = settingsMenuKeys[state.settingsMenuIndex];
-    if (key === 'snow') {
+    if (key === 'crt') {
+      toggleCrtSetting();
+    } else if (key === 'snow') {
       toggleSnowSetting();
     } else if (key === 'back') {
       setMode('menu');
@@ -815,11 +840,16 @@
     state.lastInteractionAt = now();
     resetRaceCompleteState();
     setMode('menu');
+    applyCrtOverlaySetting();
     requestLeaderboard();
   }
 
   function isSnowEnabled() {
     return !!state.settings.snowEnabled;
+  }
+
+  function isCrtEnabled() {
+    return !!state.settings.crtEnabled;
   }
 
   global.App = {
@@ -830,5 +860,6 @@
     handleKeyUp,
     handleRaceFinish,
     isSnowEnabled,
+    isCrtEnabled,
   };
 })(window);
