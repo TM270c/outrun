@@ -488,6 +488,44 @@
     return min + sample * (max - min);
   }
 
+  const CLIFF_OFFSET_EPS = 1e-6;
+  const CLIFF_WIDTH_EPS = 1e-4;
+  const CLIFF_HEIGHT_EPS = 1e-4;
+
+  function normalizeSegmentT(value){
+    if (!Number.isFinite(value)) return 0;
+    let t = value % 1;
+    if (t < 0) t += 1;
+    return clamp01(t);
+  }
+
+  function hasCliffSurfaceDimensions(width, height){
+    if (!Number.isFinite(width) || Math.abs(width) <= CLIFF_WIDTH_EPS) return false;
+    if (!Number.isFinite(height) || Math.abs(height) <= CLIFF_HEIGHT_EPS) return false;
+    return true;
+  }
+
+  function canPlaceSpriteOnCliff(seg, offset, segT){
+    if (!seg) return false;
+    const absOffset = Math.abs(offset);
+    if (absOffset <= 1 + CLIFF_OFFSET_EPS) return true;
+    if (typeof cliffParamsAt !== 'function') return true;
+    const params = cliffParamsAt(seg.index, segT);
+    if (!params) return absOffset <= 1 + CLIFF_OFFSET_EPS;
+    const leftSide = offset < 0;
+    const surfA = leftSide ? params.leftA : params.rightA;
+    const surfB = leftSide ? params.leftB : params.rightB;
+    const widthA = Math.abs(surfA && Number.isFinite(surfA.dx) ? surfA.dx : 0);
+    const widthB = Math.abs(surfB && Number.isFinite(surfB.dx) ? surfB.dx : 0);
+    const heightA = Math.abs(surfA && Number.isFinite(surfA.dy) ? surfA.dy : 0);
+    const heightB = Math.abs(surfB && Number.isFinite(surfB.dy) ? surfB.dy : 0);
+    const beyond = absOffset - 1;
+    if (beyond <= CLIFF_OFFSET_EPS) return true;
+    if (beyond <= 1 + CLIFF_OFFSET_EPS) return hasCliffSurfaceDimensions(widthA, heightA);
+    if (beyond <= 2 + CLIFF_OFFSET_EPS) return hasCliffSurfaceDimensions(widthB, heightB);
+    return hasCliffSurfaceDimensions(widthB, heightB);
+  }
+
   function computeLaneStep(range, repeatLane){
     if (!range) return 0;
     if (Number.isFinite(repeatLane) && repeatLane > 0) return repeatLane;
@@ -610,12 +648,17 @@
           const scale = randomInRange(scaleRange, rng, scaleRange[0] ?? 1);
           const jitterSeg = jitterSegRange ? randomInRange(jitterSegRange, rng, 0) : 0;
           const jitterLane = jitterLaneRange ? randomInRange(jitterLaneRange, rng, 0) : 0;
+          const segT = normalizeSegmentT(jitterSeg);
           const asset = selectAsset(entry.assets, rng);
           const initialFrame = determineInitialFrame(entry, asset, rng);
+          const offset = laneBase + jitterLane;
+          if (!canPlaceSpriteOnCliff(seg, offset, segT)) {
+            continue;
+          }
           instances.push({
             entry,
             segIndex: segIdx,
-            offset: laneBase + jitterLane,
+            offset,
             scale,
             sOffset: jitterSeg,
             asset,
