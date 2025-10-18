@@ -226,6 +226,50 @@
     return padQuad(quad, { ...SPRITE_PAD, ...overrides });
   }
 
+  function computeCliffLaneProgress(segIndex, offset, t, roadWidth){
+    if (!cliffParamsAt || !Number.isFinite(segIndex)) return null;
+    const absOffset = Math.abs(offset);
+    if (absOffset <= 1) return null;
+
+    const params = cliffParamsAt(segIndex, clamp(t, 0, 1));
+    const fallback = clamp(absOffset - 1, 0, 2);
+    if (!params) return { o: fallback };
+
+    const roadW = Math.max(roadWidth || 0, 0);
+    if (roadW <= 1e-6) return { o: fallback };
+
+    const beyond = Math.max(0, (absOffset - 1) * roadW);
+    if (beyond <= 1e-6) return { o: 0 };
+
+    const left = offset < 0;
+    const sectionA = left ? params.leftA : params.rightA;
+    const sectionB = left ? params.leftB : params.rightB;
+    const widthA = Math.max(0, Math.abs(sectionA && sectionA.dx));
+    const widthB = Math.max(0, Math.abs(sectionB && sectionB.dx));
+    const totalWidth = widthA + widthB;
+
+    if (totalWidth <= 1e-6) return { o: fallback };
+
+    const span = Math.min(beyond, totalWidth);
+
+    if (widthA > 1e-6) {
+      if (span <= widthA || widthB <= 1e-6) {
+        const coverageA = clamp(span / Math.max(widthA, 1e-6), 0, 1);
+        return { o: coverageA };
+      }
+      const remain = span - widthA;
+      const coverageB = clamp(remain / Math.max(widthB, 1e-6), 0, 1);
+      return { o: clamp(1 + coverageB, 0, 2) };
+    }
+
+    if (widthB > 1e-6) {
+      const coverageB = clamp(span / Math.max(widthB, 1e-6), 0, 1);
+      return { o: clamp(1 + coverageB, 0, 2) };
+    }
+
+    return { o: fallback };
+  }
+
   function fogArray(zNear, zFar = zNear){
     const near = fogFactorFromZ(zNear);
     const far = fogFactorFromZ(typeof zFar === 'number' ? zFar : zNear);
@@ -775,12 +819,18 @@
         const sAbs = Math.abs(spr.offset);
         let xCenter;
         let yBase;
+        let cliffProgress = null;
+        if (sAbs > 1.0){
+          cliffProgress = computeCliffLaneProgress(seg.index, spr.offset, t, rw);
+        }
         if (sAbs <= 1.0){
           xCenter = baseX + scale * spr.offset * rw * HALF_VIEW;
           yBase = baseY;
         } else {
           const sideLeft = spr.offset < 0;
-          const o = Math.min(2, Math.max(0, sAbs - 1.0));
+          const o = (cliffProgress && Number.isFinite(cliffProgress.o))
+            ? cliffProgress.o
+            : Math.min(2, Math.max(0, sAbs - 1.0));
           if (sideLeft){
             const xInner = lerp(L.x1_inner, L.x2_inner, t);
             const xA = lerp(L.x1_A, L.x2_A, t);
