@@ -1,3 +1,3 @@
 name,sprite,segment,lane,repeatSegment,repeatLane,scaleRange,randomSeed,jitterSeg,jitterLane,comment
-left-trees,tree_main,30-220,1.2-4,4,.2,0.7-1.25,1337,0-0.25,0-0.25,Roadside trees (left shoulder)
-left-trees,tree_main,30,0,,,,1337,0-0.25,0-0.25,Roadside trees (left shoulder)
+forest-demo,tree_forest,30-220,1.2-4,4,0.2,0.7-1.25,1337,0-0.25,0-0.25,Randomised roadside trees selected from atlas frames
+centerpiece,tree_anim,128,0,,,,,,,Looping atlas animation for a single median tree

@@ -37,24 +37,43 @@
     return frames;
   }
 
+  function makeAtlasFrameAssets(key, frameValues){
+    const frames = Array.isArray(frameValues) ? frameValues : [];
+    return frames.map((frame) => ({ type: 'atlas', key, frames: [frame] }));
+  }
+
+  const TREE_ATLAS_METRICS = {
+    wN: 1,
+    aspect: 1.0,
+    tint: [1, 1, 1, 1],
+    textureKey: 'tree',
+    atlas: { columns: 4, totalFrames: 16 },
+  };
+
+  const TREE_ATLAS_FRAMES = makeFrames(0, 15);
+
   const CATALOG_SOURCE = [
     {
-      spriteId: 'tree_main',
-      metrics: {
-        wN: 1,
-        aspect: 1.0,
-        tint: [1, 1, 1, 1],
-        textureKey: 'tree',
-        atlas:{ columns: 4, totalFrames: 16 },
-      },
+      spriteId: 'tree_forest',
+      metrics: TREE_ATLAS_METRICS,
+      assets: makeAtlasFrameAssets('tree', TREE_ATLAS_FRAMES),
+      type: 'static',
+      interaction: 'static',
+      baseClip: null,
+      interactClip: null,
+      frameDuration: null,
+    },
+    {
+      spriteId: 'tree_anim',
+      metrics: TREE_ATLAS_METRICS,
       assets: [
-        { type: 'atlas', key: 'tree', frames: makeFrames(0,15) },
+        { type: 'atlas', key: 'tree', frames: TREE_ATLAS_FRAMES.slice() },
       ],
       type: 'animated',
       interaction: 'static',
-      baseClip: { frames: [0-15], playback: 'loop' },
-      interactClip: { frames: [], playback: 'none' },
-      frameDuration: null,
+      baseClip: { frames: TREE_ATLAS_FRAMES.slice(), playback: 'loop' },
+      interactClip: null,
+      frameDuration: 0.08,
     },
   ];
 
