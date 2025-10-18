@@ -1,6 +1,6 @@
 
 (function(global){
-  const { Config, MathUtil, World } = global;
+  const { Config, MathUtil, World, SpriteCatalog } = global;
 
   if (!Config || !MathUtil || !World) {
     throw new Error('Gameplay module requires Config, MathUtil, and World globals');
@@ -319,51 +319,15 @@
     },
   };
 
-  const SPRITE_METRIC_FALLBACK = Object.freeze({
-    wN: 0.2,
-    aspect: 1,
-    tint: [1, 1, 1, 1],
-    textureKey: null,
-    atlas: null,
-  });
-
-  const SPRITE_METRIC_PRESETS = Object.freeze({
-    tree_main: {
-      wN: 0.5,
-      aspect: 3.0,
-      tint: [0.22, 0.7, 0.22, 1],
-      textureKey: 'tree',
+  const SPRITE_METRIC_FALLBACK = SpriteCatalog && SpriteCatalog.metricsFallback
+    ? SpriteCatalog.metricsFallback
+    : Object.freeze({
+      wN: 0.2,
+      aspect: 1,
+      tint: [1, 1, 1, 1],
+      textureKey: null,
       atlas: null,
-    },
-    palm_main: {
-      wN: 0.38,
-      aspect: 3.2,
-      tint: [0.25, 0.62, 0.27, 1],
-      textureKey: 'tree',
-      atlas: null,
-    },
-    rockwall_sign: {
-      wN: 1.2,
-      aspect: 1.0,
-      tint: [1, 1, 1, 1],
-      textureKey: 'sign',
-      atlas: { columns: 4, totalFrames: 16 },
-    },
-    anim_plate_drive: {
-      wN: 0.1,
-      aspect: 1.0,
-      tint: [1, 1, 1, 1],
-      textureKey: 'animPlate01',
-      atlas: { columns: 4, totalFrames: 16 },
-    },
-    anim_plate_alt: {
-      wN: 0.1,
-      aspect: 1.0,
-      tint: [1, 1, 1, 1],
-      textureKey: 'animPlate02',
-      atlas: { columns: 4, totalFrames: 16 },
-    },
-  });
+    });
 
   function createSpriteMetaEntry(metrics = SPRITE_METRIC_FALLBACK) {
     const preset = metrics || SPRITE_METRIC_FALLBACK;
@@ -493,84 +457,6 @@
       .filter((token) => token.length > 0);
   }
 
-  function parseFrameListSpec(spec){
-    if (!spec) return [];
-    const tokens = spec.toString().split(',');
-    const frames = [];
-    for (const rawToken of tokens) {
-      if (!rawToken) continue;
-      const token = rawToken.trim();
-      if (!token) continue;
-      const normalized = token.replace(/^frame/i, '').trim();
-      const rangeMatch = normalized.match(/^(-?\d+)\s*-\s*(-?\d+)/);
-      if (rangeMatch) {
-        let start = parseInt(rangeMatch[1], 10);
-        let end = parseInt(rangeMatch[2], 10);
-        if (Number.isNaN(start) || Number.isNaN(end)) continue;
-        const step = start <= end ? 1 : -1;
-        for (let f = start; step > 0 ? f <= end : f >= end; f += step) {
-          frames.push(f);
-        }
-      } else {
-        const valueNum = parseInt(normalized, 10);
-        if (!Number.isNaN(valueNum)) frames.push(valueNum);
-      }
-    }
-    return frames;
-  }
-
-  function parseAnimClipSpec(value){
-    if (value == null) return { frames: [], playback: 'none' };
-    const trimmed = value.toString().trim();
-    if (!trimmed || trimmed.toLowerCase() === 'none') {
-      return { frames: [], playback: 'none' };
-    }
-    const parts = trimmed.split(':');
-    const framesPart = parts[0] || '';
-    const playbackRaw = (parts[1] || '').trim().toLowerCase();
-    const frames = parseFrameListSpec(framesPart);
-    let playback = 'once';
-    if (playbackRaw === 'loop' || playbackRaw === 'pingpong' || playbackRaw === 'once') {
-      playback = playbackRaw;
-    } else if (!playbackRaw && frames.length === 0) {
-      playback = 'none';
-    }
-    if (frames.length === 0 && playback !== 'none') playback = 'none';
-    return { frames, playback };
-  }
-
-  function parseAssetSpec(value){
-    if (value == null) return [];
-    const entries = value.toString().split(';');
-    const assets = [];
-    for (const entryRaw of entries) {
-      if (!entryRaw) continue;
-      const entry = entryRaw.trim();
-      if (!entry) continue;
-      const [lhs, rhs] = entry.split(':');
-      const [typeToken, keyToken] = (lhs || '').split('=');
-      const type = (typeToken || '').trim().toLowerCase();
-      const key = (keyToken || '').trim();
-      if (!key) continue;
-      const frames = rhs ? parseFrameListSpec(rhs) : [];
-      assets.push({ type, key, frames });
-    }
-    return assets;
-  }
-
-  function parseSpriteType(value){
-    const token = (value || '').toString().trim().toLowerCase();
-    if (token === 'trigger' || token === 'solid' || token === 'static') return token;
-    return 'static';
-  }
-
-  function parseSpriteInteraction(value){
-    const token = (value || '').toString().trim().toLowerCase();
-    if (token === 'toggle') return 'toggle';
-    if (token === 'playanim' || token === 'play_anim' || token === 'play') return 'playAnim';
-    return 'static';
-  }
-
   function normalizeSeed(seed, a = 0, b = 0){
     if (Number.isFinite(seed)) {
       const normalized = (Math.floor(seed) >>> 0);
@@ -680,7 +566,7 @@
     const overrides = {};
     if (!catalog || typeof catalog.forEach !== 'function') return overrides;
     catalog.forEach((entry, spriteId) => {
-      const metrics = SPRITE_METRIC_PRESETS[spriteId] || SPRITE_METRIC_FALLBACK;
+      const metrics = (entry && entry.metrics) ? entry.metrics : SPRITE_METRIC_FALLBACK;
       overrides[spriteId] = createSpriteMetaEntry(metrics);
     });
     return overrides;
@@ -748,7 +634,7 @@
     const seg = segmentAtIndex(instance.segIndex);
     if (!seg) return null;
     const entry = instance.entry;
-    const metrics = SPRITE_METRIC_PRESETS[entry.spriteId] || SPRITE_METRIC_FALLBACK;
+    const metrics = (entry && entry.metrics) ? entry.metrics : SPRITE_METRIC_FALLBACK;
     const sprite = {
       kind: entry.spriteId,
       offset: Number.isFinite(instance.offset) ? instance.offset : 0,
@@ -813,39 +699,6 @@
     return res.text();
   }
 
-  function parseSpriteCatalog(text){
-    const { header, rows } = parseCsvWithHeader(text);
-    const catalog = new Map();
-    for (const row of rows) {
-      const record = header ? row : null;
-      const spriteIdRaw = header
-        ? (record.spriteId || record.sprite || record.id || '')
-        : (row[1] || row[0] || '');
-      const spriteId = spriteIdRaw.trim();
-      if (!spriteId) continue;
-      const assetsRaw = header ? (record.assets || record.asset || '') : (row[2] || '');
-      const typeRaw = header ? (record.type || '') : (row[3] || '');
-      const baseAnimRaw = header ? (record.baseAnim || '') : (row[4] || '');
-      const interactionRaw = header ? (record.interaction || '') : (row[5] || '');
-      const interactAnimRaw = header ? (record.interactAnim || '') : (row[6] || '');
-      const frameDurationRaw = header ? (record.frameDuration || '') : (row[7] || '');
-      const entry = {
-        spriteId,
-        assets: parseAssetSpec(assetsRaw),
-        type: parseSpriteType(typeRaw),
-        interaction: parseSpriteInteraction(interactionRaw),
-        baseClip: parseAnimClipSpec(baseAnimRaw),
-        interactClip: parseAnimClipSpec(interactAnimRaw),
-      };
-      const frameDuration = parseFloat(frameDurationRaw);
-      if (Number.isFinite(frameDuration) && frameDuration > 0) {
-        entry.frameDuration = frameDuration;
-      }
-      catalog.set(spriteId, entry);
-    }
-    return catalog;
-  }
-
   function parseSpritePlacements(text){
     const { header, rows } = parseCsvWithHeader(text);
     const placements = [];
@@ -889,11 +742,10 @@
     if (spriteDataCache) return spriteDataCache;
     if (spriteDataPromise) return spriteDataPromise;
     spriteDataPromise = (async () => {
-      const [catalogText, placementText] = await Promise.all([
-        loadSpriteCsv('tracks/sprites/catalog.csv'),
-        loadSpriteCsv('tracks/sprites/placement.csv'),
-      ]);
-      const catalog = parseSpriteCatalog(catalogText);
+      const catalog = (SpriteCatalog && typeof SpriteCatalog.getCatalog === 'function')
+        ? SpriteCatalog.getCatalog()
+        : new Map();
+      const placementText = await loadSpriteCsv('tracks/placement.csv');
       const placements = parseSpritePlacements(placementText);
       spriteDataCache = { catalog, placements };
       spriteDataPromise = null;

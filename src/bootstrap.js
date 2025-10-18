@@ -15,16 +15,24 @@ World.data.roadTexZones = roadTexZones;
 World.data.railTexZones = railTexZones;
 World.data.cliffTexZones = cliffTexZones;
 
+async function loadManifestTextures(manifest) {
+  const entries = Object.entries(manifest || {});
+  if (!entries.length) return;
+  await Promise.all(entries.map(async ([key, url]) => {
+    const resolvedUrl = (typeof World.resolveAssetUrl === 'function')
+      ? World.resolveAssetUrl(url)
+      : url;
+    const tex = await glr.loadTexture(resolvedUrl);
+    World.assets.textures[key] = tex;
+  }));
+}
+
 async function loadAssets() {
-  await Promise.all(
-    Object.entries(World.assets.manifest).map(async ([key, url]) => {
-      const resolvedUrl = (typeof World.resolveAssetUrl === 'function')
-        ? World.resolveAssetUrl(url)
-        : url;
-      const tex = await glr.loadTexture(resolvedUrl);
-      World.assets.textures[key] = tex;
-    }),
-  );
+  await loadManifestTextures(World.assets.manifest);
+  if (globalThis.SpriteCatalog && typeof globalThis.SpriteCatalog.getTextureManifest === 'function') {
+    const spriteManifest = globalThis.SpriteCatalog.getTextureManifest();
+    await loadManifestTextures(spriteManifest);
+  }
 }
 
 function setupCallbacks() {
