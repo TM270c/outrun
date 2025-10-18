@@ -493,7 +493,6 @@
     tint = [1, 1, 1, 1],
     texture = null,
     uvOverride = null,
-    drawShadow = true,
     anchor = SPRITE_ANCHOR.BOTTOM_CENTER,
   ){
     if (!glr) return;
@@ -515,11 +514,6 @@
     const quad = {x1:x1, y1:y1, x2:x2, y2:y1, x3:x2, y3:y2, x4:x1, y4:y2};
     if (texture) glr.drawQuadTextured(texture, quad, uv, tint, fog);
     else         glr.drawQuadSolid(quad, tint, fog);
-    if (drawShadow){
-      const shadowH = Math.max(2, hPx*0.06);
-      const shQuad = {x1:x1, y1:y2-shadowH, x2:x2, y2:y2-shadowH, x3:x2, y3:y2, x4:x1, y4:y2};
-      glr.drawQuadSolid(shQuad, [0,0,0,0.25], fog);
-    }
   }
 
   function segmentAtS(s) {
@@ -904,7 +898,6 @@
           tint: meta.tint,
           tex: texture,
           uv,
-          drawShadow: spr && spr.castShadow !== false,
           anchor,
         });
       }
@@ -985,7 +978,6 @@
           item.tint,
           item.tex,
           item.uv,
-          item.drawShadow !== false,
           item.anchor,
         );
       } else if (item.type === 'pickup'){
@@ -998,7 +990,6 @@
           item.tint,
           item.tex,
           item.uv,
-          true,
           item.anchor,
         );
       } else if (item.type === 'snowScreen'){
