@@ -50,9 +50,9 @@
       assets: [
         { type: 'atlas', key: 'tree', frames: makeFrames(0,15) },
       ],
-      type: 'static',
+      type: 'animated',
       interaction: 'static',
-      baseClip: { frames: [], playback: 'none' },
+      baseClip: { frames: [0-15], playback: 'loop' },
       interactClip: { frames: [], playback: 'none' },
       frameDuration: null,
     },
