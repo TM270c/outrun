@@ -449,7 +449,6 @@
     tint = [1, 1, 1, 1],
     texture = null,
     uvOverride = null,
-    drawShadow = true,
     anchor = SPRITE_ANCHOR.BOTTOM_CENTER,
   ){
     if (!glr) return;
@@ -471,11 +470,6 @@
     const quad = {x1:x1, y1:y1, x2:x2, y2:y1, x3:x2, y3:y2, x4:x1, y4:y2};
     if (texture) glr.drawQuadTextured(texture, quad, uv, tint, fog);
     else         glr.drawQuadSolid(quad, tint, fog);
-    if (drawShadow){
-      const shadowH = Math.max(2, hPx*0.06);
-      const shQuad = {x1:x1, y1:y2-shadowH, x2:x2, y2:y2-shadowH, x3:x2, y3:y2, x4:x1, y4:y2};
-      glr.drawQuadSolid(shQuad, [0,0,0,0.25], fog);
-    }
   }
 
   function segmentAtS(s) {
@@ -854,7 +848,6 @@
           tint: meta.tint,
           tex: texture,
           uv,
-          drawShadow: spr && spr.castShadow !== false,
           anchor,
         });
       }
@@ -898,7 +891,6 @@
     const floor = floorElevationAt(phys.s, state.playerN);
     const bodyWorldY = phys.grounded ? floor : phys.y;
     const body = projectWorldPoint({ x: carX, y: bodyWorldY, z: phys.s }, camX, camY, sCam);
-    const shadow = projectWorldPoint({ x: carX, y: floor, z: phys.s }, camX, camY, sCam);
     if (body.camera.z > state.camera.nearZ){
       const pixScale = body.screen.scale * HALF_VIEW;
       const w = Math.max(
@@ -913,9 +905,7 @@
         w,
         h,
         bodyY: body.screen.y,
-        shadowY: shadow.screen.y,
         zBody: body.camera.z,
-        zShadow: shadow.camera.z,
       });
     }
   }
@@ -935,7 +925,6 @@
           item.tint,
           item.tex,
           item.uv,
-          item.drawShadow !== false,
           item.anchor,
         );
       } else if (item.type === 'pickup'){
@@ -948,7 +937,6 @@
           item.tint,
           item.tex,
           item.uv,
-          true,
           item.anchor,
         );
       } else if (item.type === 'snowScreen'){
@@ -1180,21 +1168,13 @@
   }
 
   function renderPlayer(item, SPRITE_META){
-    const fogShadow = fogArray(item.zShadow || 0);
     const fogBody = fogArray(item.zBody || 0);
-    const shH = Math.max(3, item.h * 0.06);
-
-    const bodyBottom = Math.min(item.bodyY, item.shadowY - shH);
+    const bodyBottom = item.bodyY;
     const bodyTop = bodyBottom - item.h;
     const bodyCX = item.x;
     const bodyCY = (bodyTop + bodyBottom) * 0.5;
-    const shCX = item.x;
-    const shCY = item.shadowY - shH * 0.5;
 
     const ang = (state.playerTiltDeg * Math.PI) / 180;
-
-    const shQuad = makeRotatedQuad(shCX, shCY, item.w, shH, ang);
-    glr.drawQuadSolid(shQuad, [0.13, 0.13, 0.13, 1], fogShadow);
 
     const bodyQuad = makeRotatedQuad(bodyCX, bodyCY, item.w, item.h, ang);
     glr.drawQuadSolid(bodyQuad, SPRITE_META.PLAYER.tint, fogBody);
