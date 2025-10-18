@@ -42,13 +42,13 @@
       spriteId: 'tree_main',
       metrics: {
         wN: 0.5,
-        aspect: 3.0,
+        aspect: 1.0,
         tint: [1, 1, 1, 1],
         textureKey: 'tree',
         atlas: null,
       },
       assets: [
-        { type: 'texture', key: 'tree', frames: [] },
+        { type: 'atlas', key: 'tree', frames: [0-15] },
       ],
       type: 'static',
       interaction: 'static',
@@ -66,7 +66,7 @@
         atlas: null,
       },
       assets: [
-        { type: 'texture', key: 'tree', frames: [] },
+        { type: 'atlas', key: 'tree', frames: [0,15] },
       ],
       type: 'static',
       interaction: 'static',
