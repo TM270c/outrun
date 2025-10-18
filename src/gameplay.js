@@ -90,6 +90,179 @@
     return { u1: u0, v1: v0, u2: u1, v2: v0, u3: u1, v3: v1, u4: u0, v4: v1 };
   }
 
+  function normalizeAnimClip(rawClip, fallbackFrame = 0, useFallback = true){
+    const clip = rawClip || {};
+    const frames = Array.isArray(clip.frames) ? clip.frames.filter(Number.isFinite) : [];
+    let normalizedFrames = frames.slice();
+    if (normalizedFrames.length === 0 && useFallback && Number.isFinite(fallbackFrame)) {
+      normalizedFrames = [fallbackFrame];
+    }
+    const mode = (clip.playback || '').toString().toLowerCase();
+    const playback = (mode === 'loop' || mode === 'pingpong' || mode === 'once') ? mode : 'none';
+    return { frames: normalizedFrames, playback };
+  }
+
+  function createSpriteAnimationState(baseClipRaw, interactClipRaw, frameDuration, fallbackFrame){
+    const baseClip = normalizeAnimClip(baseClipRaw, fallbackFrame, true);
+    const interactClip = normalizeAnimClip(interactClipRaw, fallbackFrame, false);
+    const hasBase = baseClip.frames.length > 0;
+    const hasInteract = interactClip.frames.length > 0;
+    if (!hasBase && !hasInteract) return null;
+
+    const initialFrame = hasBase
+      ? baseClip.frames[Math.min(baseClip.frames.length - 1, 0)]
+      : (hasInteract ? interactClip.frames[Math.min(interactClip.frames.length - 1, 0)] : (Number.isFinite(fallbackFrame) ? fallbackFrame : 0));
+
+    return {
+      clips: {
+        base: hasBase ? baseClip : (Number.isFinite(initialFrame) ? { frames: [initialFrame], playback: 'none' } : null),
+        interact: hasInteract ? interactClip : null,
+      },
+      active: 'base',
+      frameIndex: 0,
+      direction: 1,
+      accumulator: 0,
+      frameDuration: (Number.isFinite(frameDuration) && frameDuration > 0) ? frameDuration : (1 / 60),
+      playing: baseClip.playback === 'loop' || baseClip.playback === 'pingpong',
+      finished: baseClip.playback === 'none',
+      currentFrame: initialFrame,
+    };
+  }
+
+  function currentAnimationClip(anim){
+    if (!anim) return null;
+    if (anim.active === 'interact' && anim.clips && anim.clips.interact) return anim.clips.interact;
+    return anim.clips ? anim.clips.base : null;
+  }
+
+  function clampFrameIndex(idx, length){
+    if (!Number.isFinite(idx)) return 0;
+    if (!Number.isFinite(length) || length <= 0) return 0;
+    const maxIdx = Math.max(0, Math.floor(length) - 1);
+    if (idx < 0) return 0;
+    if (idx > maxIdx) return maxIdx;
+    return Math.floor(idx);
+  }
+
+  function switchSpriteAnimationClip(anim, clipName, restart = true){
+    if (!anim || !anim.clips) return;
+    const clip = (clipName === 'interact') ? anim.clips.interact : anim.clips.base;
+    if (!clip) return;
+    anim.active = clipName;
+    if (restart) {
+      anim.frameIndex = 0;
+      anim.direction = 1;
+      anim.accumulator = 0;
+    } else if (Array.isArray(clip.frames) && clip.frames.length) {
+      anim.frameIndex = clampFrameIndex(anim.frameIndex, clip.frames.length);
+    } else {
+      anim.frameIndex = 0;
+    }
+    if (clip.playback === 'loop' || clip.playback === 'pingpong') {
+      anim.playing = clip.frames.length > 0;
+      anim.finished = false;
+    } else if (clip.playback === 'once') {
+      anim.playing = clip.frames.length > 1;
+      anim.finished = clip.frames.length <= 1;
+    } else {
+      anim.playing = false;
+      anim.finished = true;
+    }
+    if (clip.frames && clip.frames.length) {
+      const frame = clip.frames[clampFrameIndex(anim.frameIndex, clip.frames.length)];
+      if (Number.isFinite(frame)) anim.currentFrame = frame;
+    }
+  }
+
+  function updateSpriteUv(sprite){
+    if (!sprite) return;
+    const info = sprite.atlasInfo;
+    if (!info || !Number.isFinite(sprite.animFrame)) return;
+    const columns = Math.max(1, info.columns | 0);
+    const total = Math.max(columns, info.totalFrames | 0);
+    sprite.uv = atlasFrameUv(sprite.animFrame, columns, total);
+  }
+
+  function advanceSpriteAnimation(sprite, dt){
+    if (!sprite || !sprite.animation) return;
+    const anim = sprite.animation;
+    const clip = currentAnimationClip(anim);
+    if (!clip) {
+      if (Number.isFinite(anim.currentFrame)) sprite.animFrame = anim.currentFrame;
+      updateSpriteUv(sprite);
+      return;
+    }
+    const frames = Array.isArray(clip.frames) ? clip.frames : [];
+    if (frames.length === 0) {
+      if (Number.isFinite(anim.currentFrame)) sprite.animFrame = anim.currentFrame;
+      updateSpriteUv(sprite);
+      return;
+    }
+    const frameDuration = (Number.isFinite(anim.frameDuration) && anim.frameDuration > 0)
+      ? anim.frameDuration
+      : (1 / 60);
+    if (!anim.playing || clip.playback === 'none') {
+      const idx = clampFrameIndex(anim.frameIndex, frames.length);
+      const frame = frames[idx];
+      anim.currentFrame = frame;
+      sprite.animFrame = frame;
+      updateSpriteUv(sprite);
+      return;
+    }
+
+    anim.accumulator += dt;
+    while (anim.accumulator >= frameDuration) {
+      anim.accumulator -= frameDuration;
+      if (clip.playback === 'loop') {
+        anim.frameIndex = (anim.frameIndex + 1) % frames.length;
+      } else if (clip.playback === 'once') {
+        if (anim.frameIndex < frames.length - 1) {
+          anim.frameIndex += 1;
+        } else {
+          anim.frameIndex = frames.length - 1;
+          anim.playing = false;
+          anim.finished = true;
+          break;
+        }
+      } else if (clip.playback === 'pingpong') {
+        if (frames.length <= 1) {
+          anim.frameIndex = 0;
+          anim.playing = false;
+          anim.finished = true;
+          break;
+        }
+        const next = anim.frameIndex + anim.direction;
+        if (next >= frames.length) {
+          anim.direction = -1;
+          anim.frameIndex = frames.length - 2;
+        } else if (next < 0) {
+          anim.direction = 1;
+          anim.frameIndex = 1;
+        } else {
+          anim.frameIndex = next;
+        }
+      }
+    }
+
+    const idx = clampFrameIndex(anim.frameIndex, frames.length);
+    const frame = frames[idx];
+    anim.currentFrame = frame;
+    sprite.animFrame = frame;
+    updateSpriteUv(sprite);
+
+    if (!anim.playing && anim.active === 'interact' && anim.clips && anim.clips.base) {
+      switchSpriteAnimationClip(anim, 'base', false);
+      const baseClip = anim.clips.base;
+      if (baseClip && baseClip.frames && baseClip.frames.length) {
+        const baseIdx = clampFrameIndex(anim.frameIndex, baseClip.frames.length);
+        const baseFrame = baseClip.frames[baseIdx];
+        anim.currentFrame = baseFrame;
+        sprite.animFrame = baseFrame;
+        updateSpriteUv(sprite);
+      }
+    }
+  }
+
   const DRIFT_SMOKE_INTERVAL = 0.1 / 60;
   const DRIFT_SMOKE_INTERVAL_JITTER = 0.25;
   const DRIFT_SMOKE_LIFETIME = 30 / 60;
@@ -145,6 +318,592 @@
       },
     },
   };
+
+  const SPRITE_METRIC_FALLBACK = Object.freeze({
+    wN: 0.2,
+    aspect: 1,
+    tint: [1, 1, 1, 1],
+    textureKey: null,
+    atlas: null,
+  });
+
+  const SPRITE_METRIC_PRESETS = Object.freeze({
+    tree_main: {
+      wN: 0.5,
+      aspect: 3.0,
+      tint: [0.22, 0.7, 0.22, 1],
+      textureKey: 'tree',
+      atlas: null,
+    },
+    palm_main: {
+      wN: 0.38,
+      aspect: 3.2,
+      tint: [0.25, 0.62, 0.27, 1],
+      textureKey: 'tree',
+      atlas: null,
+    },
+    rockwall_sign: {
+      wN: 1.2,
+      aspect: 1.0,
+      tint: [1, 1, 1, 1],
+      textureKey: 'sign',
+      atlas: { columns: 4, totalFrames: 16 },
+    },
+    anim_plate_drive: {
+      wN: 0.1,
+      aspect: 1.0,
+      tint: [1, 1, 1, 1],
+      textureKey: 'animPlate01',
+      atlas: { columns: 4, totalFrames: 16 },
+    },
+    anim_plate_alt: {
+      wN: 0.1,
+      aspect: 1.0,
+      tint: [1, 1, 1, 1],
+      textureKey: 'animPlate02',
+      atlas: { columns: 4, totalFrames: 16 },
+    },
+  });
+
+  function createSpriteMetaEntry(metrics = SPRITE_METRIC_FALLBACK) {
+    const preset = metrics || SPRITE_METRIC_FALLBACK;
+    const base = {
+      ...SPRITE_METRIC_FALLBACK,
+      ...preset,
+    };
+    return {
+      wN: base.wN,
+      aspect: base.aspect,
+      tint: Array.isArray(base.tint) ? base.tint.slice() : [1, 1, 1, 1],
+      tex(spr) {
+        const textures = (World && World.assets && World.assets.textures)
+          ? World.assets.textures
+          : null;
+        if (!textures) return null;
+        if (spr && spr.assetKey && textures[spr.assetKey]) {
+          return textures[spr.assetKey];
+        }
+        if (base.textureKey && textures[base.textureKey]) {
+          return textures[base.textureKey];
+        }
+        return null;
+      },
+      frameUv(frameIndex, spr) {
+        const atlasInfo = (spr && spr.atlasInfo) ? spr.atlasInfo : base.atlas;
+        if (!atlasInfo) return null;
+        const columns = Math.max(1, atlasInfo.columns | 0);
+        const total = Math.max(columns, atlasInfo.totalFrames | 0);
+        const frame = Number.isFinite(frameIndex) ? frameIndex : 0;
+        return atlasFrameUv(frame, columns, total);
+      },
+    };
+  }
+
+  function splitCsvLine(line){
+    const cells = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i += 1) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (line[i + 1] === '"') {
+            current += '"';
+            i += 1;
+          } else {
+            inQuotes = false;
+          }
+        } else {
+          current += ch;
+        }
+      } else if (ch === ',') {
+        cells.push(current.trim());
+        current = '';
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else {
+        current += ch;
+      }
+    }
+    cells.push(current.trim());
+    return cells;
+  }
+
+  function parseCsvWithHeader(text){
+    const lines = text.split(/\r?\n/);
+    const rows = [];
+    let header = null;
+    for (const rawLine of lines) {
+      if (!rawLine) continue;
+      const trimmed = rawLine.trim();
+      if (!trimmed) continue;
+      if (trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
+      const cells = splitCsvLine(rawLine);
+      if (!header) {
+        const lower = cells.map((cell) => cell.toLowerCase());
+        if (lower.includes('spriteid') || lower.includes('sprite') || lower.includes('segment')) {
+          header = cells.map((cell) => cell.trim());
+          continue;
+        }
+      }
+      if (header) {
+        const record = {};
+        for (let i = 0; i < header.length; i += 1) {
+          record[header[i]] = (cells[i] || '').trim();
+        }
+        rows.push(record);
+      } else {
+        rows.push(cells);
+      }
+    }
+    return { header, rows };
+  }
+
+  function parseNumberRange(value, { allowFloat = true } = {}){
+    if (value == null) return null;
+    const trimmed = value.toString().trim();
+    if (!trimmed) return null;
+    const rangeMatch = trimmed.match(/^(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)/);
+    const parseNum = allowFloat ? parseFloat : (v) => parseInt(v, 10);
+    if (rangeMatch) {
+      const start = parseNum(rangeMatch[1]);
+      const end = parseNum(rangeMatch[2]);
+      if (Number.isNaN(start) || Number.isNaN(end)) return null;
+      return { start, end };
+    }
+    const single = parseNum(trimmed);
+    if (Number.isNaN(single)) return null;
+    return { start: single, end: single };
+  }
+
+  function parseNumericRange(value){
+    const range = parseNumberRange(value, { allowFloat: true });
+    if (!range) return null;
+    const min = Math.min(range.start, range.end);
+    const max = Math.max(range.start, range.end);
+    return [min, max];
+  }
+
+  function parseSpritePool(value){
+    if (value == null) return [];
+    return value
+      .toString()
+      .split(',')
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
+  }
+
+  function parseFrameListSpec(spec){
+    if (!spec) return [];
+    const tokens = spec.toString().split(',');
+    const frames = [];
+    for (const rawToken of tokens) {
+      if (!rawToken) continue;
+      const token = rawToken.trim();
+      if (!token) continue;
+      const normalized = token.replace(/^frame/i, '').trim();
+      const rangeMatch = normalized.match(/^(-?\d+)\s*-\s*(-?\d+)/);
+      if (rangeMatch) {
+        let start = parseInt(rangeMatch[1], 10);
+        let end = parseInt(rangeMatch[2], 10);
+        if (Number.isNaN(start) || Number.isNaN(end)) continue;
+        const step = start <= end ? 1 : -1;
+        for (let f = start; step > 0 ? f <= end : f >= end; f += step) {
+          frames.push(f);
+        }
+      } else {
+        const valueNum = parseInt(normalized, 10);
+        if (!Number.isNaN(valueNum)) frames.push(valueNum);
+      }
+    }
+    return frames;
+  }
+
+  function parseAnimClipSpec(value){
+    if (value == null) return { frames: [], playback: 'none' };
+    const trimmed = value.toString().trim();
+    if (!trimmed || trimmed.toLowerCase() === 'none') {
+      return { frames: [], playback: 'none' };
+    }
+    const parts = trimmed.split(':');
+    const framesPart = parts[0] || '';
+    const playbackRaw = (parts[1] || '').trim().toLowerCase();
+    const frames = parseFrameListSpec(framesPart);
+    let playback = 'once';
+    if (playbackRaw === 'loop' || playbackRaw === 'pingpong' || playbackRaw === 'once') {
+      playback = playbackRaw;
+    } else if (!playbackRaw && frames.length === 0) {
+      playback = 'none';
+    }
+    if (frames.length === 0 && playback !== 'none') playback = 'none';
+    return { frames, playback };
+  }
+
+  function parseAssetSpec(value){
+    if (value == null) return [];
+    const entries = value.toString().split(';');
+    const assets = [];
+    for (const entryRaw of entries) {
+      if (!entryRaw) continue;
+      const entry = entryRaw.trim();
+      if (!entry) continue;
+      const [lhs, rhs] = entry.split(':');
+      const [typeToken, keyToken] = (lhs || '').split('=');
+      const type = (typeToken || '').trim().toLowerCase();
+      const key = (keyToken || '').trim();
+      if (!key) continue;
+      const frames = rhs ? parseFrameListSpec(rhs) : [];
+      assets.push({ type, key, frames });
+    }
+    return assets;
+  }
+
+  function parseSpriteType(value){
+    const token = (value || '').toString().trim().toLowerCase();
+    if (token === 'trigger' || token === 'solid' || token === 'static') return token;
+    return 'static';
+  }
+
+  function parseSpriteInteraction(value){
+    const token = (value || '').toString().trim().toLowerCase();
+    if (token === 'toggle') return 'toggle';
+    if (token === 'playanim' || token === 'play_anim' || token === 'play') return 'playAnim';
+    return 'static';
+  }
+
+  function normalizeSeed(seed, a = 0, b = 0){
+    if (Number.isFinite(seed)) {
+      const normalized = (Math.floor(seed) >>> 0);
+      return normalized === 0 ? 1 : normalized;
+    }
+    const ax = Number.isFinite(a) ? Math.floor(a * 73856093) : 0;
+    const bx = Number.isFinite(b) ? Math.floor(b * 19349663) : 0;
+    const combined = (ax ^ bx) >>> 0;
+    return combined === 0 ? 1 : combined;
+  }
+
+  function createRng(seed){
+    let state = (seed >>> 0) || 1;
+    return () => {
+      state = (state + 0x6d2b79f5) | 0;
+      let t = Math.imul(state ^ (state >>> 15), state | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function randomInRange(range, rng, fallback = 0){
+    if (!range || range.length < 2) return fallback;
+    const min = Number.isFinite(range[0]) ? range[0] : fallback;
+    const max = Number.isFinite(range[1]) ? range[1] : fallback;
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return fallback;
+    if (Math.abs(max - min) <= 1e-9) return min;
+    const sample = typeof rng === 'function' ? rng() : Math.random();
+    return min + sample * (max - min);
+  }
+
+  function computeLaneStep(range, repeatLane){
+    if (!range) return 0;
+    if (Number.isFinite(repeatLane) && repeatLane > 0) return repeatLane;
+    const span = Math.abs(range.end - range.start);
+    if (span <= 1e-6) return 0;
+    return span;
+  }
+
+  function dedupePositions(values){
+    const result = [];
+    for (const value of values) {
+      if (!Number.isFinite(value)) continue;
+      if (result.some((existing) => Math.abs(existing - value) <= 1e-6)) continue;
+      result.push(value);
+    }
+    return result;
+  }
+
+  function computeLanePositions(start, end, step){
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
+    const direction = end >= start ? 1 : -1;
+    if (!Number.isFinite(step) || step <= 1e-6) {
+      return dedupePositions(direction > 0 ? [start, end] : [start, end]);
+    }
+    const positions = [];
+    let current = start;
+    const limit = 1024;
+    for (let i = 0; i < limit; i += 1) {
+      positions.push(current);
+      if ((direction > 0 && current >= end - 1e-6) || (direction < 0 && current <= end + 1e-6)) {
+        break;
+      }
+      const next = current + direction * step;
+      if ((direction > 0 && next > end) || (direction < 0 && next < end)) {
+        positions.push(end);
+        break;
+      }
+      current = next;
+    }
+    return dedupePositions(positions);
+  }
+
+  function clampSegmentRange(range, segCount){
+    if (!range || !Number.isFinite(segCount) || segCount <= 0) return null;
+    const maxIdx = Math.max(0, Math.floor(segCount) - 1);
+    let start = Number.isFinite(range.start) ? Math.floor(range.start) : 0;
+    let end = Number.isFinite(range.end) ? Math.floor(range.end) : start;
+    start = Math.min(Math.max(0, start), maxIdx);
+    end = Math.min(Math.max(0, end), maxIdx);
+    return { start, end };
+  }
+
+  function selectAsset(assets, rng){
+    if (!Array.isArray(assets) || !assets.length) return null;
+    if (assets.length === 1) {
+      const single = assets[0];
+      return single ? { ...single, frames: Array.isArray(single.frames) ? single.frames.slice() : [] } : null;
+    }
+    const index = Math.floor((typeof rng === 'function' ? rng() : Math.random()) * assets.length) % assets.length;
+    const asset = assets[index] || assets[0];
+    return asset ? { ...asset, frames: Array.isArray(asset.frames) ? asset.frames.slice() : [] } : null;
+  }
+
+  function determineInitialFrame(entry, asset, rng){
+    if (entry && entry.baseClip && Array.isArray(entry.baseClip.frames) && entry.baseClip.frames.length > 0) {
+      return entry.baseClip.frames[0];
+    }
+    if (asset && Array.isArray(asset.frames) && asset.frames.length > 0) {
+      const index = Math.floor((typeof rng === 'function' ? rng() : Math.random()) * asset.frames.length) % asset.frames.length;
+      return asset.frames[index];
+    }
+    return 0;
+  }
+
+  function buildSpriteMetaOverrides(catalog){
+    const overrides = {};
+    if (!catalog || typeof catalog.forEach !== 'function') return overrides;
+    catalog.forEach((entry, spriteId) => {
+      const metrics = SPRITE_METRIC_PRESETS[spriteId] || SPRITE_METRIC_FALLBACK;
+      overrides[spriteId] = createSpriteMetaEntry(metrics);
+    });
+    return overrides;
+  }
+
+  function generateSpriteInstances(catalog, placements){
+    const instances = [];
+    if (!catalog || !placements || !placements.length) return instances;
+    const segCount = segments.length;
+    if (!segCount) return instances;
+    for (const spec of placements) {
+      if (!spec || !Array.isArray(spec.spritePool) || !spec.spritePool.length) continue;
+      const pool = spec.spritePool
+        .map((id) => catalog.get(id))
+        .filter((entry) => !!entry);
+      if (!pool.length) continue;
+      const segRange = clampSegmentRange(spec.segmentRange, segCount);
+      if (!segRange) continue;
+      const laneRange = spec.laneRange || { start: 0, end: 0 };
+      const laneStep = computeLaneStep(laneRange, spec.repeatLane);
+      const lanePositionsRaw = computeLanePositions(laneRange.start, laneRange.end, laneStep);
+      const lanePositions = lanePositionsRaw.length ? lanePositionsRaw : [laneRange.start];
+      const seed = normalizeSeed(spec.randomSeed, segRange.start, laneRange.start);
+      const rng = createRng(seed);
+      const scaleRange = spec.scaleRange || [1, 1];
+      const jitterSegRange = spec.jitterSegRange || null;
+      const jitterLaneRange = spec.jitterLaneRange || null;
+      const segStep = Math.max(1, Math.floor(spec.repeatSegment || 1));
+      const direction = segRange.end >= segRange.start ? 1 : -1;
+      for (let segIdx = segRange.start; ; segIdx += direction * segStep) {
+        const seg = segmentAtIndex(segIdx);
+        if (!seg) {
+          if (segIdx === segRange.end) break;
+          continue;
+        }
+        for (const laneBase of lanePositions) {
+          const entry = pool.length === 1
+            ? pool[0]
+            : pool[Math.floor(rng() * pool.length) % pool.length];
+          if (!entry) continue;
+          const scale = randomInRange(scaleRange, rng, scaleRange[0] ?? 1);
+          const jitterSeg = jitterSegRange ? randomInRange(jitterSegRange, rng, 0) : 0;
+          const jitterLane = jitterLaneRange ? randomInRange(jitterLaneRange, rng, 0) : 0;
+          const asset = selectAsset(entry.assets, rng);
+          const initialFrame = determineInitialFrame(entry, asset, rng);
+          instances.push({
+            entry,
+            segIndex: segIdx,
+            offset: laneBase + jitterLane,
+            scale,
+            sOffset: jitterSeg,
+            asset,
+            initialFrame,
+          });
+        }
+        if (segIdx === segRange.end) break;
+        if ((direction > 0 && segIdx > segRange.end) || (direction < 0 && segIdx < segRange.end)) break;
+      }
+    }
+    return instances;
+  }
+
+  function createSpriteFromInstance(instance){
+    if (!instance || !instance.entry) return null;
+    const seg = segmentAtIndex(instance.segIndex);
+    if (!seg) return null;
+    const entry = instance.entry;
+    const metrics = SPRITE_METRIC_PRESETS[entry.spriteId] || SPRITE_METRIC_FALLBACK;
+    const sprite = {
+      kind: entry.spriteId,
+      offset: Number.isFinite(instance.offset) ? instance.offset : 0,
+      segIndex: seg.index,
+      s: (seg.p1 && seg.p1.world) ? seg.p1.world.z : instance.segIndex * segmentLength,
+      scale: Number.isFinite(instance.scale) ? instance.scale : 1,
+      interactionMode: entry.interaction,
+      type: entry.type,
+      interactable: entry.type === 'trigger' || entry.interaction !== 'static',
+      impactable: entry.type === 'solid',
+      interacted: false,
+      assetKey: (instance.asset && instance.asset.key) ? instance.asset.key : (metrics.textureKey || null),
+    };
+    if (instance.asset && Array.isArray(instance.asset.frames)) {
+      sprite.assetFrames = instance.asset.frames.slice();
+    }
+    if (metrics.atlas) {
+      sprite.atlasInfo = { ...metrics.atlas };
+    } else if (instance.asset && instance.asset.type === 'atlas') {
+      sprite.atlasInfo = {
+        columns: (instance.asset.columns || 1),
+        totalFrames: (instance.asset.totalFrames || Math.max(1, (instance.asset.frames || []).length)),
+      };
+    }
+    const baseZ = (seg.p1 && seg.p1.world) ? seg.p1.world.z : instance.segIndex * segmentLength;
+    if (Number.isFinite(instance.sOffset) && instance.sOffset !== 0) {
+      const delta = instance.sOffset * segmentLength;
+      sprite.s = wrapDistance(baseZ, delta, trackLengthRef());
+    } else {
+      sprite.s = baseZ;
+    }
+    const fallbackFrame = Number.isFinite(instance.initialFrame) ? instance.initialFrame : 0;
+    const animState = createSpriteAnimationState(entry.baseClip, entry.interactClip, entry.frameDuration, fallbackFrame);
+    if (animState) {
+      sprite.animation = animState;
+      sprite.animFrame = Number.isFinite(animState.currentFrame) ? animState.currentFrame : fallbackFrame;
+    } else {
+      sprite.animation = null;
+      sprite.animFrame = fallbackFrame;
+    }
+    if (entry.interaction === 'toggle') sprite.toggleOnInteract = true;
+    if (sprite.impactable) {
+      if (!Number.isFinite(sprite.baseOffset)) sprite.baseOffset = sprite.offset;
+      configureImpactableSprite(sprite);
+    }
+    updateSpriteUv(sprite);
+    ensureArray(seg, 'sprites').push(sprite);
+    return sprite;
+  }
+
+  let spriteDataCache = null;
+  let spriteDataPromise = null;
+
+  async function loadSpriteCsv(relativePath){
+    const url = typeof World.resolveAssetUrl === 'function'
+      ? World.resolveAssetUrl(relativePath)
+      : relativePath;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) {
+      throw new Error(`Failed to load ${relativePath}: ${res.status}`);
+    }
+    return res.text();
+  }
+
+  function parseSpriteCatalog(text){
+    const { header, rows } = parseCsvWithHeader(text);
+    const catalog = new Map();
+    for (const row of rows) {
+      const record = header ? row : null;
+      const spriteIdRaw = header
+        ? (record.spriteId || record.sprite || record.id || '')
+        : (row[1] || row[0] || '');
+      const spriteId = spriteIdRaw.trim();
+      if (!spriteId) continue;
+      const assetsRaw = header ? (record.assets || record.asset || '') : (row[2] || '');
+      const typeRaw = header ? (record.type || '') : (row[3] || '');
+      const baseAnimRaw = header ? (record.baseAnim || '') : (row[4] || '');
+      const interactionRaw = header ? (record.interaction || '') : (row[5] || '');
+      const interactAnimRaw = header ? (record.interactAnim || '') : (row[6] || '');
+      const frameDurationRaw = header ? (record.frameDuration || '') : (row[7] || '');
+      const entry = {
+        spriteId,
+        assets: parseAssetSpec(assetsRaw),
+        type: parseSpriteType(typeRaw),
+        interaction: parseSpriteInteraction(interactionRaw),
+        baseClip: parseAnimClipSpec(baseAnimRaw),
+        interactClip: parseAnimClipSpec(interactAnimRaw),
+      };
+      const frameDuration = parseFloat(frameDurationRaw);
+      if (Number.isFinite(frameDuration) && frameDuration > 0) {
+        entry.frameDuration = frameDuration;
+      }
+      catalog.set(spriteId, entry);
+    }
+    return catalog;
+  }
+
+  function parseSpritePlacements(text){
+    const { header, rows } = parseCsvWithHeader(text);
+    const placements = [];
+    for (const row of rows) {
+      const record = header ? row : null;
+      const spriteValue = header ? (record.sprite || record.spriteId || '') : (row[0] || '');
+      const spritePool = parseSpritePool(spriteValue);
+      if (!spritePool.length) continue;
+      const segmentRaw = header ? (record.segment || '') : (row[1] || '');
+      const laneRaw = header ? (record.lane || '') : (row[2] || '');
+      const repeatSegRaw = header ? (record.repeatSegment || record.repeatSeg || '') : (row[3] || '');
+      const repeatLaneRaw = header ? (record.repeatLane || '') : (row[4] || '');
+      const scaleRangeRaw = header ? (record.scaleRange || '') : (row[5] || '');
+      const randomSeedRaw = header ? (record.randomSeed || '') : (row[6] || '');
+      const jitterSegRaw = header ? (record.jitterSeg || '') : (row[7] || '');
+      const jitterLaneRaw = header ? (record.jitterLane || '') : (row[8] || '');
+      const segmentRange = parseNumberRange(segmentRaw, { allowFloat: false }) || { start: 0, end: 0 };
+      const laneRange = parseNumberRange(laneRaw, { allowFloat: true }) || { start: 0, end: 0 };
+      const repeatSegment = parseFloat(repeatSegRaw);
+      const repeatLane = parseFloat(repeatLaneRaw);
+      const scaleRange = parseNumericRange(scaleRangeRaw) || [1, 1];
+      const randomSeed = parseFloat(randomSeedRaw);
+      const jitterSegRange = parseNumericRange(jitterSegRaw);
+      const jitterLaneRange = parseNumericRange(jitterLaneRaw);
+      placements.push({
+        spritePool,
+        segmentRange,
+        laneRange,
+        repeatSegment: Number.isFinite(repeatSegment) && repeatSegment > 0 ? repeatSegment : 1,
+        repeatLane: Number.isFinite(repeatLane) && repeatLane > 0 ? repeatLane : null,
+        scaleRange,
+        randomSeed: Number.isFinite(randomSeed) ? randomSeed : null,
+        jitterSegRange,
+        jitterLaneRange,
+      });
+    }
+    return placements;
+  }
+
+  async function ensureSpriteDataLoaded(){
+    if (spriteDataCache) return spriteDataCache;
+    if (spriteDataPromise) return spriteDataPromise;
+    spriteDataPromise = (async () => {
+      const [catalogText, placementText] = await Promise.all([
+        loadSpriteCsv('tracks/sprites/catalog.csv'),
+        loadSpriteCsv('tracks/sprites/placement.csv'),
+      ]);
+      const catalog = parseSpriteCatalog(catalogText);
+      const placements = parseSpritePlacements(placementText);
+      spriteDataCache = { catalog, placements };
+      spriteDataPromise = null;
+      return spriteDataCache;
+    })().catch((err) => {
+      spriteDataPromise = null;
+      throw err;
+    });
+    return spriteDataPromise;
+  }
 
   const driftSmokePool = [];
 
@@ -921,32 +1680,38 @@
   function resolveSpriteInteractionsInSeg(seg) {
     if (!seg || !Array.isArray(seg.sprites) || !seg.sprites.length) return;
     const pHalf = playerHalfWN();
-    for (const spr of seg.sprites) {
+    for (let i = seg.sprites.length - 1; i >= 0; i -= 1) {
+      const spr = seg.sprites[i];
       if (!spr) continue;
+      const meta = getSpriteMeta(spr.kind);
+      const scale = Number.isFinite(spr.scale) ? spr.scale : 1;
+      const spriteHalf = Math.max(0, (meta.wN || 0) * scale * 0.5);
+      if (spriteHalf <= 0) continue;
+      if (!overlap(state.playerN, pHalf, spr.offset, spriteHalf, 1)) continue;
+
+      let remove = false;
+
       if (spr.interactable && !spr.interacted) {
-        const meta = getSpriteMeta(spr.kind);
-        const spriteHalf = Math.max(0, (meta.wN || 0) * 0.5);
-        if (spriteHalf > 0 && overlap(state.playerN, pHalf, spr.offset, spriteHalf, 1)) {
-          const anim = spr.animation;
-          spr.interacted = true;
+        spr.interacted = true;
+        const mode = spr.interactionMode || 'static';
+        if (mode === 'playAnim' && spr.animation && spr.animation.clips && spr.animation.clips.interact) {
+          switchSpriteAnimationClip(spr.animation, 'interact', true);
           spr.interactable = false;
-          if (anim) {
-            anim.frame = 0;
-            anim.accumulator = 0;
-            anim.finished = false;
-            anim.playing = true;
-            spr.animFrame = anim.frame;
-          }
-          if (spr.impactable) {
-            applyImpactPushToSprite(spr);
-          }
+        } else if (mode === 'toggle') {
+          spr.interactable = false;
+          remove = true;
+        } else {
+          spr.interactable = false;
         }
-      } else if (spr.impactable) {
-        const meta = getSpriteMeta(spr.kind);
-        const spriteHalf = Math.max(0, (meta.wN || 0) * 0.5);
-        if (spriteHalf > 0 && overlap(state.playerN, pHalf, spr.offset, spriteHalf, 1)) {
-          applyImpactPushToSprite(spr);
-        }
+      }
+
+      if (spr.impactable) {
+        applyImpactPushToSprite(spr);
+      }
+
+      if (remove) {
+        if (spr.kind === 'DRIFT_SMOKE') recycleDriftSmokeSprite(spr);
+        seg.sprites.splice(i, 1);
       }
     }
   }
@@ -1044,7 +1809,9 @@
           transferSeg = applyDriftSmokeMotion(spr, dt, seg);
         }
 
-        if (spr.animation) {
+        if (spr.animation && spr.animation.clips) {
+          advanceSpriteAnimation(spr, dt);
+        } else if (spr.animation) {
           const anim = spr.animation;
           const frameDuration = (anim && anim.frameDuration > 0) ? anim.frameDuration : (1 / 60);
           if (anim.frameDuration !== frameDuration) anim.frameDuration = frameDuration;
@@ -1455,113 +2222,35 @@
     }
   }
 
-  function addProp(segIdx, kind, offset, options = {}) {
-    if (!hasSegments()) return;
-    const seg = segmentAtIndex(segIdx);
-    if (!seg) return;
-    const baseZ = seg.p1 && seg.p1.world ? seg.p1.world.z : segIdx * segmentLength;
-    const sprite = { kind, offset, segIndex: seg.index, s: baseZ };
-    let animationConfig = null;
-    if (options && typeof options === 'object') {
-      const { animation, ...rest } = options;
-      Object.assign(sprite, rest);
-      animationConfig = animation || null;
+  async function spawnProps() {
+    if (!hasSegments()) {
+      state.spriteMeta = DEFAULT_SPRITE_META;
+      return;
     }
-    if (sprite.interactable) {
-      const animConfig = animationConfig || {};
-      const totalFrames = Number.isFinite(animConfig.totalFrames) && animConfig.totalFrames > 0
-        ? Math.floor(animConfig.totalFrames)
-        : 1;
-      const duration = Number.isFinite(animConfig.frameDuration) && animConfig.frameDuration > 0
-        ? animConfig.frameDuration
-        : (1 / 60);
-      const startFrame = Number.isFinite(animConfig.frame)
-        ? Math.max(0, Math.min(totalFrames - 1, Math.floor(animConfig.frame)))
-        : 0;
-      sprite.animation = {
-        frame: startFrame,
-        totalFrames,
-        frameDuration: duration,
-        accumulator: 0,
-        playing: !!animConfig.playing,
-        finished: animConfig.finished === true && startFrame === totalFrames - 1,
-      };
-      sprite.animFrame = sprite.animation.frame;
-      if (!('interacted' in sprite)) sprite.interacted = false;
-    }
-    if (sprite.impactable) {
-      if (!Number.isFinite(sprite.baseOffset)) sprite.baseOffset = sprite.offset;
-      configureImpactableSprite(sprite);
-    }
-    ensureArray(seg, 'sprites').push(sprite);
-    return sprite;
-  }
-
-  const ROCKWALL_ATLAS_COLUMNS = 4;
-  const ROCKWALL_ATLAS_FRAMES = 16;
-  const ROCKWALL_OFFSET_BASE = 1.0;
-
-  function randomRockwallFrameData() {
-    const frame = Math.floor(Math.random() * ROCKWALL_ATLAS_FRAMES);
-    return {
-      frame,
-      uv: atlasFrameUv(frame, ROCKWALL_ATLAS_COLUMNS, ROCKWALL_ATLAS_FRAMES),
-    };
-  }
-
-  function spawnProps() {
-    if (!hasSegments()) return;
-    const segCount = segments.length;
     for (const seg of segments) {
       if (seg && Array.isArray(seg.sprites)) seg.sprites.length = 0;
     }
-    for (let i = 8; i < segCount; i += 1) {
-      addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', -1.25 - Math.random() * 0.15);
-      addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', 1.25 + Math.random() * 0.15);
-      const leftRockwall = randomRockwallFrameData();
-      const rightRockwall = randomRockwallFrameData();
-      const leftOffset = -ROCKWALL_OFFSET_BASE;
-      const rightOffset = ROCKWALL_OFFSET_BASE;
-      addProp(i, 'SIGN', leftOffset, {
-        uv: leftRockwall.uv,
-        atlasFrame: leftRockwall.frame,
-        castShadow: false,
-      });
-      addProp(i, 'SIGN', rightOffset, {
-        uv: rightRockwall.uv,
-        atlasFrame: rightRockwall.frame,
-        castShadow: false,
-      });
-      if (i % 18 === 0) {
-        const extra = 1.6 + Math.random() * 1.6;
-        addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', -extra);
-        addProp(i, Math.random() < 0.5 ? 'TREE' : 'PALM', extra);
-      }
+
+    let data;
+    try {
+      data = await ensureSpriteDataLoaded();
+    } catch (err) {
+      console.warn('Failed to load sprite data:', err);
+      state.spriteMeta = DEFAULT_SPRITE_META;
+      return;
     }
 
-    const plateTextures = ['animPlate01', 'animPlate02'];
-    const basePlateCount = Math.max(4, Math.floor(segCount / 40));
-    const plateCount = Math.max(basePlateCount, plateTextures.length);
-    const textureQueue = plateTextures.slice();
-    while (textureQueue.length < plateCount) {
-      const randomTex = plateTextures[Math.floor(Math.random() * plateTextures.length)];
-      textureQueue.push(randomTex);
+    if (!data || !data.catalog || !data.placements) {
+      state.spriteMeta = DEFAULT_SPRITE_META;
+      return;
     }
-    for (let i = textureQueue.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      const tmp = textureQueue[i];
-      textureQueue[i] = textureQueue[j];
-      textureQueue[j] = tmp;
-    }
-    for (const textureKey of textureQueue) {
-      const segIdx = Math.floor(Math.random() * Math.max(1, segCount));
-      const centerOffset = (Math.random() - 0.5) * 0.6;
-      addProp(segIdx, 'ANIM_PLATE', centerOffset, {
-        interactable: true,
-        impactable: true,
-        textureKey,
-        animation: { totalFrames: 16, frameDuration: 1 / 60, frame: 0 },
-      });
+
+    const metaOverrides = buildSpriteMetaOverrides(data.catalog);
+    state.spriteMeta = { ...DEFAULT_SPRITE_META, ...metaOverrides };
+
+    const instances = generateSpriteInstances(data.catalog, data.placements);
+    for (const instance of instances) {
+      createSpriteFromInstance(instance);
     }
   }
 
@@ -1766,7 +2455,7 @@
       pushZone(cliffZones, 0, segmentCount - 1, 3);
     }
 
-    spawnProps();
+    await spawnProps();
     spawnCars();
     spawnPickups();
     resetPlayerState({
