@@ -1,2 +1,2 @@
 name,sprite,segment,lane,repeatSegment,repeatLane,scaleRange,randomSeed,jitterSeg,jitterLane,comment
-left-trees,tree_main,8-220,1-2.5,4,.1,0.9-1.15,1337,0-0.25,0-0.05,Roadside trees (left shoulder)
+left-trees,tree_main,8-220,2-2.5,4,.1,0.9-1.15,1337,0-0.25,0-0.05,Roadside trees (left shoulder)
