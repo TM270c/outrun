@@ -37,9 +37,8 @@
     return frames;
   }
 
-  const CATALOG_SOURCE = [
-    {
-      spriteId: 'tree_main',
+  const CATALOG_SOURCE = Object.freeze({
+    tree_main: {
       metrics: {
         wN: 0.5,
         aspect: 3.0,
@@ -47,17 +46,14 @@
         textureKey: 'tree',
         atlas: null,
       },
-      assets: [
-        { type: 'texture', key: 'tree', frames: [] },
-      ],
+      assets: [{ type: 'texture', key: 'tree', frames: [] }],
       type: 'static',
       interaction: 'static',
       baseClip: { frames: [], playback: 'none' },
       interactClip: { frames: [], playback: 'none' },
       frameDuration: null,
     },
-    {
-      spriteId: 'palm_main',
+    palm_main: {
       metrics: {
         wN: 0.38,
         aspect: 3.2,
@@ -65,17 +61,14 @@
         textureKey: 'tree',
         atlas: null,
       },
-      assets: [
-        { type: 'texture', key: 'tree', frames: [] },
-      ],
+      assets: [{ type: 'texture', key: 'tree', frames: [] }],
       type: 'static',
       interaction: 'static',
       baseClip: { frames: [], playback: 'none' },
       interactClip: { frames: [], playback: 'none' },
       frameDuration: null,
     },
-    {
-      spriteId: 'rockwall_sign',
+    rockwall_sign: {
       metrics: {
         wN: 1.2,
         aspect: 1.0,
@@ -83,17 +76,14 @@
         textureKey: 'sign',
         atlas: { columns: 4, totalFrames: 16 },
       },
-      assets: [
-        { type: 'atlas', key: 'sign', frames: makeFrames(0, 15) },
-      ],
+      assets: [{ type: 'atlas', key: 'sign', frames: makeFrames(0, 15) }],
       type: 'static',
       interaction: 'static',
       baseClip: { frames: [], playback: 'none' },
       interactClip: { frames: [], playback: 'none' },
       frameDuration: null,
     },
-    {
-      spriteId: 'anim_plate_drive',
+    anim_plate_drive: {
       metrics: {
         wN: 0.1,
         aspect: 1.0,
@@ -101,17 +91,14 @@
         textureKey: 'animPlate01',
         atlas: { columns: 4, totalFrames: 16 },
       },
-      assets: [
-        { type: 'atlas', key: 'animPlate01', frames: makeFrames(0, 15) },
-      ],
+      assets: [{ type: 'atlas', key: 'animPlate01', frames: makeFrames(0, 15) }],
       type: 'trigger',
       interaction: 'playAnim',
       baseClip: { frames: [], playback: 'none' },
       interactClip: { frames: makeFrames(0, 15), playback: 'loop' },
       frameDuration: 0.08,
     },
-    {
-      spriteId: 'anim_plate_alt',
+    anim_plate_alt: {
       metrics: {
         wN: 0.1,
         aspect: 1.0,
@@ -119,19 +106,17 @@
         textureKey: 'animPlate02',
         atlas: { columns: 4, totalFrames: 16 },
       },
-      assets: [
-        { type: 'atlas', key: 'animPlate02', frames: makeFrames(0, 15) },
-      ],
+      assets: [{ type: 'atlas', key: 'animPlate02', frames: makeFrames(0, 15) }],
       type: 'trigger',
       interaction: 'playAnim',
       baseClip: { frames: [], playback: 'none' },
       interactClip: { frames: makeFrames(0, 15), playback: 'loop' },
       frameDuration: 0.08,
     },
-  ];
+  });
 
   const CATALOG_MAP = new Map();
-  for (const entry of CATALOG_SOURCE) {
+  for (const [spriteId, entry] of Object.entries(CATALOG_SOURCE)) {
     const metrics = entry.metrics ? Object.freeze({
       wN: entry.metrics.wN,
       aspect: entry.metrics.aspect,
@@ -152,7 +137,7 @@
       : [];
 
     const frozen = Object.freeze({
-      spriteId: entry.spriteId,
+      spriteId,
       metrics,
       assets,
       type: entry.type || 'static',
@@ -162,7 +147,7 @@
       frameDuration: entry.frameDuration,
     });
 
-    CATALOG_MAP.set(entry.spriteId, frozen);
+    CATALOG_MAP.set(spriteId, frozen);
   }
 
   function cloneCatalog(){
