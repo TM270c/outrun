@@ -2,11 +2,6 @@ const dom = {
   canvas: document.getElementById('outrun'),
   overlay: document.getElementById('sideOverlay'),
   hud: document.getElementById('hudMatte'),
-  crtWrap: document.getElementById('crtFilterWrap'),
-  crtScene: document.getElementById('crtScene'),
-  crtSub: document.getElementById('crtSub'),
-  crtWarp: document.getElementById('crtWarp'),
-  crtFx: document.getElementById('crtFx'),
 };
 
 const glr = new RenderGL.GLRenderer(dom.canvas);
@@ -62,18 +57,6 @@ function setupCallbacks() {
 await loadAssets();
 
 Renderer.attach(glr, dom);
-if (globalThis.CrtFilter && typeof globalThis.CrtFilter.init === 'function') {
-  const desired = App && typeof App.isCrtEnabled === 'function' ? App.isCrtEnabled() : true;
-  globalThis.CrtFilter.init({
-    source: dom.canvas,
-    wrap: dom.crtWrap,
-    scene: dom.crtScene,
-    sub: dom.crtSub,
-    warp: dom.crtWarp,
-    fx: dom.crtFx,
-    enabled: desired,
-  });
-}
 if (App && typeof App.init === 'function') {
   App.init();
 }
