@@ -1,0 +1,6 @@
+name,spriteId,assets,type,baseAnim,interaction,interactAnim,frameDuration,comment
+tree-default,tree_main,texture=tree,static,none,static,none,,Primary roadside tree
+palm-default,palm_main,texture=tree,static,none,static,none,,Palm stand-in using tree texture
+rockwall,rockwall_sign,atlas=sign:frame0-15,static,none,static,none,,Guardrail rock wall slices
+plate-drive,anim_plate_drive,atlas=animPlate01:frame0-15,trigger,none,playAnim,0-15:loop,0.08,Plays plate animation when touched
+plate-alt,anim_plate_alt,atlas=animPlate02:frame0-15,trigger,none,playAnim,0-15:loop,0.08,Alt plate animation variant

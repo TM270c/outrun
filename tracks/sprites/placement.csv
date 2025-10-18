@@ -1,0 +1,8 @@
+name,sprite,segment,lane,repeatSegment,repeatLane,scaleRange,randomSeed,jitterSeg,jitterLane,comment
+left-trees,tree_main,8-220,-1.35,1,,0.9-1.15,1337,0-0.25,0-0.05,Roadside trees (left shoulder)
+right-trees,tree_main,8-220,1.35,1,,0.9-1.15,2337,0-0.25,0-0.05,Roadside trees (right shoulder)
+outer-palms,palm_main,32-220,-1.85,8,,0.95-1.2,3344,0-0.1,0-0.08,Outer palms left
+outer-palms-right,palm_main,32-220,1.85,8,,0.95-1.2,4344,0-0.1,0-0.08,Outer palms right
+rockwall-left,rockwall_sign,16-220,-1.05,2,,0.95-1.05,5566,0-0.05,0-0.02,Rockwall signage left
+rockwall-right,rockwall_sign,16-220,1.05,2,,0.95-1.05,6566,0-0.05,0-0.02,Rockwall signage right
+center-plates,"anim_plate_drive,anim_plate_alt",24-200,-0.3-0.3,24,0.6,1,7777,0-0.05,0-0.05,Animated center plates alternating
