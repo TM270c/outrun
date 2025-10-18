@@ -30,36 +30,32 @@ This document captures the full design for replacing the current procedural spri
 ## Proposed System Architecture
 
 ### High-level flow
-1. **CSV ingestion** – On scene reset, load the sprite catalog (`tracks/sprites/catalog.csv`) and placement sheets (`tracks/sprites/placement.csv` plus any zone-specific overrides) before calling gameplay spawn routines.
-2. **Parsing** – Catalog rows map to `SpriteCatalogEntry` records; placement rows map to `SpriteSpec` entries describing segment/lane coverage and sprite pools. Parsing uses helper functions similar to the track builder (`toInt`, `toFloat`, `toBool`) for consistent handling of optional columns.【F:src/world.js†L271-L392】
+1. **Catalog ingestion** – On scene reset, hydrate the sprite catalog (`src/sprite-catalog.js`) and placement sheets (`tracks/placement.csv` plus any zone-specific overrides) before calling gameplay spawn routines.
+2. **Parsing** – Catalog entries map to `SpriteCatalogEntry` records; placement rows map to `SpriteSpec` entries describing segment/lane coverage and sprite pools. Parsing uses helper functions similar to the track builder (`toInt`, `toFloat`, `toBool`) for consistent handling of optional columns.【F:src/world.js†L271-L392】
 3. **Instantiation** – Convert `SpriteSpec` entries into sprite runtime objects using a single factory (`createSpriteFromSpec`). This factory attaches metadata from the catalog, behaviour handles, and per-instance state.
 4. **Registration** – Push created sprites into the owning segment’s `sprites` list. Segments are identified either by explicit index/range or by world `s` coordinates.
 5. **Runtime management** – A sprite manager drives behaviour updates and interaction checks via declarative rules instead of hard-coded flags.
 
-### CSV format proposal
-Sprite data moves into **two CSV files** to avoid repeating per-sprite metadata and to make placement rows concise.
+### Data format
+Sprite data now lives in a **scripted catalog** plus a placement CSV. The catalog avoids repeating per-sprite metadata and centralises texture ownership alongside metrics.
 
-#### 1. Sprite catalog (`tracks/sprites/catalog.csv`)
-Each row defines a sprite variant that can be referenced by placement rows.
+#### 1. Sprite catalog (`src/sprite-catalog.js`)
+Each catalog entry exports a sprite variant with metrics, asset bindings, and interaction behaviour. Entries include:
 
-| Column | Description |
+| Field | Description |
 | --- | --- |
 | `spriteId` | Required unique identifier (e.g. `corn1`). Placement rows reference these IDs. |
-| `assets` | Atlas entry or comma-separated atlas frame slices used by this sprite (e.g. `atlas=props_tree:frame0` to pin a single tile, `atlas=props_tree:frame4-8` to reuse a subset for light animation). |
-| `type` | Behaviour descriptor key: `static` (decoration), `trigger` (activates animation/state change on touch), or `solid` (blocks the car and can request shove-style impulses). |
-| `baseAnim` | Default atlas frames and playback style (e.g. `1-10:loop`, `1,2,3,10:pingpong`, or `none`). |
+| `metrics` | Normalised width, aspect, tint, texture key, and optional atlas info for UV generation. |
+| `assets` | Atlas or texture handles surfaced to runtime selection logic (`{ type, key, frames }`). |
+| `type` | Behaviour descriptor key: `static`, `trigger`, or `solid`. |
 | `interaction` | Interaction hook: `static`, `playAnim`, or `toggle`. |
-| `interactAnim` | Frames played when interaction triggers (same syntax as `baseAnim`, `none` when unused). |
-| `frameDuration` | Frame timing for animated sprites when playback is active (applies to `baseAnim` and `interactAnim`). |
-| `comment` | Free text ignored by parser for documentation. |
+| `baseClip` | Default animation clip definition (`{ frames, playback }`). |
+| `interactClip` | Optional interaction animation clip definition. |
+| `frameDuration` | Frame timing for animated sprites when playback is active. |
 
-Catalog rows capture everything designers would otherwise repeat for each placement, including behaviour type and animation choices.
+Entries capture everything designers would otherwise repeat for each placement, including behaviour type and animation choices, while consolidating texture URLs inside the catalog manifest.
 
-*The `spriteId` represents the logical sprite definition (behaviour + art bundle). Designers add as many IDs as needed to cover atlas variants or interaction tweaks without duplicating placement data. Multiple sprites can reference the same atlas while locking to a specific frame range through the `assets` declaration.*
-
-*Animation string syntax* – Use hyphenated ranges (`1-10`) or comma-separated frame lists (`1,2,3,10`). Append `:loop`, `:once`, or `:pingpong` to describe playback. The keyword `none` disables playback and maps to an `AnimClip` with `playback: 'none'`.
-
-#### 2. Sprite placement (`tracks/sprites/placement.csv`)
+#### 2. Sprite placement (`tracks/placement.csv`)
 Placement rows determine where and how often sprites appear along the track.
 
 | Column | Description |
@@ -81,15 +77,20 @@ Lane ranges plus `repeatLane` create grid patterns such as corn fields without b
 
 When listing multiple sprite IDs in a single cell, wrap the value in quotes (`"corn1,corn2,corn3"`) so CSV parsers keep the pool together.
 
-#### Example CSV snippets
+#### Example snippets
 
-Catalog excerpt:
+Catalog entry excerpt:
 
-```csv
-name,spriteId,assets,type,baseAnim,interaction,interactAnim,frameDuration,comment
-roadside,corn1,atlas=props_corn:frame0,static,none,static,none,,Primary corn variant
-roadside,corn2,atlas=props_corn:frame1,static,none,static,none,,Alternate shading
-roadside,scarecrow,atlas=props_farm:scarecrow0-2,trigger,1-6:loop,playAnim,7-10:pingpong,0.1,Animates when touched
+```js
+{
+  spriteId: 'tree_main',
+  metrics: { wN: 0.5, aspect: 3.0, tint: [0.22, 0.7, 0.22, 1], textureKey: 'tree' },
+  assets: [{ type: 'texture', key: 'tree', frames: [] }],
+  type: 'static',
+  interaction: 'static',
+  baseClip: { frames: [], playback: 'none' },
+  interactClip: { frames: [], playback: 'none' },
+}
 ```
 
 Placement excerpt:
@@ -210,7 +211,7 @@ This manager replaces `spawnProps()` and centralises TTL, animation, and segment
 7. **Tooling aids** – Provide a validator script that checks CSV inputs (unknown sprite keys, out-of-range segments) before runtime.
 
 ## Authoring & Workflow Guidelines
-* Keep CSVs grouped by area (e.g. `tracks/sprites/main.csv`, `tracks/sprites/city.csv`) and allow `SpriteManager` to load multiple files per scene.
+* Keep placement CSVs grouped by area (e.g. `tracks/placement-main.csv`, `tracks/placement-city.csv`) and allow `SpriteManager` to load multiple files per scene.
 * Use comment lines (`// Section: Beachfront`) to mark areas, matching the style used by track CSV authoring.【F:src/world.js†L324-L362】
 * Document behaviour keys and expected columns in `docs/sprite-behaviours.md` (future work) so designers have a reference without reading code.
 * Encourage designers to preview changes by reloading the scene—deterministic CSV placement ensures visual diffs correspond to file edits.

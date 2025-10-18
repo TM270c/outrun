@@ -53,10 +53,6 @@
     horizon3:  resolveAssetUrl('tex/paralax-3.png'),
     car:       resolveAssetUrl('tex/car.png'),
     semi:      resolveAssetUrl('tex/semi.png'),
-    tree:      resolveAssetUrl('tex/tree.png'),
-    sign:      resolveAssetUrl('sprites/rockwall.png'),
-    animPlate01: resolveAssetUrl('sprites/anim-plate-01.png'),
-    animPlate02: resolveAssetUrl('sprites/anim-plate-02.png'),
   };
 
   const textures = {};
