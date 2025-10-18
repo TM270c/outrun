@@ -43,7 +43,7 @@
       metrics: {
         wN: 0.5,
         aspect: 3.0,
-        tint: [0.22, 0.7, 0.22, 1],
+        tint: [1, 1, 1, 1],
         textureKey: 'tree',
         atlas: null,
       },

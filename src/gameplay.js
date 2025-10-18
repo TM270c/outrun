@@ -276,7 +276,7 @@
     PLAYER: { wN: 0.16, aspect: 0.7, tint: [0.9, 0.22, 0.21, 1], tex: () => null },
     CAR:    { wN: 0.28, aspect: 0.7, tint: [0.2, 0.7, 1.0, 1], tex: () => null },
     SEMI:   { wN: 0.34, aspect: 1.6, tint: [0.85, 0.85, 0.85, 1], tex: () => null },
-    TREE:   { wN: 0.5,  aspect: 3.0, tint: [0.22, 0.7, 0.22, 1], tex: () => null },
+    TREE:   { wN: 0.5,  aspect: 3.0, tint: [1, 1, 1, 1], tex: () => null },
     SIGN:   {
       wN: 1.2,
       aspect: 1.0,
