@@ -302,10 +302,6 @@
   const SPARKS_SCREEN_VERTICAL_SPEED = { min: -120, max: -60 };
   const SPARKS_SCREEN_GRAVITY = 360;
   const SPARKS_SCREEN_DRAG = 3;
-  const SPARKS_STRETCH_LAG_BASE = 0.16;
-  const SPARKS_STRETCH_LAG_SPEED_SCALE = 0.18;
-  const SPARKS_STRETCH_LAG_MAX = Math.max(0.05, Math.min(0.32, SPARKS_LIFETIME * 0.95));
-  const SPARKS_STRETCH_HISTORY_MAX = Math.max(SPARKS_STRETCH_LAG_MAX + 0.2, 0.6);
 
   const DEFAULT_SPRITE_META = {
     PLAYER: {
@@ -982,64 +978,6 @@
     return base + (Math.random() * 2 - 1) * span;
   }
 
-  function computeSparksStretchLag(forwardSpeed = 0) {
-    const maxSpeed = (player && Number.isFinite(player.topSpeed)) ? Math.max(player.topSpeed, 1e-3) : 1;
-    const speedRatio = clamp(forwardSpeed / maxSpeed, 0, 1);
-    const lag = SPARKS_STRETCH_LAG_BASE + speedRatio * SPARKS_STRETCH_LAG_SPEED_SCALE;
-    return clamp(lag, 0, SPARKS_STRETCH_LAG_MAX);
-  }
-
-  function ensureSparksStretchState(sprite) {
-    if (!sprite) return null;
-    if (!sprite.sparkStretch) {
-      sprite.sparkStretch = {
-        elapsed: 0,
-        history: [],
-        lag: 0,
-        side: 0,
-        innerSample: null,
-        maxLag: SPARKS_STRETCH_LAG_MAX,
-      };
-    }
-    return sprite.sparkStretch;
-  }
-
-  function updateSparksStretchHistory(sprite, step) {
-    if (!sprite || sprite.kind !== 'SPARKS') return;
-    const stretch = ensureSparksStretchState(sprite);
-    if (!stretch) return;
-    const deltaTime = Math.max(0, Number.isFinite(step) ? step : 0);
-    stretch.elapsed += deltaTime;
-    const history = Array.isArray(stretch.history) ? stretch.history : (stretch.history = []);
-    history.push({
-      time: stretch.elapsed,
-      offset: Number.isFinite(sprite.offset) ? sprite.offset : 0,
-      screenOffsetX: Number.isFinite(sprite.screenOffsetX) ? sprite.screenOffsetX : 0,
-      screenOffsetY: Number.isFinite(sprite.screenOffsetY) ? sprite.screenOffsetY : 0,
-    });
-    const maxLag = Number.isFinite(stretch.maxLag) ? stretch.maxLag : SPARKS_STRETCH_LAG_MAX;
-    const retention = Math.max(SPARKS_STRETCH_HISTORY_MAX, maxLag + 0.1);
-    while (history.length > 1 && (stretch.elapsed - history[0].time) > retention) {
-      history.shift();
-    }
-    const currentSpeed = currentPlayerForwardSpeed();
-    stretch.lag = computeSparksStretchLag(currentSpeed);
-    if (stretch.lag > maxLag) stretch.lag = maxLag;
-    const targetTime = stretch.elapsed - stretch.lag;
-    let chosen = null;
-    for (let i = history.length - 1; i >= 0; i -= 1) {
-      const sample = history[i];
-      if (sample && sample.time <= targetTime) {
-        chosen = sample;
-        break;
-      }
-    }
-    if (!chosen && history.length) {
-      chosen = history[0];
-    }
-    stretch.innerSample = chosen;
-  }
-
   function allocSparksSprite() {
     return sparksPool.length ? sparksPool.pop() : { kind: 'SPARKS' };
   }
@@ -1049,7 +987,6 @@
     sprite.animation = null;
     sprite.impactState = null;
     sprite.driftMotion = null;
-    sprite.sparkStretch = null;
     sprite.interactable = false;
     sprite.interacted = false;
     sprite.impactable = false;
@@ -1355,20 +1292,6 @@
       };
       sprite.screenOffsetX = 0;
       sprite.screenOffsetY = 0;
-      const lag = computeSparksStretchLag(forwardSpeed);
-      sprite.sparkStretch = {
-        elapsed: 0,
-        history: [{
-          time: 0,
-          offset: spawnOffset,
-          screenOffsetX: 0,
-          screenOffsetY: 0,
-        }],
-        lag,
-        side: sideSign,
-        innerSample: null,
-        maxLag: SPARKS_STRETCH_LAG_MAX,
-      };
       sprites.push(sprite);
     }
   }
@@ -1402,6 +1325,13 @@
         const decay = Math.max(0, 1 - motion.drag * step);
         motion.lateralVel *= decay;
         if (Math.abs(motion.lateralVel) <= 1e-4) motion.lateralVel = 0;
+      }
+    }
+
+    if (trackLength > 0 && Number.isFinite(sprite.s)) {
+      const seg = segmentAtS(sprite.s);
+      if (seg && currentSeg && seg !== currentSeg) {
+        return seg;
       }
     }
 
@@ -1468,12 +1398,9 @@
     if (trackLength > 0 && Number.isFinite(sprite.s)) {
       const seg = segmentAtS(sprite.s);
       if (seg && currentSeg && seg !== currentSeg) {
-        updateSparksStretchHistory(sprite, step);
         return seg;
       }
     }
-
-    updateSparksStretchHistory(sprite, step);
 
     return null;
   }
