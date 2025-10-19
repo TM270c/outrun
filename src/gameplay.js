@@ -510,28 +510,54 @@
     return min + sample * (max - min);
   }
 
-  function computeAxisTaperWeight(count, index){
+  function computeAxisScaleWeight(count, index){
     if (!Number.isFinite(count) || count < 3) return 1;
     if (!Number.isFinite(index)) return 1;
-    const clampedIndex = clamp(Math.floor(index), 0, Math.max(0, Math.floor(count) - 1));
     const total = Math.max(1, Math.floor(count));
     if (total < 3) return 1;
+    const clampedIndex = clamp(Math.floor(index), 0, Math.max(0, total - 1));
     const center = (total - 1) / 2;
     const maxDistance = Math.max(center, 1e-9);
     const distance = Math.abs(clampedIndex - center);
-    return clamp01(1 - clamp(distance / maxDistance, 0, 1));
+    const normalized = clamp(distance / maxDistance, 0, 1);
+    const falloff = Math.pow(1 - normalized, 1.35);
+    return clamp01(falloff);
+  }
+
+  function computeAxisAtlasBias(count, index){
+    if (!Number.isFinite(count) || count < 2) return 0.5;
+    if (!Number.isFinite(index)) return 0.5;
+    const total = Math.max(1, Math.floor(count));
+    if (total < 2) return 0.5;
+    const clampedIndex = clamp(Math.floor(index), 0, Math.max(0, total - 1));
+    const center = (total - 1) / 2;
+    const maxDistance = Math.max(center, 1e-9);
+    const distance = Math.abs(clampedIndex - center);
+    const normalized = clamp(distance / maxDistance, 0, 1);
+    const emphasis = Math.pow(normalized, 0.75);
+    const minBias = 0.2;
+    const maxBias = 1;
+    return clamp01(minBias + (maxBias - minBias) * emphasis);
   }
 
   function computePlacementBias(segCount, segIndex, laneCount, laneIndex){
-    const weights = [];
+    const axisValues = [];
     if (Number.isFinite(segCount) && segCount >= 3) {
-      weights.push(computeAxisTaperWeight(segCount, segIndex));
+      axisValues.push({
+        scale: computeAxisScaleWeight(segCount, segIndex),
+        atlas: computeAxisAtlasBias(segCount, segIndex),
+      });
     }
     if (Number.isFinite(laneCount) && laneCount >= 3) {
-      weights.push(computeAxisTaperWeight(laneCount, laneIndex));
+      axisValues.push({
+        scale: computeAxisScaleWeight(laneCount, laneIndex),
+        atlas: computeAxisAtlasBias(laneCount, laneIndex),
+      });
     }
-    if (!weights.length) return null;
-    return weights.reduce((acc, value) => acc * value, 1);
+    if (!axisValues.length) return null;
+    const scale = axisValues.reduce((acc, value) => acc * value.scale, 1);
+    const atlas = axisValues.reduce((acc, value) => acc + value.atlas, 0) / axisValues.length;
+    return { scale, atlas };
   }
 
   function biasedRandom01(weight, rng){
@@ -714,10 +740,11 @@
             : pool[Math.floor(rng() * pool.length) % pool.length];
           if (!entry) continue;
           const bias = computePlacementBias(segSlotCount, segSlot, laneCount, laneIndex);
-          const scale = sampleScaleValue(scaleRange, rng, bias, useScaleTaper);
+          const scaleBias = bias ? bias.scale : null;
+          const atlasBias = (useAtlasTaper && bias) ? bias.atlas : null;
+          const scale = sampleScaleValue(scaleRange, rng, scaleBias, useScaleTaper);
           const jitterSeg = jitterSegRange ? randomInRange(jitterSegRange, rng, 0) : 0;
           const jitterLane = jitterLaneRange ? randomInRange(jitterLaneRange, rng, 0) : 0;
-          const atlasBias = useAtlasTaper && bias != null ? bias : null;
           const asset = selectAsset(entry.assets, rng, { atlasBias });
           const initialFrame = determineInitialFrame(entry, asset, rng, { atlasBias });
           instances.push({
