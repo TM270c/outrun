@@ -240,7 +240,8 @@
 
     const floorY = floorElevationAt ? floorElevationAt(phys.s, state.playerN) : phys.y;
     const bodyY = phys.grounded ? floorY : phys.y;
-    const cameraDelta = frame.camY - bodyY;
+    const groundY = Number.isFinite(floorY) ? floorY : phys.y;
+    const cameraDelta = groundY - bodyY;
     const heightRange = Math.max(1, camera.height * PLAYER_SPRITE_HEIGHT_RANGE_SCALE);
     const heightRaw = clamp(-cameraDelta / heightRange, -1, 1);
     const heightTarget = applyDeadzone(heightRaw, PLAYER_SPRITE_HEIGHT_DEADZONE);
@@ -1657,16 +1658,18 @@
         if (gl) {
           const [first, ...rest] = sortedSamples;
           const firstWeight = clamp(first.weight || 0, 0, 1);
-          gl.blendFunc(gl.ONE, gl.ZERO);
-          glr.drawQuadTextured(
-            texture,
-            bodyQuad,
-            first.uv,
-            [firstWeight, firstWeight, firstWeight, 1],
-            fogBody,
-          );
+          if (firstWeight > 1e-4) {
+            gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ZERO);
+            glr.drawQuadTextured(
+              texture,
+              bodyQuad,
+              first.uv,
+              [firstWeight, firstWeight, firstWeight, 1],
+              fogBody,
+            );
+          }
           if (rest.length) {
-            gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
+            gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE, gl.ZERO, gl.ONE);
             for (const sample of rest) {
               const weight = clamp(sample.weight || 0, 0, 1);
               if (weight <= 1e-4) continue;
@@ -1674,7 +1677,7 @@
                 texture,
                 bodyQuad,
                 sample.uv,
-                [weight, weight, weight, 0],
+                [weight, weight, weight, 1],
                 fogBody,
               );
             }
