@@ -27,10 +27,46 @@
     snowScreenSize = 1,
   } = Config;
 
+  const defaultCameraTilt = {
+    direction: 1,
+    maxDeg: 40,
+    lateralWeight: -2.5,
+    curveWeight: -0.25,
+    response: 0.1,
+    speedPower: 1,
+  };
+
+  const defaultSurfaceTilt = {
+    enabled: true,
+    direction: 1,
+    maxDeg: 18,
+    sampleRadius: 0.35,
+    clampN: 2.5,
+    forwardSample: track.segmentSize * 0.75,
+    influence: 1,
+  };
+
+  const defaultPlayerTilt = {
+    leanScale: 0.6,
+    response: 0.35,
+    maxDeg: 22,
+  };
+
   const {
-    base: tiltBase = { tiltMaxDeg: 0, tiltSens: 0, tiltCurveWeight: 0, tiltEase: 0, tiltDir: 1 },
-    additive: tiltAdd = { tiltAddEnabled: false, tiltAddMaxDeg: null },
+    camera: tiltCameraRaw = {},
+    surface: tiltSurfaceRaw = {},
+    player: tiltPlayerRaw = {},
   } = tiltConfig;
+
+  const tiltCamera = { ...defaultCameraTilt, ...tiltCameraRaw };
+  const tiltSurface = { ...defaultSurfaceTilt, ...tiltSurfaceRaw };
+  if (tiltSurface.direction == null) {
+    tiltSurface.direction = tiltCamera.direction;
+  }
+  const tiltPlayer = { ...defaultPlayerTilt, ...tiltPlayerRaw };
+  if (tiltPlayer.maxDeg == null && Number.isFinite(tiltSurface.maxDeg)) {
+    tiltPlayer.maxDeg = tiltSurface.maxDeg;
+  }
 
   const {
     clamp,
@@ -991,7 +1027,8 @@
     const phys = state.phys;
     const sCar = phys.s;
     const sCam = sCar - camera.backSegments * segmentLength;
-    const camX = state.playerN * roadWidthAt(sCar);
+    const camRoadWidth = roadWidthSampleAt(sCar);
+    const camX = state.playerN * camRoadWidth;
     const camY = state.camYSmooth;
 
     applyCameraTilt({ camX, camY, sCam, phys });
@@ -999,23 +1036,106 @@
     return { phys, sCar, sCam, camX, camY };
   }
 
+  function roadWidthSampleAt(s){
+    if (typeof roadWidthAt === 'function') {
+      const width = roadWidthAt(s);
+      if (Number.isFinite(width) && Math.abs(width) > 1e-6) return Math.abs(width);
+    }
+    const fallback = track.roadWidth;
+    if (Number.isFinite(fallback) && Math.abs(fallback) > 1e-6) return Math.abs(fallback);
+    return 0;
+  }
+
+  function computeSurfaceTiltDeg(){
+    if (!tiltSurface.enabled) return 0;
+    if (typeof floorElevationAt !== 'function') return 0;
+
+    const { phys } = state;
+    if (!phys) return 0;
+
+    const baseS = Number.isFinite(phys.s) ? phys.s : 0;
+    const baseN = Number.isFinite(state.playerN) ? state.playerN : 0;
+    const sampleRadiusRaw = Number.isFinite(tiltSurface.sampleRadius)
+      ? tiltSurface.sampleRadius
+      : 0.35;
+    const sampleRadius = clamp(sampleRadiusRaw, 0.05, 3);
+    const clampNorm = Number.isFinite(tiltSurface.clampN) ? Math.max(0.2, tiltSurface.clampN) : 3;
+    const forwardSampleRaw = Number.isFinite(tiltSurface.forwardSample)
+      ? tiltSurface.forwardSample
+      : track.segmentSize * 0.75;
+    const forwardSample = Math.max(0, forwardSampleRaw);
+    const direction = ((tiltSurface.direction == null ? tiltCamera.direction : tiltSurface.direction) || 1);
+    const offsets = forwardSample > 1e-3 ? [-forwardSample, 0, forwardSample] : [0];
+
+    let slopeAccum = 0;
+    let weightAccum = 0;
+
+    for (const offset of offsets) {
+      const sSample = baseS + offset;
+      const width = roadWidthSampleAt(sSample);
+      if (!width) continue;
+
+      const leftN = clamp(baseN - sampleRadius, -clampNorm, clampNorm);
+      const rightN = clamp(baseN + sampleRadius, -clampNorm, clampNorm);
+      const spanNorm = rightN - leftN;
+      if (!Number.isFinite(spanNorm) || Math.abs(spanNorm) <= 1e-6) continue;
+
+      const leftH = floorElevationAt(sSample, leftN);
+      const rightH = floorElevationAt(sSample, rightN);
+
+      if (!Number.isFinite(leftH) || !Number.isFinite(rightH)) continue;
+
+      const dx = spanNorm * width;
+      if (!Number.isFinite(dx) || Math.abs(dx) <= 1e-6) continue;
+
+      const slope = (rightH - leftH) / dx;
+      if (!Number.isFinite(slope)) continue;
+
+      const weight = offset === 0 ? 2 : 1;
+      slopeAccum += slope * weight;
+      weightAccum += weight;
+    }
+
+    if (weightAccum <= 1e-6) return 0;
+
+    const slopeAvg = slopeAccum / weightAccum;
+    if (!Number.isFinite(slopeAvg)) return 0;
+
+    const angleDeg = -(180 / Math.PI) * Math.atan(slopeAvg);
+    const maxDeg = Number.isFinite(tiltSurface.maxDeg) ? Math.max(0, tiltSurface.maxDeg) : null;
+    const result = direction * angleDeg;
+    const clampedDeg = maxDeg != null ? clamp(result, -maxDeg, maxDeg) : result;
+
+    return Number.isFinite(clampedDeg) ? clampedDeg : 0;
+  }
+
   function applyCameraTilt({ camX, camY, sCam, phys }){
     const bodyTmp = projectWorldPoint({ x: camX, y: phys.y, z: phys.s }, camX, camY, sCam);
     const speedPct = clamp(Math.abs(phys.vtan) / player.topSpeed, 0, 1);
     const segAhead = segmentAtS(phys.s + state.camera.playerZ) || { curve: 0 };
     const curveNorm = clamp((segAhead.curve || 0) / 6, -1, 1);
-    const combined = clamp(
-      state.lateralRate * tiltBase.tiltSens + curveNorm * tiltBase.tiltCurveWeight,
-      -1,
-      1,
-    );
-    const baseTargetDeg = tiltBase.tiltDir * clamp(combined * speedPct, -1, 1) * tiltBase.tiltMaxDeg;
-    state.camRollDeg += (baseTargetDeg - state.camRollDeg) * tiltBase.tiltEase;
+    const lateralComponent = state.lateralRate * tiltCamera.lateralWeight;
+    const curveComponent = curveNorm * tiltCamera.curveWeight;
+    const combined = clamp(lateralComponent + curveComponent, -1, 1);
+    const speedPower = Number.isFinite(tiltCamera.speedPower) ? Math.max(0, tiltCamera.speedPower) : 1;
+    const speedScale = Math.pow(speedPct, speedPower);
+    const baseTargetDeg = tiltCamera.direction * combined * tiltCamera.maxDeg * speedScale;
+    const surfaceDegRaw = computeSurfaceTiltDeg();
+    state.surfaceTiltDeg = surfaceDegRaw;
+    const surfaceInfluence = Number.isFinite(tiltSurface.influence) ? tiltSurface.influence : 1;
+    const surfaceContribution = surfaceDegRaw * surfaceInfluence;
+    const camTargetDeg = baseTargetDeg + surfaceContribution;
+    const camResponse = clamp(Number.isFinite(tiltCamera.response) ? tiltCamera.response : 0.1, 0, 1);
+    state.camRollDeg += (camTargetDeg - state.camRollDeg) * camResponse;
     const pivotX = W * 0.5;
     const pivotY = Math.min(bodyTmp.screen.y + 12, H * 0.95);
     glr.setRollPivot((state.camRollDeg * Math.PI) / 180, pivotX, pivotY);
-    const cliffDeg = typeof state.getAdditiveTiltDeg === 'function' ? state.getAdditiveTiltDeg() : 0;
-    state.playerTiltDeg += (cliffDeg - state.playerTiltDeg) * 0.35;
+    const playerLeanScale = Number.isFinite(tiltPlayer.leanScale) ? tiltPlayer.leanScale : 0.6;
+    const playerTargetDeg = baseTargetDeg * playerLeanScale + surfaceDegRaw;
+    const playerMaxDeg = Number.isFinite(tiltPlayer.maxDeg) ? Math.max(0, tiltPlayer.maxDeg) : null;
+    const playerClamped = playerMaxDeg != null ? clamp(playerTargetDeg, -playerMaxDeg, playerMaxDeg) : playerTargetDeg;
+    const playerResponse = clamp(Number.isFinite(tiltPlayer.response) ? tiltPlayer.response : 0.35, 0, 1);
+    state.playerTiltDeg += (playerClamped - state.playerTiltDeg) * playerResponse;
   }
 
   function buildWorldDrawList(baseSeg, basePct, frame, zoneData){
