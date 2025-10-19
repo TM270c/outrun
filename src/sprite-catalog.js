@@ -52,6 +52,13 @@
 
   const TREE_ATLAS_FRAMES = makeFrames(0, 15);
 
+  const TREE_TAPER_DEMO_ASSETS = [
+    { type: 'atlas', key: 'tree', frames: makeFrames(0, 3) },
+    { type: 'atlas', key: 'tree', frames: makeFrames(4, 7) },
+    { type: 'atlas', key: 'tree', frames: makeFrames(8, 11) },
+    { type: 'atlas', key: 'tree', frames: makeFrames(12, 15) },
+  ];
+
   const CATALOG_SOURCE = [
     {
       spriteId: 'tree_forest',
@@ -74,6 +81,20 @@
       baseClip: { frames: TREE_ATLAS_FRAMES.slice(), playback: 'loop' },
       interactClip: null,
       frameDuration: 0.08,
+    },
+    {
+      spriteId: 'tree_forest_taper_demo',
+      metrics: TREE_ATLAS_METRICS,
+      assets: TREE_TAPER_DEMO_ASSETS.map((asset) => ({
+        type: asset.type,
+        key: asset.key,
+        frames: asset.frames.slice(),
+      })),
+      type: 'static',
+      interaction: 'static',
+      baseClip: null,
+      interactClip: null,
+      frameDuration: null,
     },
   ];
 
