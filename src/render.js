@@ -458,6 +458,11 @@
   const SNOW_SCREEN_MIN_RADIUS = 12;
   const SNOW_SCREEN_FOOTPRINT_SCALE = 0.8;
   const SNOW_SCREEN_BASE_EXPANSION = 5; // expand the base snow screen footprint without altering per-axis scaling math
+  const SPARK_SIZE_RANGE = { min: 6, max: 18 };
+  const SPARK_COLOR_COLD = [1, 0.4, 0.15];
+  const SPARK_COLOR_HOT = [1, 0.9, 0.5];
+  const SPARK_BASE_ALPHA = 0.75;
+  const SPARK_MIN_ALPHA_SCALE = 0.35;
   const SNOW_FIELD_POOL_SIZE = 12;
   const SNOW_FIELD_SEED_STEP = 0x45d9f3b;
   const EMPTY_SNOW_FIELD = {
@@ -1615,20 +1620,21 @@
     })();
 
     if (sparkInfo && sparkInfo.spawn && sparkInfo.side){
-      const spawnRate = (20 + speedPct * 40) * sparkInfo.intensity;
+      const spawnRate = (26 + speedPct * 52) * sparkInfo.intensity;
       sparkGroup.spawnAccumulator += spawnRate * dt;
       const rng = sparkGroup.rng || mulberry32((segIndex || 0) ^ 0x51f15e5d);
       sparkGroup.rng = rng;
       while (sparkGroup.spawnAccumulator >= 1){
         sparkGroup.spawnAccumulator -= 1;
-        const clusterRadius = 0.015;
-        const pxNorm = clamp((rng() - 0.5) * clusterRadius * 2, -0.1, 0.1);
-        const startY = 0.35 + rng() * 0.1;
-        const upward = 0.55 + rng() * 0.35;
-        const lateral = (rng() - 0.5) * 0.12;
-        const life = 0.35 + rng() * 0.3;
-        const sizeNorm = clamp(0.5 + rng() * 0.5, 0, 1);
-        const alphaSpark = clamp(0.7 + rng() * 0.25, 0, 1);
+        const clusterRadius = 0.04;
+        const pxNorm = clamp((rng() - 0.5) * clusterRadius * 2, -0.18, 0.18);
+        const startY = 0.32 + rng() * 0.08;
+        const upward = 0.7 + rng() * 0.4;
+        const lateral = (rng() - 0.5) * 0.22;
+        const life = 0.42 + rng() * 0.36;
+        const sizeNorm = clamp(0.35 + rng() * 0.65, 0, 1);
+        const alphaSpark = clamp(0.8 + rng() * 0.18, 0, 1);
+        const heat = clamp(rng(), 0, 1);
         sparkGroup.particles.push({
           x: pxNorm,
           y: startY,
@@ -1638,16 +1644,16 @@
           life,
           size: sizeNorm,
           alpha: alphaSpark,
+          heat,
         });
       }
     } else {
       sparkGroup.spawnAccumulator = Math.min(sparkGroup.spawnAccumulator, 1);
     }
 
-    const gravity = 2.2;
-    const lateralDamp = 1.5;
+    const gravity = 2.6;
+    const lateralDamp = 1.25;
     const particles = sparkGroup.particles;
-    const sparkBaseColor = [1, 0.35, 0.15, 1];
     for (let i = particles.length - 1; i >= 0; i--){
       const p = particles[i];
       if (!p) {
@@ -1663,15 +1669,25 @@
         particles.splice(i, 1);
         continue;
       }
-      const baseSizePx = lerp(snowSizeRange.min, snowSizeRange.max, clamp(p.size, 0, 1));
-      const flakeSizePx = Math.max(1, Math.round(baseSizePx * perspectiveScale));
+      const sparkSizeBase = lerp(SPARK_SIZE_RANGE.min, SPARK_SIZE_RANGE.max, clamp(p.size, 0, 1));
+      const sparkScale = clamp(radius / 96, 0.35, 2.5);
+      const flakeSizePx = Math.max(1, Math.round(sparkSizeBase * sparkScale));
       const pxSpark = x + p.x * diameter;
       const pySpark = y + p.y * diameter;
+      const heat = Number.isFinite(p.heat) ? clamp(p.heat, 0, 1) : 0;
+      const baseAlpha = Number.isFinite(p.alpha) ? clamp(p.alpha, 0, 1) : 1;
+      const envAlpha = Number.isFinite(alpha) ? clamp(alpha, 0, 1) : 1;
+      const sparkAlpha = clamp(baseAlpha * Math.max(envAlpha, SPARK_MIN_ALPHA_SCALE), 0, 1);
+      const colorMix = [
+        lerp(SPARK_COLOR_COLD[0], SPARK_COLOR_HOT[0], heat),
+        lerp(SPARK_COLOR_COLD[1], SPARK_COLOR_HOT[1], heat),
+        lerp(SPARK_COLOR_COLD[2], SPARK_COLOR_HOT[2], heat),
+      ];
       const tint = [
-        sparkBaseColor[0],
-        sparkBaseColor[1],
-        sparkBaseColor[2],
-        alpha * (Number.isFinite(p.alpha) ? clamp(p.alpha, 0, 1) : 1),
+        colorMix[0],
+        colorMix[1],
+        colorMix[2],
+        clamp(Math.max(sparkAlpha, SPARK_BASE_ALPHA * envAlpha), 0, 1),
       ];
       drawSnowLikeQuad(pxSpark, pySpark, flakeSizePx, tint);
     }
