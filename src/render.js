@@ -58,16 +58,58 @@
 
   const textures = assets ? assets.textures : {};
   const state = Gameplay.state;
-  const areTexturesEnabled = () => debug.textures !== false;
+  const areTexturesEnabled = () => debug.mode === 'off' && debug.textures !== false;
 
   const randomColorFor = (() => {
     const cache = new Map();
     const rng = mulberry32(0x6a09e667);
     const makeColor = () => {
-      const brightness = 0.55 + rng() * 0.2;
-      const span = 0.12;
-      const channel = () => clamp(brightness + (rng() - 0.5) * span, 0.25, 0.9);
-      return [channel(), channel(), channel(), 1];
+      const hue = rng();
+      const saturation = clamp(0.75 + rng() * 0.25, 0, 1);
+      const value = clamp(0.8 + rng() * 0.2, 0, 1);
+      const h = (hue * 6) % 6;
+      const sector = Math.floor(h);
+      const fraction = h - sector;
+      const p = value * (1 - saturation);
+      const q = value * (1 - fraction * saturation);
+      const t = value * (1 - (1 - fraction) * saturation);
+      let r = value;
+      let g = t;
+      let b = p;
+      switch (sector) {
+        case 0:
+          r = value;
+          g = t;
+          b = p;
+          break;
+        case 1:
+          r = q;
+          g = value;
+          b = p;
+          break;
+        case 2:
+          r = p;
+          g = value;
+          b = t;
+          break;
+        case 3:
+          r = p;
+          g = q;
+          b = value;
+          break;
+        case 4:
+          r = t;
+          g = p;
+          b = value;
+          break;
+        case 5:
+        default:
+          r = value;
+          g = p;
+          b = q;
+          break;
+      }
+      return [r, g, b, 1];
     };
     return (key) => {
       const id = key || 'default';
