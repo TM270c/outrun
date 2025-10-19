@@ -1,8 +1,8 @@
 (function (global) {
-  const { Gameplay, AppScreens, Config } = global;
+  const { Gameplay, AppScreens, Config, World } = global;
 
-  if (!Gameplay || !AppScreens || !Config) {
-    throw new Error('App module requires Gameplay, AppScreens, and Config globals');
+  if (!Gameplay || !AppScreens || !Config || !World) {
+    throw new Error('App module requires Gameplay, AppScreens, Config, and World globals');
   }
 
   const mainMenuOptions = [
@@ -16,6 +16,23 @@
     { key: 'quit', label: 'Quit to Menu' },
   ];
 
+  const vehicleOptions = [
+    {
+      key: 'car',
+      label: 'Sports Car',
+      description: 'Lightweight racer built for speed.',
+      atlasTextureKey: 'playerCar',
+      previewPath: 'tex/player-select-car.png',
+    },
+    {
+      key: 'van',
+      label: 'Turbo Van',
+      description: 'Sturdy ride with room to spare.',
+      atlasTextureKey: 'playerVan',
+      previewPath: 'tex/player-select-van.png',
+    },
+  ];
+
   const settingsMenuKeys = ['snow', 'back'];
   const IDLE_TIMEOUT_MS = 5000;
 
@@ -24,6 +41,8 @@
     mainMenuIndex: 0,
     pauseMenuIndex: 0,
     settingsMenuIndex: 0,
+    vehicleSelectIndex: 0,
+    selectedVehicleKey: vehicleOptions.length ? vehicleOptions[0].key : null,
     settings: { snowEnabled: true, debugEnabled: false },
     lastInteractionAt: Date.now(),
     leaderboard: {
@@ -77,6 +96,18 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function resolveAssetUrlSafe(path) {
+    if (!path) return '';
+    try {
+      if (World && typeof World.resolveAssetUrl === 'function') {
+        return World.resolveAssetUrl(path);
+      }
+    } catch (err) {
+      return path;
+    }
+    return path;
   }
 
   function formatTimeMs(value) {
@@ -238,6 +269,25 @@
     );
   }
 
+  function renderVehicleSelect() {
+    if (!AppScreens.vehicleSelect) return '';
+    const total = vehicleOptions.length;
+    const index = clampIndex(state.vehicleSelectIndex, total);
+    const option = vehicleOptions[index] || vehicleOptions[0] || {};
+
+    return AppScreens.vehicleSelect(
+      {
+        title: 'Select Vehicle',
+        vehicleLabel: option.label || '',
+        vehicleDescription: option.description || '',
+        optionIndex: index,
+        optionCount: total,
+        previewSrc: option.previewPath || '',
+      },
+      { escapeHtml, resolveAssetUrl: resolveAssetUrlSafe },
+    );
+  }
+
   function renderAttract() {
     if (!AppScreens.attract) return '';
     return AppScreens.attract({ videoSrc: 'video/attract-loop.mp4' });
@@ -302,6 +352,8 @@
       html = renderSettings();
     } else if (state.mode === 'paused') {
       html = renderPauseMenu();
+    } else if (state.mode === 'vehicleSelect') {
+      html = renderVehicleSelect();
     } else if (state.mode === 'attract') {
       html = renderAttract();
     } else if (state.mode === 'raceComplete') {
@@ -345,6 +397,65 @@
     const total = settingsMenuKeys.length;
     state.settingsMenuIndex = clampIndex(state.settingsMenuIndex + delta, total);
     updateMenuLayer();
+  }
+
+  function changeVehicleSelection(delta) {
+    const total = vehicleOptions.length;
+    if (total <= 0) return;
+    state.vehicleSelectIndex = clampIndex(state.vehicleSelectIndex + delta, total);
+    updateMenuLayer();
+  }
+
+  function getVehicleOptionByKey(key) {
+    if (!key) return null;
+    return vehicleOptions.find((option) => option && option.key === key) || null;
+  }
+
+  function applyVehicleSelection(vehicleKey) {
+    const option = getVehicleOptionByKey(vehicleKey) || vehicleOptions[0] || null;
+    if (!option) return;
+    state.selectedVehicleKey = option.key;
+    const idx = vehicleOptions.findIndex((candidate) => candidate && candidate.key === option.key);
+    if (idx >= 0) {
+      state.vehicleSelectIndex = clampIndex(idx, vehicleOptions.length);
+    }
+    const textures = (World && World.assets && World.assets.textures)
+      ? World.assets.textures
+      : null;
+    if (!textures) return;
+    const atlasKey = option.atlasTextureKey;
+    const atlasTexture = atlasKey && textures[atlasKey] ? textures[atlasKey] : null;
+    const fallbackTexture = textures.playerCar || textures.car || null;
+    if (atlasTexture || fallbackTexture) {
+      textures.playerVehicle = atlasTexture || fallbackTexture;
+    }
+  }
+
+  function showVehicleSelect() {
+    const total = vehicleOptions.length;
+    if (total <= 0) {
+      startRace();
+      return;
+    }
+    const currentIndex = vehicleOptions.findIndex((option) => option && option.key === state.selectedVehicleKey);
+    if (currentIndex >= 0) {
+      state.vehicleSelectIndex = clampIndex(currentIndex, total);
+    } else {
+      state.vehicleSelectIndex = clampIndex(state.vehicleSelectIndex, total);
+    }
+    setMode('vehicleSelect');
+  }
+
+  function activateVehicleSelection() {
+    const total = vehicleOptions.length;
+    if (total <= 0) {
+      startRace();
+      return;
+    }
+    const index = clampIndex(state.vehicleSelectIndex, total);
+    const option = vehicleOptions[index];
+    if (!option) return;
+    startRace(option.key);
   }
 
   function adjustCurrentNameLetter(delta) {
@@ -465,7 +576,8 @@
     input.hop = false;
   }
 
-  function startRace() {
+  function startRace(vehicleKey = state.selectedVehicleKey) {
+    applyVehicleSelection(vehicleKey);
     resetRaceCompleteState();
     setMode('playing');
     resetGameplayInputs();
@@ -515,7 +627,7 @@
     const option = mainMenuOptions[state.mainMenuIndex];
     if (!option) return;
     if (option.key === 'start') {
-      startRace();
+      showVehicleSelect();
     } else if (option.key === 'leaderboard') {
       showLeaderboard();
     } else if (option.key === 'settings') {
@@ -685,6 +797,34 @@
     return false;
   }
 
+  function handleVehicleSelectKeyDown(e) {
+    if (e.code === 'ArrowLeft') {
+      changeVehicleSelection(-1);
+      e.preventDefault();
+      return true;
+    }
+    if (e.code === 'ArrowRight') {
+      changeVehicleSelection(1);
+      e.preventDefault();
+      return true;
+    }
+    if (['Space', 'Enter'].includes(e.code)) {
+      activateVehicleSelection();
+      e.preventDefault();
+      return true;
+    }
+    if (e.code === 'Escape') {
+      setMode('menu');
+      e.preventDefault();
+      return true;
+    }
+    if (e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+      e.preventDefault();
+      return true;
+    }
+    return false;
+  }
+
   function handlePauseKeyDown(e) {
     if (['ArrowUp', 'ArrowLeft'].includes(e.code)) {
       handlePauseNavigation(-1);
@@ -792,6 +932,8 @@
     let handled = false;
     if (state.mode === 'menu') {
       handled = handleMenuKeyDown(e);
+    } else if (state.mode === 'vehicleSelect') {
+      handled = handleVehicleSelectKeyDown(e);
     } else if (state.mode === 'leaderboard') {
       handled = handleLeaderboardKeyDown(e);
     } else if (state.mode === 'settings') {
@@ -844,6 +986,7 @@
     state.settingsMenuIndex = 0;
     state.lastInteractionAt = now();
     resetRaceCompleteState();
+    applyVehicleSelection(state.selectedVehicleKey);
     applyDebugModeSetting();
     setMode('menu');
     requestLeaderboard();
