@@ -291,17 +291,17 @@
   const DRIFT_SMOKE_FORWARD_INHERITANCE = 0.4;
   const DRIFT_SMOKE_DRAG = 1.75;
 
-  const SPARKS_INTERVAL = 2 / 60;
+  const SPARKS_INTERVAL = .25 / 60;
   const SPARKS_INTERVAL_JITTER = .5;
-  const SPARKS_LIFETIME = 20 / 60;
+  const SPARKS_LIFETIME = 30 / 60;
   const SPARKS_LONGITUDINAL_JITTER = segmentLength * 1;
-  const SPARKS_FORWARD_INHERITANCE = 0.05;
-  const SPARKS_DRAG = 2.5;
-  const SPARKS_LATERAL_SPEED = { min: .05, max: .12 };
-  const SPARKS_SCREEN_LATERAL_SPEED = { min: 24, max: 48 };
-  const SPARKS_SCREEN_VERTICAL_SPEED = { min: -120, max: -60 };
-  const SPARKS_SCREEN_GRAVITY = 360;
-  const SPARKS_SCREEN_DRAG = 3;
+  const SPARKS_FORWARD_INHERITANCE = 0;
+  const SPARKS_DRAG = 10;
+  const SPARKS_LATERAL_SPEED = { min: -.5, max: 0.5};
+  const SPARKS_SCREEN_LATERAL_SPEED = { min: -1, max: 10};
+  const SPARKS_SCREEN_VERTICAL_SPEED = { min: -200, max: 200 };
+  const SPARKS_SCREEN_GRAVITY = 40;
+  const SPARKS_SCREEN_DRAG = 10;
 
   const DEFAULT_SPRITE_META = {
     PLAYER: {
