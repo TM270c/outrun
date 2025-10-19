@@ -1703,7 +1703,7 @@
     const segT = clamp01((state.phys.s - seg.p1.world.z) / segmentLength);
     const slope = cliffLateralSlopeAt(idx, state.playerN, segT);
     if (Math.abs(slope) <= 1e-6) return;
-    const dir = -Math.sign(slope);
+    const dir = Math.sign(slope);
     if (dir === 0) return;
     const s = Math.max(0, Math.min(1.5, ax - 1));
     const gain = 1 + cliffs.distanceGain * s;
