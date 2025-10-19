@@ -1641,19 +1641,39 @@
 
   function getAdditiveTiltDeg() {
     if (!tiltAdd.tiltAddEnabled) return 0;
-    const seg = segmentAtS(state.phys.s);
+    if (typeof floorElevationAt !== 'function') return 0;
+
+    const { phys } = state;
+    const seg = segmentAtS(phys.s);
     if (!seg) return 0;
-    const segT = clamp01((state.phys.s - seg.p1.world.z) / segmentLength);
-    const info = cliffSurfaceInfoAt(seg.index, state.playerN, segT);
-    const slopeA = info.slopeA ?? 0;
-    const slopeB = info.slopeB ?? 0;
-    let slope = info.slope ?? 0;
-    if (info.section === 'A') {
-      slope = slopeA;
-    } else if (info.section === 'B') {
-      slope = slopeB;
-    }
-    const angleDeg = (180 / Math.PI) * Math.atan(slope);
+
+    const width = (() => {
+      if (typeof roadWidthAt === 'function') {
+        const w = roadWidthAt(phys.s);
+        if (Number.isFinite(w) && Math.abs(w) > 1e-6) return w;
+      }
+      return Number.isFinite(track.roadWidth) ? track.roadWidth : 0;
+    })();
+
+    if (!Number.isFinite(width) || Math.abs(width) <= 1e-6) return 0;
+
+    const halfSample = clamp(playerHalfWN() * 0.5, 0.05, 0.75);
+    const nLeft = state.playerN - halfSample;
+    const nRight = state.playerN + halfSample;
+
+    const hLeft = floorElevationAt(phys.s, nLeft);
+    const hRight = floorElevationAt(phys.s, nRight);
+
+    if (!Number.isFinite(hLeft) || !Number.isFinite(hRight)) return 0;
+
+    const dxNorm = nRight - nLeft;
+    const dx = dxNorm * width;
+    if (!Number.isFinite(dx) || Math.abs(dx) <= 1e-6) return 0;
+
+    const slope = (hRight - hLeft) / dx;
+    if (!Number.isFinite(slope)) return 0;
+
+    const angleDeg = -(180 / Math.PI) * Math.atan(slope);
     const tiltDeg = tiltBase.tiltDir * angleDeg;
     if (tiltAdd.tiltAddMaxDeg == null) return tiltDeg;
     return clamp(tiltDeg, -tiltAdd.tiltAddMaxDeg, tiltAdd.tiltAddMaxDeg);
