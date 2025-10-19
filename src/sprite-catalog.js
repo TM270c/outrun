@@ -59,6 +59,16 @@
     { type: 'atlas', key: 'tree', frames: makeFrames(12, 15) },
   ];
 
+  const PICKUP_METRICS = {
+    wN: 0.1,
+    aspect: 1.0,
+    tint: [1, 0.92, 0.2, 1],
+    textureKey: 'animPlate01',
+    atlas: { columns: 4, totalFrames: 16 },
+  };
+
+  const PICKUP_BASE_FRAMES = makeFrames(0, 3);
+
   const CATALOG_SOURCE = [
     {
       spriteId: 'tree_forest',
@@ -95,6 +105,18 @@
       baseClip: null,
       interactClip: null,
       frameDuration: null,
+    },
+    {
+      spriteId: 'pickup_orb',
+      metrics: PICKUP_METRICS,
+      assets: [
+        { type: 'atlas', key: 'animPlate01', frames: PICKUP_BASE_FRAMES.slice() },
+      ],
+      type: 'trigger',
+      interaction: 'toggle',
+      baseClip: { frames: PICKUP_BASE_FRAMES.slice(), playback: 'loop' },
+      interactClip: null,
+      frameDuration: 0.09,
     },
   ];
 

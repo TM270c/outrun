@@ -954,34 +954,6 @@
         });
       }
 
-      if (seg.pickups && seg.pickups.length){
-        const pickupMeta = SPRITE_META.PICKUP;
-        for (let pi = 0; pi < seg.pickups.length; pi += 1){
-          const pk = seg.pickups[pi];
-          if (pk.collected) continue;
-          const scale = p1.screen.scale;
-          const xCenter = p1.screen.x + scale * pk.offset * rw1 * HALF_VIEW;
-          const yBase = p1.screen.y;
-          const zObj = p1.camera.z + 1e-3;
-          const farS = spriteFarScaleFromZ(zObj);
-          let wPx = Math.max(6, scale * pickupMeta.wN * rw1 * HALF_VIEW);
-          let hPx = Math.max(6, wPx * pickupMeta.aspect);
-          wPx *= farS;
-          hPx *= farS;
-          drawList.push({
-            type: 'pickup',
-            depth: zObj,
-            x: xCenter,
-            y: yBase,
-            w: wPx,
-            h: hPx,
-            z: zObj,
-            tint: pickupMeta.tint,
-            tex: pickupMeta.tex ? pickupMeta.tex() : null,
-            colorKey: `pickup:${seg.index}:${pi}`,
-          });
-        }
-      }
     }
 
     return drawList;
@@ -1025,18 +997,6 @@
         drawBillboard(
           item.x,
           item.y,
-          item.w,
-          item.h,
-          item.z,
-          item.tint,
-          item.tex,
-          item.uv,
-          item.colorKey,
-        );
-      } else if (item.type === 'pickup'){
-        drawBillboard(
-          item.x,
-          item.y - item.h * 0.2,
           item.w,
           item.h,
           item.z,
@@ -1426,7 +1386,7 @@
       ? build.version
       : null;
     const versionHUD = buildVersion ? `ver:${buildVersion}  ` : '';
-    const hud = `${versionHUD}${boostingHUD}${driftHUD}  vtan:${state.phys.vtan.toFixed(1)}  grounded:${state.phys.grounded}  kappa:${kap.toFixed(5)}  n:${state.playerN.toFixed(2)}  cars:${state.cars.length}  pickups:${state.pickupCollected}/${state.pickupTotal}`;
+    const hud = `${versionHUD}${boostingHUD}${driftHUD}  vtan:${state.phys.vtan.toFixed(1)}  grounded:${state.phys.grounded}  kappa:${kap.toFixed(5)}  n:${state.playerN.toFixed(2)}  cars:${state.cars.length}`;
     ctxSide.fillStyle = '#fff';
     ctxSide.strokeStyle = '#000';
     ctxSide.lineWidth = 3;
