@@ -912,6 +912,36 @@
     }
   }
 
+  function drawBillboardRotated(
+    anchorX,
+    baseY,
+    wPx,
+    hPx,
+    fogZ,
+    tint = [1, 1, 1, 1],
+    texture = null,
+    uvOverride = null,
+    colorKey = null,
+    angleRad = 0,
+  ){
+    if (!glr) return;
+    const texturesEnabled = areTexturesEnabled();
+    const uv = uvOverride || { u1: 0, v1: 0, u2: 1, v2: 0, u3: 1, v3: 1, u4: 0, v4: 1 };
+    const fog = fogArray(fogZ);
+    const centerX = anchorX;
+    const centerY = baseY - hPx * 0.5;
+    const quad = makeRotatedQuad(centerX, centerY, wPx, hPx, angleRad || 0);
+    const useTexture = texturesEnabled && texture;
+    if (useTexture) {
+      glr.drawQuadTextured(texture, quad, uv, undefined, fog);
+    } else {
+      const solidTint = Array.isArray(tint)
+        ? tint
+        : randomColorFor(colorKey || 'billboard');
+      glr.drawQuadSolid(quad, solidTint, fog);
+    }
+  }
+
   function segmentAtS(s) {
     const length = getTrackLength();
     if (!segments.length || length <= 0) return null;
@@ -1265,6 +1295,20 @@
         hPx *= scaleFactor * stretchFactor;
         wPx *= farS;
         hPx *= farS;
+        let angle = null;
+        if (spr.kind === 'GUARD_RAIL_SPARKS') {
+          const leftSide = (spr.guardRailSide || spr.offset) < 0;
+          const railStart = leftSide ? p1LS : p1RS;
+          const railEnd = leftSide ? p2LS : p2RS;
+          if (railStart && railEnd && railStart.screen && railEnd.screen) {
+            const dxRail = (railEnd.screen.x - railStart.screen.x);
+            const dyRail = (railEnd.screen.y - railStart.screen.y);
+            if (Number.isFinite(dxRail) && Number.isFinite(dyRail)) {
+              const theta = Math.atan2(dyRail, dxRail);
+              angle = theta - Math.PI * 0.5;
+            }
+          }
+        }
         const drawX = xCenter;
         const texture = typeof meta.tex === 'function' ? meta.tex(spr) : (meta.tex || null);
         let uv = null;
@@ -1287,6 +1331,7 @@
           tint: meta.tint,
           tex: texture,
           uv,
+          angle,
           kind: spr.kind || null,
           colorKey: `prop:${spr.kind || 'generic'}`,
         });
@@ -1341,8 +1386,8 @@
       if (item.type === 'strip'){
         perf.registerStrip();
         renderStrip(item);
-      } else if (item.type === 'npc' || item.type === 'prop'){
-        perf.registerSprite(item.type === 'npc' ? 'npc' : 'prop');
+      } else if (item.type === 'npc'){
+        perf.registerSprite('npc');
         drawBillboard(
           item.x,
           item.y,
@@ -1354,6 +1399,35 @@
           item.uv,
           item.colorKey,
         );
+      } else if (item.type === 'prop'){
+        perf.registerSprite('prop');
+        const hasAngle = Number.isFinite(item.angle) && Math.abs(item.angle) > 1e-4;
+        if (hasAngle) {
+          drawBillboardRotated(
+            item.x,
+            item.y,
+            item.w,
+            item.h,
+            item.z,
+            item.tint,
+            item.tex,
+            item.uv,
+            item.colorKey,
+            item.angle,
+          );
+        } else {
+          drawBillboard(
+            item.x,
+            item.y,
+            item.w,
+            item.h,
+            item.z,
+            item.tint,
+            item.tex,
+            item.uv,
+            item.colorKey,
+          );
+        }
       } else if (item.type === 'snowScreen'){
         perf.registerSnowScreen();
         renderSnowScreen(item);
