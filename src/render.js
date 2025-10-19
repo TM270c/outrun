@@ -60,6 +60,8 @@
   const state = Gameplay.state;
   const areTexturesEnabled = () => debug.mode === 'off' && debug.textures !== false;
 
+  const WHITE_TINT = Object.freeze([1, 1, 1, 1]);
+
   const randomColorFor = (() => {
     const cache = new Map();
     const rng = mulberry32(0x6a09e667);
@@ -571,8 +573,11 @@
     const fog = fogArray(fogZ);
     const quad = {x1:x1, y1:y1, x2:x2, y2:y1, x3:x2, y3:y2, x4:x1, y4:y2};
     const useTexture = texturesEnabled && texture;
+    const tintToApply = useTexture
+      ? WHITE_TINT
+      : (Array.isArray(tint) ? tint : WHITE_TINT);
     if (useTexture) {
-      glr.drawQuadTextured(texture, quad, uv, tint, fog);
+      glr.drawQuadTextured(texture, quad, uv, tintToApply, fog);
     } else {
       glr.drawQuadSolid(quad, randomColorFor(colorKey || 'billboard'), fog);
     }
