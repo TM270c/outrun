@@ -272,6 +272,21 @@
   const DRIFT_SMOKE_DRAG = 1.75;
   const DRIFT_SMOKE_LATERAL_SPEED = 0.2;
 
+  const GUARD_SPARK_INTERVAL = 1 / 60;
+  const GUARD_SPARK_INTERVAL_JITTER = 0.35;
+  const GUARD_SPARK_LIFETIME = 12 / 60;
+  const GUARD_SPARK_SIDE_OFFSET = 0.06;
+  const GUARD_SPARK_SIDE_JITTER = 0.15;
+  const GUARD_SPARK_LONGITUDINAL_JITTER = segmentLength * 0.005;
+  const GUARD_SPARK_FORWARD_INHERITANCE = 0.3;
+  const GUARD_SPARK_DRAG = 5;
+  const GUARD_SPARK_LATERAL_SPEED = 0.04;
+  const GUARD_SPARK_BURST_COUNT = 2;
+  const GUARD_SPARK_SCALE_MIN = 0.7;
+  const GUARD_SPARK_SCALE_MAX = 1.9;
+  const GUARD_SPARK_STRETCH_MIN = 1;
+  const GUARD_SPARK_STRETCH_MAX = 2.4;
+
   const DEFAULT_SPRITE_META = {
     PLAYER: { wN: 0.16, aspect: 0.7, tint: [0.9, 0.22, 0.21, 1], tex: () => null },
     CAR:    { wN: 0.28, aspect: 0.7, tint: [0.2, 0.7, 1.0, 1], tex: () => null },
@@ -290,6 +305,7 @@
     },
     PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
     DRIFT_SMOKE: { wN: 0.1, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], tex: () => null },
+    GUARD_SPARK: { wN: 0.05, aspect: 1.0, tint: [1.0, 0.62, 0.2, 1], tex: () => null },
     ANIM_PLATE: {
       wN: 0.1,
       aspect: 1.0,
@@ -895,6 +911,8 @@
 
   const driftSmokePool = [];
 
+  const guardSparkPool = [];
+
   function computeDriftSmokeInterval() {
     const base = Math.max(1e-4, DRIFT_SMOKE_INTERVAL);
     const jitter = Math.max(0, DRIFT_SMOKE_INTERVAL_JITTER);
@@ -920,6 +938,41 @@
     sprite.ttl = 0;
     sprite.offset = 0;
     driftSmokePool.push(sprite);
+  }
+
+  function computeGuardSparkInterval() {
+    const base = Math.max(1e-4, GUARD_SPARK_INTERVAL);
+    const jitter = Math.max(0, GUARD_SPARK_INTERVAL_JITTER);
+    if (jitter <= 1e-6) return base;
+    const span = base * jitter;
+    return base + (Math.random() * 2 - 1) * span;
+  }
+
+  function allocGuardSparkSprite() {
+    return guardSparkPool.length ? guardSparkPool.pop() : { kind: 'GUARD_SPARK' };
+  }
+
+  function recycleGuardSparkSprite(sprite) {
+    if (!sprite || sprite.kind !== 'GUARD_SPARK') return;
+    sprite.animation = null;
+    sprite.impactState = null;
+    sprite.sparkMotion = null;
+    sprite.interactable = false;
+    sprite.interacted = false;
+    sprite.impactable = false;
+    sprite.segIndex = 0;
+    sprite.s = 0;
+    sprite.ttl = 0;
+    sprite.scale = 1;
+    sprite.stretch = 1;
+    sprite.offset = 0;
+    guardSparkPool.push(sprite);
+  }
+
+  function recycleTransientSprite(sprite) {
+    if (!sprite) return;
+    if (sprite.kind === 'DRIFT_SMOKE') recycleDriftSmokeSprite(sprite);
+    else if (sprite.kind === 'GUARD_SPARK') recycleGuardSparkSprite(sprite);
   }
 
   const NPC_DEFAULTS = { total: 20, edgePad: 0.02, avoidLookaheadSegs: 20 };
@@ -982,6 +1035,9 @@
     },
     driftSmokeTimer: 0,
     driftSmokeNextInterval: computeDriftSmokeInterval(),
+    guardSparkTimer: 0,
+    guardSparkNextInterval: computeGuardSparkInterval(),
+    guardSparkContactSide: 0,
     cars: [],
     spriteMeta: DEFAULT_SPRITE_META,
     getKindScale: defaultGetKindScale,
@@ -1105,6 +1161,70 @@
     return getSpriteMeta('PLAYER').wN * state.getKindScale('PLAYER') * 0.5;
   }
 
+  function guardSparkScaleForSpeed(forwardSpeed) {
+    const maxSpeed = (player && Number.isFinite(player.topSpeed) && player.topSpeed > 0)
+      ? player.topSpeed
+      : 1;
+    const speed = Math.max(0, Number.isFinite(forwardSpeed) ? forwardSpeed : 0);
+    const ratio = maxSpeed > 1e-6 ? clamp01(speed / maxSpeed) : 0;
+    return lerp(GUARD_SPARK_SCALE_MIN, GUARD_SPARK_SCALE_MAX, ratio);
+  }
+
+  function guardSparkStretchForSpeed(forwardSpeed) {
+    const maxSpeed = (player && Number.isFinite(player.topSpeed) && player.topSpeed > 0)
+      ? player.topSpeed
+      : 1;
+    const speed = Math.max(0, Number.isFinite(forwardSpeed) ? forwardSpeed : 0);
+    const ratio = maxSpeed > 1e-6 ? clamp01(speed / maxSpeed) : 0;
+    return lerp(GUARD_SPARK_STRETCH_MIN, GUARD_SPARK_STRETCH_MAX, ratio);
+  }
+
+  function spawnGuardRailSparks(seg, sideDir, forwardSpeed) {
+    if (!seg || !hasSegments()) return;
+    const { phys } = state;
+    if (!phys) return;
+    const sprites = ensureArray(seg, 'sprites');
+    const direction = sideDir >= 0 ? 1 : -1;
+    const baseS = Number.isFinite(phys.s)
+      ? phys.s
+      : ((seg.p1 && seg.p1.world) ? seg.p1.world.z : 0);
+    const trackLength = trackLengthRef();
+    const half = playerHalfWN();
+    const offsetBase = state.playerN + direction * (half + GUARD_SPARK_SIDE_OFFSET);
+    const count = Math.max(1, GUARD_SPARK_BURST_COUNT);
+    const clampedForward = Math.max(0, Number.isFinite(forwardSpeed) ? forwardSpeed : 0);
+    const baseScale = guardSparkScaleForSpeed(clampedForward);
+    const baseStretch = guardSparkStretchForSpeed(clampedForward);
+    for (let i = 0; i < count; i += 1) {
+      const sprite = allocGuardSparkSprite();
+      const lateralJitter = (Math.random() * 2 - 1) * half * GUARD_SPARK_SIDE_JITTER;
+      const spawnOffset = offsetBase + lateralJitter;
+      const sJitter = (Math.random() * 2 - 1) * GUARD_SPARK_LONGITUDINAL_JITTER;
+      const spawnS = trackLength > 0 ? wrapDistance(baseS, sJitter, trackLength) : baseS + sJitter;
+      const inheritedForward = clampedForward * GUARD_SPARK_FORWARD_INHERITANCE * (0.75 + 0.5 * Math.random());
+      const lateralVelBase = direction * clampedForward * GUARD_SPARK_LATERAL_SPEED;
+      const lateralVel = lateralVelBase + (Math.random() * 2 - 1) * GUARD_SPARK_LATERAL_SPEED * 0.2;
+      sprite.kind = 'GUARD_SPARK';
+      sprite.animation = null;
+      sprite.impactState = null;
+      sprite.offset = spawnOffset;
+      sprite.segIndex = seg.index;
+      sprite.s = spawnS;
+      sprite.ttl = GUARD_SPARK_LIFETIME;
+      sprite.scale = baseScale;
+      sprite.stretch = baseStretch;
+      sprite.interactable = false;
+      sprite.interacted = false;
+      sprite.impactable = false;
+      sprite.sparkMotion = {
+        forwardVel: inheritedForward,
+        drag: GUARD_SPARK_DRAG,
+        lateralVel,
+      };
+      sprites.push(sprite);
+    }
+  }
+
   function spawnDriftSmokeSprites() {
     if (!hasSegments()) return;
     const { phys } = state;
@@ -1142,6 +1262,48 @@
       };
       sprites.push(sprite);
     }
+  }
+
+  function applyGuardSparkMotion(sprite, dt, currentSeg = null) {
+    if (!sprite || sprite.kind !== 'GUARD_SPARK') return null;
+    const motion = sprite.sparkMotion;
+    if (!motion) return null;
+    const step = Math.max(0, Number.isFinite(dt) ? dt : 0);
+    if (step <= 0) return null;
+
+    const trackLength = trackLengthRef();
+
+    if (Number.isFinite(motion.forwardVel) && motion.forwardVel !== 0) {
+      if (Number.isFinite(sprite.s)) {
+        const nextS = trackLength > 0
+          ? wrapDistance(sprite.s, motion.forwardVel * step, trackLength)
+          : sprite.s + motion.forwardVel * step;
+        sprite.s = nextS;
+      }
+      if (Number.isFinite(motion.drag) && motion.drag > 0) {
+        const decay = Math.max(0, 1 - motion.drag * step);
+        motion.forwardVel *= decay;
+        if (Math.abs(motion.forwardVel) <= 1e-4) motion.forwardVel = 0;
+      }
+    }
+
+    if (Number.isFinite(motion.lateralVel) && motion.lateralVel !== 0) {
+      sprite.offset += motion.lateralVel * step;
+      if (Number.isFinite(motion.drag) && motion.drag > 0) {
+        const decay = Math.max(0, 1 - motion.drag * step);
+        motion.lateralVel *= decay;
+        if (Math.abs(motion.lateralVel) <= 1e-4) motion.lateralVel = 0;
+      }
+    }
+
+    if (trackLength > 0 && Number.isFinite(sprite.s)) {
+      const seg = segmentAtS(sprite.s);
+      if (seg && currentSeg && seg !== currentSeg) {
+        return seg;
+      }
+    }
+
+    return null;
   }
 
   function applyDriftSmokeMotion(sprite, dt, currentSeg = null) {
@@ -1693,7 +1855,7 @@
       }
 
       if (remove) {
-        if (spr.kind === 'DRIFT_SMOKE') recycleDriftSmokeSprite(spr);
+        recycleTransientSprite(spr);
         seg.sprites.splice(i, 1);
       }
     }
@@ -1783,7 +1945,7 @@
         if (Number.isFinite(spr.ttl)) {
           spr.ttl -= dt;
           if (spr.ttl <= 0) {
-            if (spr.kind === 'DRIFT_SMOKE') recycleDriftSmokeSprite(spr);
+            recycleTransientSprite(spr);
             seg.sprites.splice(i, 1);
             continue;
           }
@@ -1792,6 +1954,8 @@
         let transferSeg = null;
         if (spr.kind === 'DRIFT_SMOKE') {
           transferSeg = applyDriftSmokeMotion(spr, dt, seg);
+        } else if (spr.kind === 'GUARD_SPARK') {
+          transferSeg = applyGuardSparkMotion(spr, dt, seg);
         }
 
         if (spr.animation && spr.animation.clips) {
@@ -1903,6 +2067,7 @@
     let segmentsCrossedDuringStep = [];
     let segNow = segmentAtS(phys.s);
     let guardRailContact = false;
+    let guardRailContactSide = 0;
     let offRoadNow = false;
     const segFeatures = segNow ? segNow.features : null;
     const zonesHere = boostZonesForPlayer(segNow, state.playerN);
@@ -2078,6 +2243,12 @@
       const scraping = Math.abs(preClamp) > bound - 1e-6 || Math.abs(state.playerN) >= bound - 1e-6;
       offRoadNow = Math.abs(preClamp) > OFF_ROAD_THRESHOLD || Math.abs(state.playerN) > OFF_ROAD_THRESHOLD;
       guardRailContact = scraping && segNow.features && segNow.features.rail;
+      if (guardRailContact) {
+        const preferred = Math.sign(preClamp);
+        const fallback = Math.sign(state.playerN);
+        const stored = Math.sign(state.guardSparkContactSide || 0);
+        guardRailContactSide = preferred || fallback || stored || 1;
+      }
       if (scraping) {
         const offRoadDecelLimit = player.topSpeed / 4;
         if (Math.abs(phys.vtan) > offRoadDecelLimit) {
@@ -2087,6 +2258,26 @@
       }
     } else if (metrics) {
       metrics.guardRailContactActive = false;
+    }
+
+    if (guardRailContact && segNow) {
+      const side = guardRailContactSide || state.guardSparkContactSide || 1;
+      state.guardSparkContactSide = side;
+      state.guardSparkTimer += dt;
+      let interval = (Number.isFinite(state.guardSparkNextInterval) && state.guardSparkNextInterval > 0)
+        ? state.guardSparkNextInterval
+        : computeGuardSparkInterval();
+      const forwardSpeed = Math.max(0, Math.abs(phys.vtan));
+      while (state.guardSparkTimer >= interval) {
+        spawnGuardRailSparks(segNow, side, forwardSpeed);
+        state.guardSparkTimer -= interval;
+        interval = computeGuardSparkInterval();
+      }
+      state.guardSparkNextInterval = interval;
+    } else {
+      state.guardSparkTimer = 0;
+      state.guardSparkNextInterval = computeGuardSparkInterval();
+      if (!guardRailContact) state.guardSparkContactSide = 0;
     }
 
     if (metrics) {
@@ -2372,6 +2563,9 @@
     state.boostTimer = 0;
     state.driftSmokeTimer = 0;
     state.driftSmokeNextInterval = computeDriftSmokeInterval();
+    state.guardSparkTimer = 0;
+    state.guardSparkNextInterval = computeGuardSparkInterval();
+    state.guardSparkContactSide = 0;
 
     state.camRollDeg = 0;
     state.playerTiltDeg = 0;
