@@ -289,7 +289,6 @@
       },
     },
     PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
-    PICKUP: { wN: 0.10, aspect: 1.0, tint: [1, 0.92, 0.2, 1], tex: () => null },
     DRIFT_SMOKE: { wN: 0.1, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], tex: () => null },
     ANIM_PLATE: {
       wN: 0.1,
@@ -956,8 +955,6 @@
     playerTiltDeg: 0,
     resetMatteActive: false,
     pendingRespawn: null,
-    pickupCollected: 0,
-    pickupTotal: 0,
     race: {
       active: false,
       targetLaps: 1,
@@ -1641,31 +1638,6 @@
     return base;
   }
 
-  function resolvePickupCollisionsInSeg(seg) {
-    if (!seg || !Array.isArray(seg.pickups) || !seg.pickups.length) return;
-    const pHalf = playerHalfWN();
-    const pickHalf = getSpriteMeta('PICKUP').wN * 0.5;
-    for (const p of seg.pickups) {
-      if (!p || p.collected) continue;
-      if (overlap(state.playerN, pHalf, p.offset, pickHalf, 1)) {
-        p.collected = true;
-        state.pickupCollected++;
-      }
-    }
-  }
-
-  function resolvePickupCollisionsAround(seg) {
-    if (!seg || !hasSegments()) return;
-    const seen = new Set();
-    const neighbors = [seg, segmentAtIndex(seg.index + 1), segmentAtIndex(seg.index - 1)];
-    for (const neighbor of neighbors) {
-      if (!neighbor) continue;
-      if (seen.has(neighbor.index)) continue;
-      seen.add(neighbor.index);
-      resolvePickupCollisionsInSeg(neighbor);
-    }
-  }
-
   function resolveSpriteInteractionsInSeg(seg) {
     if (!seg || !Array.isArray(seg.sprites) || !seg.sprites.length) return;
     const pHalf = playerHalfWN();
@@ -1760,7 +1732,6 @@
   function resolveSegmentCollisions(seg) {
     if (!seg) return false;
     const carHit = resolveCarCollisionsInSeg(seg);
-    resolvePickupCollisionsAround(seg);
     resolveSpriteInteractionsInSeg(seg);
     return carHit;
   }
@@ -2243,48 +2214,6 @@
     }
   }
 
-  function addPickup(segIdx, offset = 0) {
-    if (!hasSegments()) return;
-    const seg = segmentAtIndex(segIdx);
-    if (!seg) return;
-    ensureArray(seg, 'pickups').push({ offset, collected: false });
-  }
-
-  function addPickupTrail(startSeg, count, spacing = 2, offset = 0) {
-    for (let i = 0; i < count; i += 1) {
-      addPickup(startSeg + i * spacing, offset);
-    }
-  }
-
-  function spawnPickups() {
-    if (!hasSegments()) {
-      state.pickupCollected = 0;
-      state.pickupTotal = 0;
-      return;
-    }
-    for (const seg of segments) {
-      if (!seg) continue;
-      const list = ensureArray(seg, 'pickups');
-      list.length = 0;
-    }
-    state.pickupCollected = 0;
-    const boostSegments = segments.filter((seg) => seg?.features?.boost);
-    if (boostSegments.length > 0) {
-      for (const seg of boostSegments) {
-        const offset = (seg.features && seg.features.boostPickupOffset != null)
-          ? seg.features.boostPickupOffset
-          : 0;
-        addPickup(seg.index, offset);
-      }
-    } else {
-      addPickupTrail(12, 24, 2, 0.00);
-      addPickupTrail(80, 30, 2, -0.35);
-      addPickupTrail(140, 30, 2, 0.35);
-      addPickupTrail(segments.length >> 1, 16, 1, 0.0);
-    }
-    state.pickupTotal = segments.reduce((acc, seg) => acc + (Array.isArray(seg.pickups) ? seg.pickups.length : 0), 0);
-  }
-
   function keyActionFromFlag(flag, value) {
     return () => { state.input[flag] = value; };
   }
@@ -2446,7 +2375,6 @@
 
     await spawnProps();
     spawnCars();
-    spawnPickups();
     resetPlayerState({
       s: camera.backSegments * track.segmentSize,
       playerN: 0,
@@ -2498,7 +2426,6 @@
     startRaceSession,
     spawnCars,
     spawnProps,
-    spawnPickups,
     resetPlayerState,
     respawnPlayerAt,
     resetScene,

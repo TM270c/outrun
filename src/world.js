@@ -135,7 +135,7 @@
       features: featureClone,
       p1: { world: { y: prevY, z: n * segmentLength }, camera: {}, screen: {} },
       p2: { world: { y: y,    z: (n + 1) * segmentLength }, camera: {}, screen: {} },
-      sprites: [], cars: [], pickups: [],
+      sprites: [], cars: [],
       snowScreen: { color: randomSnowScreenColor() },
     });
   }
