@@ -297,6 +297,11 @@
   const SPARKS_LONGITUDINAL_JITTER = segmentLength * 1;
   const SPARKS_FORWARD_INHERITANCE = 0.4;
   const SPARKS_DRAG = 1.75;
+  const SPARKS_LATERAL_SPEED = { min: 2, max: 6 };
+  const SPARKS_SCREEN_LATERAL_SPEED = { min: 120, max: 260 };
+  const SPARKS_SCREEN_VERTICAL_SPEED = { min: -360, max: -160 };
+  const SPARKS_SCREEN_GRAVITY = 900;
+  const SPARKS_SCREEN_DRAG = 6;
 
   const DEFAULT_SPRITE_META = {
     PLAYER: {
@@ -989,6 +994,8 @@
     sprite.s = 0;
     sprite.ttl = 0;
     sprite.offset = 0;
+    sprite.screenOffsetX = 0;
+    sprite.screenOffsetY = 0;
     sparksPool.push(sprite);
   }
 
@@ -1262,6 +1269,9 @@
       const sJitter = (Math.random() * 2 - 1) * SPARKS_LONGITUDINAL_JITTER;
       const spawnS = trackLength > 0 ? wrapDistance(baseS, sJitter, trackLength) : baseS + sJitter;
       const inheritedForward = forwardSpeed * SPARKS_FORWARD_INHERITANCE * (0.8 + 0.4 * Math.random());
+      const lateralVel = sideSign * lerp(SPARKS_LATERAL_SPEED.min, SPARKS_LATERAL_SPEED.max, Math.random());
+      const screenLateral = sideSign * lerp(SPARKS_SCREEN_LATERAL_SPEED.min, SPARKS_SCREEN_LATERAL_SPEED.max, Math.random());
+      const screenVertical = lerp(SPARKS_SCREEN_VERTICAL_SPEED.min, SPARKS_SCREEN_VERTICAL_SPEED.max, Math.random());
       sprite.kind = 'SPARKS';
       sprite.offset = spawnOffset;
       sprite.segIndex = seg.index;
@@ -1273,8 +1283,15 @@
       sprite.driftMotion = {
         forwardVel: inheritedForward,
         drag: SPARKS_DRAG,
-        lateralVel: 0,
+        lateralVel,
+        screenLateralVel: screenLateral,
+        screenDrag: SPARKS_SCREEN_DRAG,
+        verticalVel: screenVertical,
+        verticalGravity: SPARKS_SCREEN_GRAVITY,
+        verticalDrag: SPARKS_SCREEN_DRAG,
       };
+      sprite.screenOffsetX = 0;
+      sprite.screenOffsetY = 0;
       sprites.push(sprite);
     }
   }
@@ -1308,6 +1325,73 @@
         const decay = Math.max(0, 1 - motion.drag * step);
         motion.lateralVel *= decay;
         if (Math.abs(motion.lateralVel) <= 1e-4) motion.lateralVel = 0;
+      }
+    }
+
+    if (trackLength > 0 && Number.isFinite(sprite.s)) {
+      const seg = segmentAtS(sprite.s);
+      if (seg && currentSeg && seg !== currentSeg) {
+        return seg;
+      }
+    }
+
+    return null;
+  }
+
+  function applySparksMotion(sprite, dt, currentSeg = null) {
+    if (!sprite || sprite.kind !== 'SPARKS') return null;
+    const motion = sprite.driftMotion;
+    if (!motion) return null;
+    const step = Math.max(0, Number.isFinite(dt) ? dt : 0);
+    if (step <= 0) return null;
+
+    const trackLength = trackLengthRef();
+
+    if (Number.isFinite(motion.forwardVel) && motion.forwardVel !== 0) {
+      if (Number.isFinite(sprite.s)) {
+        const nextS = trackLength > 0
+          ? wrapDistance(sprite.s, motion.forwardVel * step, trackLength)
+          : sprite.s + motion.forwardVel * step;
+        sprite.s = nextS;
+      }
+      if (Number.isFinite(motion.drag) && motion.drag > 0) {
+        const decay = Math.max(0, 1 - motion.drag * step);
+        motion.forwardVel *= decay;
+        if (Math.abs(motion.forwardVel) <= 1e-4) motion.forwardVel = 0;
+      }
+    }
+
+    if (Number.isFinite(motion.lateralVel) && motion.lateralVel !== 0) {
+      sprite.offset += motion.lateralVel * step;
+      if (Number.isFinite(motion.drag) && motion.drag > 0) {
+        const decay = Math.max(0, 1 - motion.drag * step);
+        motion.lateralVel *= decay;
+        if (Math.abs(motion.lateralVel) <= 1e-4) motion.lateralVel = 0;
+      }
+    }
+
+    if (Number.isFinite(motion.screenLateralVel) && motion.screenLateralVel !== 0) {
+      const currentOffsetX = Number.isFinite(sprite.screenOffsetX) ? sprite.screenOffsetX : 0;
+      sprite.screenOffsetX = currentOffsetX + motion.screenLateralVel * step;
+      if (Number.isFinite(motion.screenDrag) && motion.screenDrag > 0) {
+        const decay = Math.max(0, 1 - motion.screenDrag * step);
+        motion.screenLateralVel *= decay;
+        if (Math.abs(motion.screenLateralVel) <= 1e-2) motion.screenLateralVel = 0;
+      }
+    }
+
+    let verticalVel = Number.isFinite(motion.verticalVel) ? motion.verticalVel : 0;
+    if (Number.isFinite(motion.verticalGravity) && motion.verticalGravity !== 0) {
+      verticalVel += motion.verticalGravity * step;
+    }
+    if (verticalVel !== 0) {
+      const currentOffsetY = Number.isFinite(sprite.screenOffsetY) ? sprite.screenOffsetY : 0;
+      sprite.screenOffsetY = currentOffsetY + verticalVel * step;
+      motion.verticalVel = verticalVel;
+      if (Number.isFinite(motion.verticalDrag) && motion.verticalDrag > 0) {
+        const decay = Math.max(0, 1 - motion.verticalDrag * step);
+        motion.verticalVel *= decay;
+        if (Math.abs(motion.verticalVel) <= 1e-2) motion.verticalVel = 0;
       }
     }
 
@@ -1976,6 +2060,8 @@
         let transferSeg = null;
         if (spr.kind === 'DRIFT_SMOKE') {
           transferSeg = applyDriftSmokeMotion(spr, dt, seg);
+        } else if (spr.kind === 'SPARKS') {
+          transferSeg = applySparksMotion(spr, dt, seg);
         }
 
         if (spr.animation && spr.animation.clips) {
