@@ -1653,7 +1653,7 @@
     } else if (info.section === 'B') {
       slope = slopeB;
     }
-    const angleDeg = (180 / Math.PI) * Math.atan(slope);
+    const angleDeg = -(180 / Math.PI) * Math.atan(slope);
     const tiltDeg = tiltBase.tiltDir * angleDeg;
     if (tiltAdd.tiltAddMaxDeg == null) return tiltDeg;
     return clamp(tiltDeg, -tiltAdd.tiltAddMaxDeg, tiltAdd.tiltAddMaxDeg);
