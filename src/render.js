@@ -60,8 +60,6 @@
   const state = Gameplay.state;
   const areTexturesEnabled = () => debug.mode === 'off' && debug.textures !== false;
 
-  const WHITE_TINT = Object.freeze([1, 1, 1, 1]);
-
   const randomColorFor = (() => {
     const cache = new Map();
     const rng = mulberry32(0x6a09e667);
@@ -542,11 +540,14 @@
           const uv = { u1:u0, v1:t0, u2:u1, v2:t0, u3:u1, v3:t1, u4:u0, v4:t1 };
           const fog = [fA, fA, fB, fB];
 
-          const tint = texturesEnabled ? solid : randomColorFor(`boost:${segIndex}:${zone.type || 'zone'}`);
+          const solidColor = Array.isArray(solid) ? solid : boost.fallbackColor.solid;
+          const fallbackColor = texturesEnabled
+            ? solidColor
+            : randomColorFor(`boost:${segIndex}:${zone.type || 'zone'}`);
           if (texturesEnabled && tex) {
-            glr.drawQuadTextured(tex, quad, uv, tint, fog);
+            glr.drawQuadTextured(tex, quad, uv, undefined, fog);
           } else {
-            glr.drawQuadSolid(quad, tint, fog);
+            glr.drawQuadSolid(quad, fallbackColor, fog);
           }
         }
       }
@@ -573,13 +574,13 @@
     const fog = fogArray(fogZ);
     const quad = {x1:x1, y1:y1, x2:x2, y2:y1, x3:x2, y3:y2, x4:x1, y4:y2};
     const useTexture = texturesEnabled && texture;
-    const tintToApply = useTexture
-      ? WHITE_TINT
-      : (Array.isArray(tint) ? tint : WHITE_TINT);
     if (useTexture) {
-      glr.drawQuadTextured(texture, quad, uv, tintToApply, fog);
+      glr.drawQuadTextured(texture, quad, uv, undefined, fog);
     } else {
-      glr.drawQuadSolid(quad, randomColorFor(colorKey || 'billboard'), fog);
+      const solidTint = Array.isArray(tint)
+        ? tint
+        : randomColorFor(colorKey || 'billboard');
+      glr.drawQuadSolid(quad, solidTint, fog);
     }
   }
 
