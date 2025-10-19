@@ -17,6 +17,7 @@
     lanes,
     tilt: tiltConfig = {},
     traffic: trafficConfig = {},
+    nearMiss: nearMissConfig = {},
     forceLandingOnCarImpact = false,
   } = Config;
 
@@ -24,6 +25,26 @@
     base: tiltBase = { tiltDir: 1, tiltCurveWeight: 0, tiltEase: 0.1, tiltSens: 0, tiltMaxDeg: 0 },
     additive: tiltAdd = { tiltAddEnabled: false, tiltAddMaxDeg: null },
   } = tiltConfig;
+
+  const {
+    forwardDistanceScale: nearMissForwardScale = 0.5,
+    forwardDistanceMin: nearMissForwardMinRaw = 5,
+    forwardDistanceFallback: nearMissForwardFallbackRaw = 12,
+  } = nearMissConfig;
+
+  const NEAR_MISS_FORWARD_MIN = Math.max(
+    0,
+    Number.isFinite(nearMissForwardMinRaw) ? nearMissForwardMinRaw : 5,
+  );
+  const NEAR_MISS_FORWARD_FALLBACK = (() => {
+    const fallback = Number.isFinite(nearMissForwardFallbackRaw)
+      ? nearMissForwardFallbackRaw
+      : 12;
+    return Math.max(NEAR_MISS_FORWARD_MIN, fallback);
+  })();
+  const NEAR_MISS_FORWARD_SCALE = Number.isFinite(nearMissForwardScale)
+    ? nearMissForwardScale
+    : 0.5;
 
   const {
     clamp,
@@ -990,10 +1011,19 @@
   const NEAR_MISS_LATERAL_SCALE = 1.2;
   const NEAR_MISS_RESET_SCALE = 1.8;
   const NEAR_MISS_FORWARD_DISTANCE = (() => {
-    if (Number.isFinite(segmentLength) && segmentLength > 0) {
-      return Math.max(5, segmentLength * 0.35);
+    if (
+      Number.isFinite(segmentLength)
+      && segmentLength > 0
+      && NEAR_MISS_FORWARD_SCALE > 0
+    ) {
+      const scaledDistance = segmentLength * NEAR_MISS_FORWARD_SCALE;
+      if (Number.isFinite(scaledDistance) && scaledDistance > 0) {
+        return Math.max(NEAR_MISS_FORWARD_MIN, scaledDistance);
+      }
     }
-    return 12;
+    return NEAR_MISS_FORWARD_FALLBACK > 0
+      ? NEAR_MISS_FORWARD_FALLBACK
+      : Math.max(12, NEAR_MISS_FORWARD_MIN);
   })();
   const NEAR_MISS_SPEED_MARGIN = 1;
   const GUARD_RAIL_HIT_COOLDOWN = 0.5;
