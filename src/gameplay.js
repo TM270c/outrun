@@ -2486,7 +2486,6 @@
     state.prevPlayerN = state.playerN;
     state.lateralRate = 0;
     state.pendingRespawn = null;
-    removeGuardRailSparkSprites();
     if (state.metrics) {
       state.metrics.guardRailContactActive = false;
       state.metrics.guardRailCooldownTimer = 0;
@@ -2515,7 +2514,6 @@
 
   async function resetScene() {
     applyDefaultFieldOfView();
-    removeGuardRailSparkSprites();
 
     if (typeof buildTrackFromCSV === 'function') {
       try {
