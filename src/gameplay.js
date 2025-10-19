@@ -15,6 +15,8 @@
     drift,
     boost,
     lanes,
+    guardSparkSideOffset = 0.035,
+    guardSparkRailClearance = 0.01,
     tilt: tiltConfig = {},
     traffic: trafficConfig = {},
     nearMiss: nearMissConfig = {},
@@ -296,8 +298,16 @@
   const GUARD_SPARK_INTERVAL = 1 / 60;
   const GUARD_SPARK_INTERVAL_JITTER = 0.35;
   const GUARD_SPARK_LIFETIME = 12 / 60;
-  const GUARD_SPARK_SIDE_OFFSET = 0.06;
+  const GUARD_SPARK_SIDE_OFFSET = Math.max(
+    0,
+    Number.isFinite(guardSparkSideOffset) ? guardSparkSideOffset : 0.035,
+  );
   const GUARD_SPARK_SIDE_JITTER = 0.15;
+  const GUARD_SPARK_RAIL_CLEARANCE = Math.max(
+    0,
+    Number.isFinite(guardSparkRailClearance) ? guardSparkRailClearance : 0.01,
+  );
+  const GUARD_SPARK_CONTACT_THRESHOLD = Math.max(1e-4, GUARD_SPARK_RAIL_CLEARANCE * 0.5);
   const GUARD_SPARK_LONGITUDINAL_JITTER = segmentLength * 0.005;
   const GUARD_SPARK_FORWARD_INHERITANCE = 0.3;
   const GUARD_SPARK_DRAG = 5;
@@ -986,6 +996,8 @@
     sprite.ttl = 0;
     sprite.scale = 1;
     sprite.stretch = 1;
+    sprite.sparkStretchSpeed = 0;
+    sprite.sparkStretchDir = 0;
     sprite.offset = 0;
     guardSparkPool.push(sprite);
   }
@@ -1231,6 +1243,7 @@
       : ((seg.p1 && seg.p1.world) ? seg.p1.world.z : 0);
     const trackLength = trackLengthRef();
     const half = playerHalfWN();
+    const guardLimit = playerLateralLimit(seg.index);
     const offsetBase = state.playerN + direction * (half + GUARD_SPARK_SIDE_OFFSET);
     const count = Math.max(1, GUARD_SPARK_BURST_COUNT);
     const clampedForward = Math.max(0, Number.isFinite(forwardSpeed) ? forwardSpeed : 0);
@@ -1239,7 +1252,15 @@
     for (let i = 0; i < count; i += 1) {
       const sprite = allocGuardSparkSprite();
       const lateralJitter = (Math.random() * 2 - 1) * half * GUARD_SPARK_SIDE_JITTER;
-      const spawnOffset = offsetBase + lateralJitter;
+      let spawnOffset = offsetBase + lateralJitter;
+      if (Number.isFinite(guardLimit) && guardLimit > 0) {
+        const guardRailOffset = direction * guardLimit;
+        const carEdge = state.playerN + direction * half;
+        const guardInterior = guardRailOffset - direction * GUARD_SPARK_RAIL_CLEARANCE;
+        const minOffset = Math.min(carEdge, guardInterior);
+        const maxOffset = Math.max(carEdge, guardInterior);
+        spawnOffset = clamp(spawnOffset, minOffset, maxOffset);
+      }
       const sJitter = (Math.random() * 2 - 1) * GUARD_SPARK_LONGITUDINAL_JITTER;
       const spawnS = trackLength > 0 ? wrapDistance(baseS, sJitter, trackLength) : baseS + sJitter;
       const inheritedForward = clampedForward * GUARD_SPARK_FORWARD_INHERITANCE * (0.75 + 0.5 * Math.random());
@@ -1254,6 +1275,8 @@
       sprite.ttl = GUARD_SPARK_LIFETIME;
       sprite.scale = baseScale;
       sprite.stretch = baseStretch;
+      sprite.sparkStretchSpeed = clampedForward;
+      sprite.sparkStretchDir = direction;
       sprite.interactable = false;
       sprite.interacted = false;
       sprite.impactable = false;
@@ -1342,6 +1365,13 @@
       if (seg && currentSeg && seg !== currentSeg) {
         return seg;
       }
+    }
+
+    const forwardMag = Number.isFinite(motion.forwardVel) ? motion.forwardVel : 0;
+    const lateralMag = Number.isFinite(motion.lateralVel) ? motion.lateralVel : 0;
+    const stretchSpeed = Math.hypot(forwardMag, lateralMag);
+    if (Number.isFinite(stretchSpeed)) {
+      sprite.sparkStretchSpeed = Math.max(0, stretchSpeed);
     }
 
     return null;
@@ -2328,11 +2358,15 @@
     segNow = segmentAtS(phys.s);
     if (segNow) {
       const bound = playerLateralLimit(segNow.index);
+      const clampLimit = Number.isFinite(bound) ? bound : Math.abs(state.playerN) + 1;
       const preClamp = state.playerN;
-      state.playerN = clamp(state.playerN, -bound, bound);
-      const scraping = Math.abs(preClamp) > bound - 1e-6 || Math.abs(state.playerN) >= bound - 1e-6;
+      state.playerN = clamp(state.playerN, -clampLimit, clampLimit);
+      const scraping = Math.abs(preClamp) > clampLimit - 1e-6 || Math.abs(state.playerN) >= clampLimit - 1e-6;
       offRoadNow = Math.abs(preClamp) > OFF_ROAD_THRESHOLD || Math.abs(state.playerN) > OFF_ROAD_THRESHOLD;
-      guardRailContact = scraping && segNow.features && segNow.features.rail;
+      const nearGuardRail = Number.isFinite(bound)
+        ? Math.abs(state.playerN) >= Math.max(0, bound - GUARD_SPARK_CONTACT_THRESHOLD)
+        : false;
+      guardRailContact = (segNow.features && segNow.features.rail) && (scraping || nearGuardRail);
       if (guardRailContact) {
         const preferred = Math.sign(preClamp);
         const fallback = Math.sign(state.playerN);
