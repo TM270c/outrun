@@ -158,8 +158,12 @@
     if (total <= 0) return;
 
     const startY = lastY();
-    const endY   = startY + (dyInSegments * segmentLength);
-    const hasElevationChange = dyInSegments !== 0;
+    const referenceHillLength = 30; // Hills are authored against a ~30 segment span.
+    const safeTotal = Math.max(total, 1e-6);
+    const lengthScale = Math.min(referenceHillLength / safeTotal, 1);
+    const dyScaledSegments = dyInSegments * lengthScale;
+    const endY = startY + (dyScaledSegments * segmentLength);
+    const hasElevationChange = Math.abs(dyScaledSegments) > 1e-6;
     const profile =
       elevationProfile === 'linear' ? 'linear' :
       elevationProfile === 'sharp'  ? 'sharp'  :
