@@ -62,6 +62,48 @@
     `;
   };
 
+  screens.vehicleSelect = function vehicleSelectScreen(ctx = {}, helpers = {}) {
+    const {
+      title = 'Select Vehicle',
+      vehicleLabel = '',
+      vehicleDescription = '',
+      optionIndex = 0,
+      optionCount = 0,
+      previewSrc = '',
+    } = ctx;
+    const escapeHtml = ensureEscapeHtml(helpers);
+    const resolveAssetUrl = typeof helpers.resolveAssetUrl === 'function'
+      ? helpers.resolveAssetUrl
+      : (value) => value;
+
+    const previewUrl = previewSrc ? resolveAssetUrl(previewSrc) : '';
+    const clampedIndex = optionCount > 0 ? Math.min(optionCount, Math.max(1, optionIndex + 1)) : 0;
+    const counterLabel = optionCount > 0
+      ? `${clampedIndex} / ${optionCount}`
+      : '';
+
+    const previewHtml = previewUrl
+      ? `<img class="vehicle-select-image" src="${escapeHtml(previewUrl)}" alt="${escapeHtml(vehicleLabel || 'Vehicle')}" />`
+      : '';
+    const counterHtml = counterLabel
+      ? `<p class="vehicle-select-counter">${escapeHtml(counterLabel)}</p>`
+      : '';
+    const descriptionHtml = vehicleDescription
+      ? `<p class="vehicle-select-description">${escapeHtml(vehicleDescription)}</p>`
+      : '';
+
+    return `
+      <div class="screen screen-menu screen-vehicle">
+        <h2 class="screen-title">${escapeHtml(title)}</h2>
+        <div class="vehicle-select-preview">${previewHtml}</div>
+        <p class="vehicle-select-name">${escapeHtml(vehicleLabel)}</p>
+        ${counterHtml}
+        ${descriptionHtml}
+        <p class="screen-hint">Left / Right to switch · Space to confirm · Esc to cancel</p>
+      </div>
+    `;
+  };
+
   screens.settingsMenu = function settingsMenuScreen(ctx = {}, helpers = {}) {
     const { options = [], selectedIndex = 0 } = ctx;
     const escapeHtml = ensureEscapeHtml(helpers);

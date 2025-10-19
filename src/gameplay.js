@@ -301,7 +301,11 @@
         const textures = (World && World.assets && World.assets.textures)
           ? World.assets.textures
           : null;
-        return (textures && textures.car) || null;
+        if (!textures) return null;
+        if (textures.playerVehicle) return textures.playerVehicle;
+        if (textures.car) return textures.car;
+        if (textures.playerCar) return textures.playerCar;
+        return null;
       },
     },
     CAR:    { wN: 0.28, aspect: 1, tint: [0.2, 0.7, 1.0, 1], tex: () => null },
