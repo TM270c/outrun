@@ -297,26 +297,27 @@
 
   const GUARD_SPARK_INTERVAL = 1 / 60;
   const GUARD_SPARK_INTERVAL_JITTER = 0.35;
-  const GUARD_SPARK_LIFETIME = 12 / 60;
+  const GUARD_SPARK_LIFETIME = 8 / 60;
   const GUARD_SPARK_SIDE_OFFSET = Math.max(
     0,
-    Number.isFinite(guardSparkSideOffset) ? guardSparkSideOffset : 0.035,
+    Number.isFinite(guardSparkSideOffset) ? guardSparkSideOffset : 0.015,
   );
-  const GUARD_SPARK_SIDE_JITTER = 0.15;
+  const GUARD_SPARK_SIDE_JITTER = 0.05;
   const GUARD_SPARK_RAIL_CLEARANCE = Math.max(
     0,
     Number.isFinite(guardSparkRailClearance) ? guardSparkRailClearance : 0.01,
   );
   const GUARD_SPARK_CONTACT_THRESHOLD = Math.max(1e-4, GUARD_SPARK_RAIL_CLEARANCE * 0.5);
-  const GUARD_SPARK_LONGITUDINAL_JITTER = segmentLength * 0.005;
-  const GUARD_SPARK_FORWARD_INHERITANCE = 0.3;
+  const GUARD_SPARK_LONGITUDINAL_JITTER = segmentLength * 0.0025;
+  const GUARD_SPARK_FORWARD_INHERITANCE = 0.18;
   const GUARD_SPARK_DRAG = 5;
-  const GUARD_SPARK_LATERAL_SPEED = 0.04;
+  const GUARD_SPARK_LATERAL_SPEED = 0.02;
   const GUARD_SPARK_BURST_COUNT = 2;
-  const GUARD_SPARK_SCALE_MIN = 0.7;
-  const GUARD_SPARK_SCALE_MAX = 1.9;
-  const GUARD_SPARK_STRETCH_MIN = 1;
-  const GUARD_SPARK_STRETCH_MAX = 2.4;
+  const GUARD_SPARK_SCALE_MIN = 0.35;
+  const GUARD_SPARK_SCALE_MAX = 1.0;
+  const GUARD_SPARK_STRETCH_MIN = 0.8;
+  const GUARD_SPARK_STRETCH_MAX = 1.6;
+  const GUARD_SPARK_BODY_INSET = 0.02;
 
   const DEFAULT_SPRITE_META = {
     PLAYER: { wN: 0.16, aspect: 0.7, tint: [0.9, 0.22, 0.21, 1], tex: () => null },
@@ -336,7 +337,7 @@
     },
     PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
     DRIFT_SMOKE: { wN: 0.1, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], tex: () => null },
-    GUARD_SPARK: { wN: 0.05, aspect: 1.0, tint: [1.0, 0.62, 0.2, 1], tex: () => null },
+    GUARD_SPARK: { wN: 0.035, aspect: 1.0, tint: [1.0, 0.15, 0.1, 1], tex: () => null },
     ANIM_PLATE: {
       wN: 0.1,
       aspect: 1.0,
@@ -1244,7 +1245,8 @@
     const trackLength = trackLengthRef();
     const half = playerHalfWN();
     const guardLimit = playerLateralLimit(seg.index);
-    const offsetBase = state.playerN + direction * (half + GUARD_SPARK_SIDE_OFFSET);
+    const carEdge = state.playerN + direction * half;
+    const offsetBase = carEdge + direction * (GUARD_SPARK_SIDE_OFFSET - GUARD_SPARK_BODY_INSET);
     const count = Math.max(1, GUARD_SPARK_BURST_COUNT);
     const clampedForward = Math.max(0, Number.isFinite(forwardSpeed) ? forwardSpeed : 0);
     const baseScale = guardSparkScaleForSpeed(clampedForward);
@@ -1255,10 +1257,9 @@
       let spawnOffset = offsetBase + lateralJitter;
       if (Number.isFinite(guardLimit) && guardLimit > 0) {
         const guardRailOffset = direction * guardLimit;
-        const carEdge = state.playerN + direction * half;
         const guardInterior = guardRailOffset - direction * GUARD_SPARK_RAIL_CLEARANCE;
-        const minOffset = Math.min(carEdge, guardInterior);
-        const maxOffset = Math.max(carEdge, guardInterior);
+        const minOffset = Math.min(carEdge - direction * GUARD_SPARK_BODY_INSET, guardInterior);
+        const maxOffset = Math.max(carEdge - direction * GUARD_SPARK_BODY_INSET, guardInterior);
         spawnOffset = clamp(spawnOffset, minOffset, maxOffset);
       }
       const sJitter = (Math.random() * 2 - 1) * GUARD_SPARK_LONGITUDINAL_JITTER;
