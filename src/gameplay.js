@@ -982,6 +982,15 @@
       playerZ: 0,
       updateFromFov: null,
     },
+    guardRailSparks: {
+      active: false,
+      side: 0,
+      segIndex: 0,
+      segT: 0,
+      speed: 0,
+      intensity: 0,
+      lastActiveTime: 0,
+    },
   };
 
   const CLIFF_LIMIT_DEG = Number.isFinite(cliffs.cliffLimit) ? cliffs.cliffLimit : null;
@@ -2043,12 +2052,41 @@
       const preClamp = state.playerN;
       state.playerN = clamp(state.playerN, -bound, bound);
       const scraping = Math.abs(preClamp) > bound - 1e-6 || Math.abs(state.playerN) >= bound - 1e-6;
+      const guardState = state.guardRailSparks;
       if (scraping) {
         const offRoadDecelLimit = player.topSpeed / 4;
         if (Math.abs(phys.vtan) > offRoadDecelLimit) {
           const sign = Math.sign(phys.vtan) || 1;
           phys.vtan -= sign * (player.topSpeed * 0.8) * (1 / 60);
         }
+        if (guardState && segNow.features && segNow.features.rail) {
+          const side = state.playerN >= 0 ? 1 : -1;
+          const trackLength = trackLengthRef();
+          const segStart = segNow.p1.world.z;
+          let delta = state.phys.s - segStart;
+          if (trackLength > 0) {
+            delta = ((delta % trackLength) + trackLength) % trackLength;
+          }
+          const segLen = Math.max(segmentLength, 1e-6);
+          const segT = clamp(delta / segLen, 0, 1);
+          const speedAbs = Math.abs(phys.vtan);
+          const topSpeed = Math.max(1e-6, Math.abs(player.topSpeed) || 0);
+          guardState.active = true;
+          guardState.side = side;
+          guardState.segIndex = segNow.index;
+          guardState.segT = segT;
+          guardState.speed = speedAbs;
+          guardState.intensity = clamp(speedAbs / topSpeed, 0, 1);
+          guardState.lastActiveTime = phys.t;
+        } else if (guardState) {
+          guardState.active = false;
+          guardState.speed = 0;
+          guardState.intensity = 0;
+        }
+      } else if (guardState) {
+        guardState.active = false;
+        guardState.speed = 0;
+        guardState.intensity = 0;
       }
     }
 
@@ -2312,6 +2350,16 @@
     state.prevPlayerN = state.playerN;
     state.lateralRate = 0;
     state.pendingRespawn = null;
+    const seg = segmentAtS(phys.s);
+    if (state.guardRailSparks) {
+      state.guardRailSparks.active = false;
+      state.guardRailSparks.side = 0;
+      state.guardRailSparks.segIndex = seg ? seg.index : 0;
+      state.guardRailSparks.segT = 0;
+      state.guardRailSparks.speed = 0;
+      state.guardRailSparks.intensity = 0;
+      state.guardRailSparks.lastActiveTime = phys.t || 0;
+    }
   }
 
   function respawnPlayerAt(sTarget, nNorm = 0) {
