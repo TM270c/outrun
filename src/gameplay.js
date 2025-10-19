@@ -1010,9 +1010,6 @@
       offRoadTime: 0,
       guardRailCooldownTimer: 0,
       guardRailContactActive: false,
-      guardRailContactSide: 0,
-      guardRailContactLane: null,
-      guardRailContactSegment: null,
     };
   }
 
@@ -2208,14 +2205,8 @@
           metrics.guardRailCooldownTimer = GUARD_RAIL_HIT_COOLDOWN;
         }
         metrics.guardRailContactActive = true;
-        metrics.guardRailContactSide = state.playerN >= 0 ? 1 : -1;
-        metrics.guardRailContactLane = state.playerN;
-        metrics.guardRailContactSegment = segNow ? segNow.index : metrics.guardRailContactSegment;
       } else {
         metrics.guardRailContactActive = false;
-        metrics.guardRailContactSide = 0;
-        metrics.guardRailContactLane = null;
-        metrics.guardRailContactSegment = null;
       }
       if (offRoadNow) {
         metrics.offRoadTime += dt;

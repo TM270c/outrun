@@ -458,25 +458,9 @@
   const SNOW_SCREEN_MIN_RADIUS = 12;
   const SNOW_SCREEN_FOOTPRINT_SCALE = 0.8;
   const SNOW_SCREEN_BASE_EXPANSION = 5; // expand the base snow screen footprint without altering per-axis scaling math
-  const SPARK_SIZE_RANGE = { min: 6, max: 18 };
-  const SPARK_COLOR_COLD = [1, 0.4, 0.15];
-  const SPARK_COLOR_HOT = [1, 0.9, 0.5];
-  const SPARK_BASE_ALPHA = 0.75;
-  const SPARK_MIN_ALPHA_SCALE = 0.35;
   const SNOW_FIELD_POOL_SIZE = 12;
   const SNOW_FIELD_SEED_STEP = 0x45d9f3b;
-  const EMPTY_SNOW_FIELD = {
-    groups: {
-      snow: { flakes: [], phaseOffset: 0 },
-      sparks: {
-        particles: [],
-        phaseOffset: 0,
-        rng: mulberry32(0),
-        spawnAccumulator: 0,
-        lastTime: null,
-      },
-    },
-  };
+  const EMPTY_SNOW_FIELD = { flakes: [], phaseOffset: 0 };
 
   function computeSnowScreenBaseRadius(scale, roadWidth){
     const base = Math.max(
@@ -515,25 +499,7 @@
         size: rng(),
       };
     }
-
-    const sparkSeed = seed ^ 0x27d4eb2d;
-    const sparkRng = mulberry32(sparkSeed);
-
-    return {
-      groups: {
-        snow: {
-          flakes,
-          phaseOffset: rng() * 1000,
-        },
-        sparks: {
-          particles: [],
-          phaseOffset: sparkRng() * 1000,
-          rng: sparkRng,
-          spawnAccumulator: 0,
-          lastTime: null,
-        },
-      },
-    };
+    return { flakes, phaseOffset: rng() * 1000 };
   }
 
   function ensureSnowFieldPool(){
@@ -1091,9 +1057,6 @@
       ? Math.max(0, Math.floor(snowScreenDistance))
       : track.drawDistance;
     const snowStride = Math.max(1, Math.floor(snowScreenDensity || 1));
-    const metrics = state.metrics || null;
-    const playerSegNow = segmentAtS(frame.phys.s);
-    const playerSegIndex = playerSegNow ? playerSegNow.index : 0;
     let x = 0;
     let dx = -(baseSeg.curve * basePct);
 
@@ -1224,27 +1187,6 @@
         const color = (seg.snowScreen && Array.isArray(seg.snowScreen.color))
           ? seg.snowScreen.color
           : [1, 1, 1, 1];
-        let sparkParams = null;
-        if (metrics && metrics.guardRailContactActive){
-          const sideRaw = Number.isFinite(metrics.guardRailContactSide) ? metrics.guardRailContactSide : 0;
-          if (sideRaw){
-            const contactSegIndex = Number.isFinite(metrics.guardRailContactSegment)
-              ? metrics.guardRailContactSegment
-              : playerSegIndex;
-            const delta = (seg.index - contactSegIndex + segments.length) % segments.length;
-            const spawnActive = delta <= 3;
-            const laneValue = Number.isFinite(metrics.guardRailContactLane)
-              ? metrics.guardRailContactLane
-              : state.playerN;
-            const carLaneRatio = laneToRoadRatio(laneValue, state.playerN);
-            sparkParams = {
-              side: sideRaw,
-              spawn: spawnActive,
-              carLaneRatio,
-              intensity: 1,
-            };
-          }
-        }
         if (sizePx > 0){
           drawList.push({
             type: 'snowScreen',
@@ -1255,7 +1197,6 @@
             color,
             z: zMid,
             segIndex: seg.index,
-            sparkParams,
           });
         }
       }
@@ -1487,25 +1428,19 @@
   function renderSnowScreen(item){
     if (!glr) return;
     if (!isSnowFeatureEnabled()) return;
-    const { x, y, size, color = [1, 1, 1, 1], z, segIndex, sparkParams = null } = item;
+    const { x, y, size, color = [1, 1, 1, 1], z, segIndex } = item;
     if (size <= 0) return;
     const radius = size * 0.5;
     const diameter = radius * 2;
 
     const fogVals = fogArray(z || 0);
-    const field = snowFieldFor(segIndex) || EMPTY_SNOW_FIELD;
-    const snowGroup = field.groups && field.groups.snow ? field.groups.snow : EMPTY_SNOW_FIELD.groups.snow;
-    const sparkGroup = field.groups && field.groups.sparks ? field.groups.sparks : null;
-    const flakes = Array.isArray(snowGroup.flakes) ? snowGroup.flakes : EMPTY_SNOW_FIELD.groups.snow.flakes;
-
+    const { flakes, phaseOffset } = snowFieldFor(segIndex);
     const time = (state && state.phys && typeof state.phys.t === 'number')
       ? state.phys.t
       : ((typeof performance !== 'undefined' && typeof performance.now === 'function')
         ? performance.now() / 1000
         : 0);
-    const snowPhase = Number.isFinite(snowGroup.phaseOffset) ? snowGroup.phaseOffset : 0;
-    const animTime = time + snowPhase;
-    const sparkPhase = sparkGroup && Number.isFinite(sparkGroup.phaseOffset) ? sparkGroup.phaseOffset : 0;
+    const animTime = time + phaseOffset;
     const alpha = Array.isArray(color) && color.length >= 4 ? color[3] : 1;
     const flakeColor = [1, 1, 1, alpha];
 
@@ -1518,10 +1453,22 @@
     const viewCenterX = (HALF_VIEW && HALF_VIEW > 0) ? HALF_VIEW : (W * 0.5);
     const viewCenterY = (H && H > 0) ? H * 0.5 : y;
     const maxRadius = Math.max(1, Math.hypot(viewCenterX || 0, viewCenterY || 0));
-    const perspectiveScale = clamp(radius / 128, 0.25, 2.0);
 
-    const drawSnowLikeQuad = (px, py, flakeSizePx, tintColor) => {
+    for (let i = 0; i < flakes.length; i++){
+      const flake = flakes[i];
+      const fallT = animTime * flake.speed;
+      let normY = (flake.baseY + fallT) % 1;
+      if (normY < 0) normY += 1;
+      const sway = Math.sin(animTime * flake.swayFreq + flake.phase) * flake.swayAmp;
+      const normX = clamp((flake.baseX - 0.5) + sway, -0.6, 0.6);
+      const localY = normY - 0.5;
+      const px = x + normX * diameter;
+      const py = y + localY * diameter;
+      const baseSizePx = lerp(snowSizeRange.min, snowSizeRange.max, clamp(flake.size, 0, 1));
+      const perspectiveScale = clamp(radius / 128, 0.25, 2.0);
+      const flakeSizePx = Math.max(1, Math.round(baseSizePx * perspectiveScale));
       const fHalf = flakeSizePx * 0.5;
+
       const quadVerts = [
         { keyX: 'x1', keyY: 'y1', x: px - fHalf, y: py - fHalf },
         { keyX: 'x2', keyY: 'y2', x: px + fHalf, y: py - fHalf },
@@ -1569,130 +1516,9 @@
       }, {});
 
       perf.registerSnowQuad();
-      glr.drawQuadSolid(quad, tintColor, fogVals);
-    };
-
-    for (let i = 0; i < flakes.length; i++){
-      const flake = flakes[i];
-      const fallT = animTime * flake.speed;
-      let normY = (flake.baseY + fallT) % 1;
-      if (normY < 0) normY += 1;
-      const sway = Math.sin(animTime * flake.swayFreq + flake.phase) * flake.swayAmp;
-      const normX = clamp((flake.baseX - 0.5) + sway, -0.6, 0.6);
-      const localY = normY - 0.5;
-      const px = x + normX * diameter;
-      const py = y + localY * diameter;
-      const baseSizePx = lerp(snowSizeRange.min, snowSizeRange.max, clamp(flake.size, 0, 1));
-      const flakeSizePx = Math.max(1, Math.round(baseSizePx * perspectiveScale));
-      drawSnowLikeQuad(px, py, flakeSizePx, flakeColor);
-    }
-
-    if (!sparkGroup || sparkGroup === EMPTY_SNOW_FIELD.groups.sparks) return;
-
-    if (!Array.isArray(sparkGroup.particles)) sparkGroup.particles = [];
-    if (typeof sparkGroup.spawnAccumulator !== 'number') sparkGroup.spawnAccumulator = 0;
-    if (typeof sparkGroup.rng !== 'function') sparkGroup.rng = mulberry32(segIndex | 0);
-
-    const sparkTime = time + sparkPhase;
-    const lastTime = Number.isFinite(sparkGroup.lastTime) ? sparkGroup.lastTime : sparkTime;
-    const dt = clamp(sparkTime - lastTime, 0, 0.25);
-    sparkGroup.lastTime = sparkTime;
-
-    const sparkInfo = (() => {
-      if (!sparkParams) return null;
-      const sideRaw = Number.isFinite(sparkParams.side) ? sparkParams.side : 0;
-      const side = sideRaw < 0 ? -1 : (sideRaw > 0 ? 1 : 0);
-      if (!side) return { side: 0, spawn: false };
-      let ratio = Number.isFinite(sparkParams.carLaneRatio)
-        ? sparkParams.carLaneRatio
-        : laneToRoadRatio(state.playerN, state.playerN);
-      ratio = clamp(ratio, 0, 1);
-      const normalized = ratio * 2 - 1;
-      const edgeLimit = 0.6;
-      const guardrailX = side > 0 ? edgeLimit : -edgeLimit;
-      const carX = clamp(normalized * edgeLimit, -edgeLimit, edgeLimit);
-      const minX = Math.min(carX, guardrailX);
-      const maxX = Math.max(carX, guardrailX);
-      const span = Math.max(0.02, maxX - minX);
-      const spawn = !!sparkParams.spawn;
-      const intensity = Number.isFinite(sparkParams.intensity) ? Math.max(0, sparkParams.intensity) : 1;
-      return { side, spawn, minX, maxX, span, carX, guardrailX, intensity };
-    })();
-
-    if (sparkInfo && sparkInfo.spawn && sparkInfo.side){
-      const spawnRate = (26 + speedPct * 52) * sparkInfo.intensity;
-      sparkGroup.spawnAccumulator += spawnRate * dt;
-      const rng = sparkGroup.rng || mulberry32((segIndex || 0) ^ 0x51f15e5d);
-      sparkGroup.rng = rng;
-      while (sparkGroup.spawnAccumulator >= 1){
-        sparkGroup.spawnAccumulator -= 1;
-        const clusterRadius = 0.04;
-        const pxNorm = clamp((rng() - 0.5) * clusterRadius * 2, -0.18, 0.18);
-        const startY = 0.32 + rng() * 0.08;
-        const upward = 0.7 + rng() * 0.4;
-        const lateral = (rng() - 0.5) * 0.22;
-        const life = 0.42 + rng() * 0.36;
-        const sizeNorm = clamp(0.35 + rng() * 0.65, 0, 1);
-        const alphaSpark = clamp(0.8 + rng() * 0.18, 0, 1);
-        const heat = clamp(rng(), 0, 1);
-        sparkGroup.particles.push({
-          x: pxNorm,
-          y: startY,
-          vx: lateral,
-          vy: -upward,
-          age: 0,
-          life,
-          size: sizeNorm,
-          alpha: alphaSpark,
-          heat,
-        });
-      }
-    } else {
-      sparkGroup.spawnAccumulator = Math.min(sparkGroup.spawnAccumulator, 1);
-    }
-
-    const gravity = 2.6;
-    const lateralDamp = 1.25;
-    const particles = sparkGroup.particles;
-    for (let i = particles.length - 1; i >= 0; i--){
-      const p = particles[i];
-      if (!p) {
-        particles.splice(i, 1);
-        continue;
-      }
-      p.age += dt;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.vy += gravity * dt;
-      p.vx *= Math.max(0, 1 - lateralDamp * dt);
-      if (p.age >= p.life || p.y > 0.55 || Math.abs(p.x) > 0.75){
-        particles.splice(i, 1);
-        continue;
-      }
-      const sparkSizeBase = lerp(SPARK_SIZE_RANGE.min, SPARK_SIZE_RANGE.max, clamp(p.size, 0, 1));
-      const sparkScale = clamp(radius / 96, 0.35, 2.5);
-      const flakeSizePx = Math.max(1, Math.round(sparkSizeBase * sparkScale));
-      const pxSpark = x + p.x * diameter;
-      const pySpark = y + p.y * diameter;
-      const heat = Number.isFinite(p.heat) ? clamp(p.heat, 0, 1) : 0;
-      const baseAlpha = Number.isFinite(p.alpha) ? clamp(p.alpha, 0, 1) : 1;
-      const envAlpha = Number.isFinite(alpha) ? clamp(alpha, 0, 1) : 1;
-      const sparkAlpha = clamp(baseAlpha * Math.max(envAlpha, SPARK_MIN_ALPHA_SCALE), 0, 1);
-      const colorMix = [
-        lerp(SPARK_COLOR_COLD[0], SPARK_COLOR_HOT[0], heat),
-        lerp(SPARK_COLOR_COLD[1], SPARK_COLOR_HOT[1], heat),
-        lerp(SPARK_COLOR_COLD[2], SPARK_COLOR_HOT[2], heat),
-      ];
-      const tint = [
-        colorMix[0],
-        colorMix[1],
-        colorMix[2],
-        clamp(Math.max(sparkAlpha, SPARK_BASE_ALPHA * envAlpha), 0, 1),
-      ];
-      drawSnowLikeQuad(pxSpark, pySpark, flakeSizePx, tint);
+      glr.drawQuadSolid(quad, flakeColor, fogVals);
     }
   }
-
 
   function renderStrip(it){
     const {
