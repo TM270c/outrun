@@ -51,7 +51,7 @@
     horizon1:  resolveAssetUrl('tex/paralax-1.png'),
     horizon2:  resolveAssetUrl('tex/paralax-2.png'),
     horizon3:  resolveAssetUrl('tex/paralax-3.png'),
-    car:       resolveAssetUrl('tex/car.png'),
+    car:       resolveAssetUrl('tex/player-car.png'),
     semi:      resolveAssetUrl('tex/semi.png'),
   };
 

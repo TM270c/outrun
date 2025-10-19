@@ -60,6 +60,25 @@
   const state = Gameplay.state;
   const areTexturesEnabled = () => debug.mode === 'off' && debug.textures !== false;
 
+  const PLAYER_ATLAS_COLUMNS = 9;
+  const PLAYER_ATLAS_ROWS = 9;
+  const PLAYER_SPRITE_DEADZONE = 0.08;
+  const PLAYER_SPRITE_HEIGHT_DEADZONE = 0.06;
+  const PLAYER_SPRITE_SMOOTH_TIME = 0.12;
+  const PLAYER_SPRITE_LATERAL_MAX = 0.045;
+  const PLAYER_SPRITE_INPUT_WEIGHT = 0.55;
+  const PLAYER_SPRITE_LATERAL_WEIGHT = 0.3;
+  const PLAYER_SPRITE_CURVE_WEIGHT = 0.15;
+  const PLAYER_SPRITE_SPEED_FLOOR = 0.25;
+  const PLAYER_SPRITE_HEIGHT_RANGE_SCALE = 1.0;
+
+  const playerSpriteBlendState = {
+    steer: 0,
+    height: 0,
+    initialized: false,
+    lastTime: null,
+  };
+
   const randomColorFor = (() => {
     const cache = new Map();
     const rng = mulberry32(0x6a09e667);
@@ -117,6 +136,161 @@
       return cache.get(id);
     };
   })();
+
+  function applyDeadzone(value, deadzone = 0){
+    const dz = Number.isFinite(deadzone) ? Math.min(Math.max(deadzone, 0), 0.99) : 0;
+    const abs = Math.abs(value);
+    if (abs <= dz) return 0;
+    const range = 1 - dz;
+    if (range <= 1e-6) return 0;
+    const adjusted = (abs - dz) / range;
+    const sign = value < 0 ? -1 : 1;
+    return clamp(sign * adjusted, -1, 1);
+  }
+
+  function smoothTowards(current, target, dt, timeConstant){
+    if (!Number.isFinite(timeConstant) || timeConstant <= 0) return target;
+    if (!Number.isFinite(dt) || dt <= 0) return target;
+    const alpha = 1 - Math.exp(-dt / timeConstant);
+    const clampedAlpha = clamp(alpha, 0, 1);
+    return current + (target - current) * clampedAlpha;
+  }
+
+  function atlasUvFromRowCol(row, col, columns, rows){
+    const cols = Math.max(1, Math.floor(columns));
+    const rws = Math.max(1, Math.floor(rows));
+    const c = clamp(Math.floor(col), 0, cols - 1);
+    const r = clamp(Math.floor(row), 0, rws - 1);
+    const u0 = c / cols;
+    const v0 = r / rws;
+    const u1 = (c + 1) / cols;
+    const v1 = (r + 1) / rws;
+    return { u1: u0, v1: v0, u2: u1, v2: v0, u3: u1, v3: v1, u4: u0, v4: v1 };
+  }
+
+  function computePlayerAtlasSamples(steerValue, heightValue, columns, rows){
+    const cols = Math.max(1, Math.floor(columns));
+    const rws = Math.max(1, Math.floor(rows));
+    const maxCol = cols - 1;
+    const maxRow = rws - 1;
+    const colPos = clamp(((steerValue + 1) * 0.5) * maxCol, 0, maxCol);
+    const rowPos = clamp(((heightValue + 1) * 0.5) * maxRow, 0, maxRow);
+    const col0 = Math.floor(colPos);
+    const row0 = Math.floor(rowPos);
+    const col1 = Math.min(maxCol, col0 + 1);
+    const row1 = Math.min(maxRow, row0 + 1);
+    const colT = colPos - col0;
+    const rowT = rowPos - row0;
+
+    const weights = [
+      { col: col0, row: row0, weight: (1 - colT) * (1 - rowT) },
+      { col: col1, row: row0, weight: colT * (1 - rowT) },
+      { col: col0, row: row1, weight: (1 - colT) * rowT },
+      { col: col1, row: row1, weight: colT * rowT },
+    ].filter((entry) => entry.weight > 1e-4);
+
+    const total = weights.reduce((sum, entry) => sum + entry.weight, 0);
+    const norm = total > 0 ? 1 / total : 0;
+
+    return weights.map((entry) => ({
+      col: entry.col,
+      row: entry.row,
+      weight: entry.weight * norm,
+      uv: atlasUvFromRowCol(entry.row, entry.col, cols, rws),
+    }));
+  }
+
+  function computePlayerSpriteSamples(frame, meta){
+    const timeNow = (state && state.phys && Number.isFinite(state.phys.t)) ? state.phys.t : 0;
+    const prevTime = playerSpriteBlendState.lastTime;
+    const dt = (prevTime != null) ? Math.max(0, timeNow - prevTime) : 0;
+    playerSpriteBlendState.lastTime = timeNow;
+
+    if (!meta || typeof meta.tex !== 'function') {
+      playerSpriteBlendState.initialized = false;
+      return null;
+    }
+
+    if (!areTexturesEnabled()) {
+      playerSpriteBlendState.initialized = false;
+      return null;
+    }
+
+    const texture = meta.tex();
+    if (!texture) {
+      playerSpriteBlendState.initialized = false;
+      return null;
+    }
+
+    const columns = Math.max(1, (meta.atlas && meta.atlas.columns) || PLAYER_ATLAS_COLUMNS);
+    const totalFrames = Math.max(1, (meta.atlas && meta.atlas.totalFrames) || (PLAYER_ATLAS_COLUMNS * PLAYER_ATLAS_ROWS));
+    const rows = Math.max(1, Math.ceil(totalFrames / columns));
+
+    const { phys } = frame;
+    const speedPct = clamp(Math.abs(phys.vtan) / player.topSpeed, 0, 1);
+
+    const input = state.input || {};
+    const steerAxis = (input.left && input.right) ? 0 : (input.left ? -1 : (input.right ? 1 : 0));
+    const lateralNorm = clamp(
+      PLAYER_SPRITE_LATERAL_MAX > 0
+        ? state.lateralRate / PLAYER_SPRITE_LATERAL_MAX
+        : state.lateralRate,
+      -1,
+      1,
+    );
+    const segAhead = segmentAtS(phys.s + state.camera.playerZ) || { curve: 0 };
+    const curveNorm = clamp((segAhead.curve || 0) / 6, -1, 1);
+
+    const steerBlend = clamp(
+      steerAxis * PLAYER_SPRITE_INPUT_WEIGHT
+        + lateralNorm * PLAYER_SPRITE_LATERAL_WEIGHT
+        + curveNorm * PLAYER_SPRITE_CURVE_WEIGHT,
+      -1,
+      1,
+    );
+    const speedScale = clamp(PLAYER_SPRITE_SPEED_FLOOR + (1 - PLAYER_SPRITE_SPEED_FLOOR) * speedPct, 0, 1);
+    const steerRaw = steerBlend * speedScale;
+    const steerTarget = applyDeadzone(clamp(steerRaw, -1, 1), PLAYER_SPRITE_DEADZONE);
+
+    const floorY = floorElevationAt ? floorElevationAt(phys.s, state.playerN) : phys.y;
+    const bodyY = phys.grounded ? floorY : phys.y;
+    const cameraDelta = frame.camY - bodyY;
+    const heightRange = Math.max(1, camera.height * PLAYER_SPRITE_HEIGHT_RANGE_SCALE);
+    const heightRaw = clamp(-cameraDelta / heightRange, -1, 1);
+    const heightTarget = applyDeadzone(heightRaw, PLAYER_SPRITE_HEIGHT_DEADZONE);
+
+    if (!playerSpriteBlendState.initialized) {
+      playerSpriteBlendState.steer = steerTarget;
+      playerSpriteBlendState.height = heightTarget;
+      playerSpriteBlendState.initialized = true;
+    } else {
+      playerSpriteBlendState.steer = smoothTowards(
+        playerSpriteBlendState.steer,
+        steerTarget,
+        dt,
+        PLAYER_SPRITE_SMOOTH_TIME,
+      );
+      playerSpriteBlendState.height = smoothTowards(
+        playerSpriteBlendState.height,
+        heightTarget,
+        dt,
+        PLAYER_SPRITE_SMOOTH_TIME,
+      );
+    }
+
+    const steerValue = clamp(playerSpriteBlendState.steer, -1, 1);
+    const heightValue = clamp(playerSpriteBlendState.height, -1, 1);
+    const samples = computePlayerAtlasSamples(steerValue, heightValue, columns, rows);
+
+    return {
+      texture,
+      columns,
+      rows,
+      steer: steerValue,
+      height: heightValue,
+      samples,
+    };
+  }
 
   function createPerfTracker(){
     const makeFrameStats = () => ({
@@ -1130,6 +1304,7 @@
   function enqueuePlayer(drawList, frame){
     const { phys, camX, camY, sCam } = frame;
     const SPRITE_META = state.spriteMeta;
+    const playerMeta = SPRITE_META.PLAYER || {};
     const carX = state.playerN * roadWidthAt(phys.s);
     const floor = floorElevationAt(phys.s, state.playerN);
     const bodyWorldY = phys.grounded ? floor : phys.y;
@@ -1137,11 +1312,14 @@
     const shadow = projectWorldPoint({ x: carX, y: floor, z: phys.s }, camX, camY, sCam);
     if (body.camera.z > state.camera.nearZ){
       const pixScale = body.screen.scale * HALF_VIEW;
+      const widthNorm = Number.isFinite(playerMeta.wN) ? playerMeta.wN : 0.16;
+      const aspect = Number.isFinite(playerMeta.aspect) ? playerMeta.aspect : 0.7;
       const w = Math.max(
         12,
-        SPRITE_META.PLAYER.wN * state.getKindScale('PLAYER') * roadWidthAt(phys.s) * pixScale,
+        widthNorm * state.getKindScale('PLAYER') * roadWidthAt(phys.s) * pixScale,
       );
-      const h = Math.max(18, w * SPRITE_META.PLAYER.aspect);
+      const h = Math.max(18, w * aspect);
+      const sprite = computePlayerSpriteSamples(frame, playerMeta);
       drawList.push({
         type: 'player',
         depth: body.camera.z - 1e-3,
@@ -1152,6 +1330,8 @@
         shadowY: shadow.screen.y,
         zBody: body.camera.z,
         zShadow: shadow.camera.z,
+        meta: playerMeta,
+        sprite,
       });
     }
   }
@@ -1183,7 +1363,7 @@
         renderSnowScreen(item);
       } else if (item.type === 'player'){
         perf.registerSprite('player');
-        renderPlayer(item, SPRITE_META);
+        renderPlayer(item);
       }
     }
   }
@@ -1430,7 +1610,7 @@
     }
   }
 
-  function renderPlayer(item, SPRITE_META){
+  function renderPlayer(item){
     const texturesEnabled = areTexturesEnabled();
     const fogShadow = fogArray(item.zShadow || 0);
     const fogBody = fogArray(item.zBody || 0);
@@ -1450,8 +1630,80 @@
     glr.drawQuadSolid(shQuad, shadowColor, fogShadow);
 
     const bodyQuad = makeRotatedQuad(bodyCX, bodyCY, item.w, item.h, ang);
-    const bodyColor = texturesEnabled ? SPRITE_META.PLAYER.tint : randomColorFor('player:body');
-    glr.drawQuadSolid(bodyQuad, bodyColor, fogBody);
+    const meta = (item && item.meta) || (state.spriteMeta && state.spriteMeta.PLAYER) || {};
+    const spriteInfo = item && item.sprite ? item.sprite : null;
+    const texture = spriteInfo && spriteInfo.texture
+      ? spriteInfo.texture
+      : (typeof meta.tex === 'function' ? meta.tex() : null);
+    const atlasColumns = Math.max(1, spriteInfo && spriteInfo.columns
+      ? spriteInfo.columns
+      : ((meta.atlas && meta.atlas.columns) || PLAYER_ATLAS_COLUMNS));
+    const atlasTotalFrames = Math.max(1, spriteInfo && spriteInfo.rows
+      ? spriteInfo.rows * atlasColumns
+      : ((meta.atlas && meta.atlas.totalFrames) || (PLAYER_ATLAS_COLUMNS * PLAYER_ATLAS_ROWS)));
+    const atlasRows = Math.max(1, spriteInfo && spriteInfo.rows
+      ? spriteInfo.rows
+      : Math.ceil(atlasTotalFrames / atlasColumns));
+    const centerCol = Math.floor(atlasColumns * 0.5);
+    const centerRow = Math.floor(atlasRows * 0.5);
+    let samples = spriteInfo && Array.isArray(spriteInfo.samples)
+      ? spriteInfo.samples.slice()
+      : [];
+    if ((!samples || !samples.length) && texture) {
+      samples = [{
+        col: centerCol,
+        row: centerRow,
+        weight: 1,
+        uv: atlasUvFromRowCol(centerRow, centerCol, atlasColumns, atlasRows),
+      }];
+    }
+
+    if (texturesEnabled && texture && samples && samples.length) {
+      const sortedSamples = samples
+        .slice()
+        .sort((a, b) => (b.weight || 0) - (a.weight || 0))
+        .filter((entry) => entry && entry.uv);
+      if (sortedSamples.length) {
+        const gl = glr && glr.gl ? glr.gl : null;
+        if (gl) {
+          const [first, ...rest] = sortedSamples;
+          const firstWeight = clamp(first.weight || 0, 0, 1);
+          gl.blendFunc(gl.ONE, gl.ZERO);
+          glr.drawQuadTextured(
+            texture,
+            bodyQuad,
+            first.uv,
+            [firstWeight, firstWeight, firstWeight, 1],
+            fogBody,
+          );
+          if (rest.length) {
+            gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
+            for (const sample of rest) {
+              const weight = clamp(sample.weight || 0, 0, 1);
+              if (weight <= 1e-4) continue;
+              glr.drawQuadTextured(
+                texture,
+                bodyQuad,
+                sample.uv,
+                [weight, weight, weight, 0],
+                fogBody,
+              );
+            }
+          }
+          gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        } else {
+          const sample = sortedSamples[0];
+          glr.drawQuadTextured(texture, bodyQuad, sample.uv, undefined, fogBody);
+        }
+      } else {
+        const fallbackTint = Array.isArray(meta.tint) ? meta.tint : [1, 1, 1, 1];
+        glr.drawQuadSolid(bodyQuad, fallbackTint, fogBody);
+      }
+    } else {
+      const fallbackTint = Array.isArray(meta.tint) ? meta.tint : [1, 1, 1, 1];
+      const bodyColor = texturesEnabled ? fallbackTint : randomColorFor('player:body');
+      glr.drawQuadSolid(bodyQuad, bodyColor, fogBody);
+    }
   }
 
   function computeDebugPanels(){
