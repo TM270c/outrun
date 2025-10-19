@@ -71,6 +71,10 @@
   const PLAYER_SPRITE_CURVE_WEIGHT = 0.15;
   const PLAYER_SPRITE_SPEED_FLOOR = 0.25;
   const PLAYER_SPRITE_HEIGHT_RANGE_SCALE = 0.6;
+  const PLAYER_SPRITE_SLOPE_MAX_ANGLE_DEG = 18;
+  const PLAYER_SPRITE_SLOPE_MAX_ANGLE_RAD = (PLAYER_SPRITE_SLOPE_MAX_ANGLE_DEG * Math.PI) / 180;
+  const PLAYER_SPRITE_HEIGHT_DELTA_WEIGHT = 0.35;
+  const PLAYER_SPRITE_HEIGHT_TIGHTEN = 0.7;
 
   const playerSpriteBlendState = {
     steer: 0,
@@ -243,8 +247,23 @@
     const groundY = Number.isFinite(floorY) ? floorY : phys.y;
     const cameraDelta = groundY - bodyY;
     const heightRange = Math.max(1, camera.height * PLAYER_SPRITE_HEIGHT_RANGE_SCALE);
-    const heightRaw = clamp(-cameraDelta / heightRange, -1, 1);
-    const heightTarget = applyDeadzone(heightRaw, PLAYER_SPRITE_HEIGHT_DEADZONE);
+    const heightDeltaComponent = clamp(-cameraDelta / heightRange, -1, 1);
+    const profile = groundProfileAt ? groundProfileAt(phys.s) : null;
+    let slopeComponent = 0;
+    if (profile && Number.isFinite(profile.dy)) {
+      const slopeAngle = Math.atan(profile.dy);
+      const denom = PLAYER_SPRITE_SLOPE_MAX_ANGLE_RAD > 1e-6
+        ? PLAYER_SPRITE_SLOPE_MAX_ANGLE_RAD
+        : (Math.PI * 0.25);
+      slopeComponent = clamp(slopeAngle / denom, -1, 1);
+    }
+    const combinedHeight = clamp(
+      slopeComponent + heightDeltaComponent * PLAYER_SPRITE_HEIGHT_DELTA_WEIGHT,
+      -1,
+      1,
+    );
+    const tightenedHeight = clamp(combinedHeight * PLAYER_SPRITE_HEIGHT_TIGHTEN, -1, 1);
+    const heightTarget = applyDeadzone(tightenedHeight, PLAYER_SPRITE_HEIGHT_DEADZONE);
 
     if (!playerSpriteBlendState.initialized) {
       playerSpriteBlendState.steer = steerTarget;
