@@ -239,6 +239,12 @@
   let ctxSide = null;
   let ctxHUD = null;
 
+  const DEBUG_PANEL_MARGIN = 24;
+  const DEBUG_PANEL_GAP = 16;
+  const BOOST_PANEL_WIDTH = 220;
+  const BOOST_PANEL_HEIGHT = 120;
+  const PROFILE_PANEL_PADDING = { top: 16, right: 18, bottom: 26, left: 18 };
+
   let W = 0;
   let H = 0;
   let HALF_VIEW = 0;
@@ -1318,22 +1324,61 @@
     glr.drawQuadSolid(bodyQuad, bodyColor, fogBody);
   }
 
-  function worldToOverlay(s,y){
+  function computeDebugPanels(){
+    const margin = DEBUG_PANEL_MARGIN;
+    const gap = DEBUG_PANEL_GAP;
+    const boostPanel = {
+      x: margin,
+      y: margin,
+      width: BOOST_PANEL_WIDTH,
+      height: BOOST_PANEL_HEIGHT,
+    };
+    const profileX = boostPanel.x + boostPanel.width + gap;
+    const profileWidth = Math.max(0, SW - profileX - margin);
     return {
-      x:(s-state.phys.s)*(1/track.metersPerPixel.x) + SW*0.5,
-      y: SH - y*(1/track.metersPerPixel.y) - 60
+      boost: boostPanel,
+      profile: {
+        x: profileX,
+        y: margin,
+        width: profileWidth,
+        height: BOOST_PANEL_HEIGHT,
+      },
     };
   }
-  function drawBoostCrossSection(ctx){
-    const panelX = 24;
-    const panelY = 24;
-    const panelW = 220;
-    const panelH = 120;
-    const roadPadX = 18;
-    const roadPadTop = 24;
-    const roadPadBottom = 20;
+
+  function worldToOverlay(s,y, panelRect = null){
+    const pxPerMeterX = 1 / track.metersPerPixel.x;
+    const pxPerMeterY = 1 / track.metersPerPixel.y;
+    if (panelRect && panelRect.width > 0 && panelRect.height > 0){
+      const pad = PROFILE_PANEL_PADDING;
+      const innerWidth = Math.max(1, panelRect.width - pad.left - pad.right);
+      const innerHeight = Math.max(1, panelRect.height - pad.top - pad.bottom);
+      const centerX = panelRect.x + pad.left + innerWidth * 0.5;
+      const centerY = panelRect.y + pad.top + innerHeight * 0.5;
+      return {
+        x: centerX + (s - state.phys.s) * pxPerMeterX,
+        y: centerY - (y - state.phys.y) * pxPerMeterY,
+      };
+    }
+    return {
+      x:(s-state.phys.s)*pxPerMeterX + SW*0.5,
+      y: SH - (y - state.phys.y)*pxPerMeterY - 60
+    };
+  }
+  function drawBoostCrossSection(ctx, panelRect = null){
+    const panelX = panelRect && panelRect.x != null ? panelRect.x : DEBUG_PANEL_MARGIN;
+    const panelY = panelRect && panelRect.y != null ? panelRect.y : DEBUG_PANEL_MARGIN;
+    const panelWRaw = panelRect && panelRect.width != null ? panelRect.width : BOOST_PANEL_WIDTH;
+    const panelHRaw = panelRect && panelRect.height != null ? panelRect.height : BOOST_PANEL_HEIGHT;
+    if (panelWRaw <= 0 || panelHRaw <= 0) return;
+    const panelW = panelWRaw;
+    const panelH = panelHRaw;
+    const roadPadX = Math.min(18, Math.max(8, panelW * 0.12));
+    const roadPadTop = Math.min(24, Math.max(12, panelH * 0.2));
+    const roadPadBottom = Math.min(20, Math.max(10, panelH * 0.18));
     const roadW = panelW - roadPadX * 2;
     const roadH = panelH - roadPadTop - roadPadBottom;
+    if (roadW <= 0 || roadH <= 0) return;
 
     ctx.save();
     ctx.translate(panelX, panelY);
@@ -1399,24 +1444,55 @@
   function renderOverlay(){
     if (!overlayOn || !ctxSide) return;
     ctxSide.clearRect(0,0,SW,SH);
-    ctxSide.lineWidth = 2;
-    ctxSide.strokeStyle = state.phys.boostFlashTimer>0 ? '#d32f2f' : '#1976d2';
-    ctxSide.beginPath();
-    const sStart = state.phys.s - SW*0.5*track.metersPerPixel.x;
-    const sEnd   = state.phys.s + SW*0.5*track.metersPerPixel.x;
-    const step   = Math.max(5, 2*track.metersPerPixel.x);
-    let first = true;
-    for (let s = sStart; s <= sEnd; s += step){
-      const p = worldToOverlay(s, elevationAt(s));
-      if (first){ ctxSide.moveTo(p.x,p.y); first=false; } else { ctxSide.lineTo(p.x,p.y); }
+
+    const panels = computeDebugPanels();
+    const boostPanel = panels.boost;
+    const profilePanel = panels.profile;
+    const pad = PROFILE_PANEL_PADDING;
+    const innerProfileX = profilePanel.x + pad.left;
+    const innerProfileY = profilePanel.y + pad.top;
+    const innerProfileW = Math.max(1, profilePanel.width - pad.left - pad.right);
+    const innerProfileH = Math.max(1, profilePanel.height - pad.top - pad.bottom);
+
+    if (profilePanel.width > 0 && profilePanel.height > 0){
+      ctxSide.fillStyle = 'rgba(0,0,0,0.55)';
+      ctxSide.fillRect(profilePanel.x, profilePanel.y, profilePanel.width, profilePanel.height);
+      ctxSide.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctxSide.lineWidth = 1;
+      ctxSide.strokeRect(profilePanel.x, profilePanel.y, profilePanel.width, profilePanel.height);
+
+      ctxSide.save();
+      ctxSide.beginPath();
+      ctxSide.rect(innerProfileX, innerProfileY, innerProfileW, innerProfileH);
+      ctxSide.clip();
+
+      ctxSide.lineWidth = 2;
+      ctxSide.strokeStyle = state.phys.boostFlashTimer>0 ? '#d32f2f' : '#1976d2';
+      ctxSide.beginPath();
+      const sHalf = innerProfileW * 0.5 * track.metersPerPixel.x;
+      const sStart = state.phys.s - sHalf;
+      const sEnd   = state.phys.s + sHalf;
+      const step   = Math.max(5, 2*track.metersPerPixel.x);
+      let first = true;
+      for (let s = sStart; s <= sEnd; s += step){
+        const p = worldToOverlay(s, elevationAt(s), profilePanel);
+        if (first){ ctxSide.moveTo(p.x,p.y); first=false; } else { ctxSide.lineTo(p.x,p.y); }
+      }
+      ctxSide.stroke();
+
+      const p = worldToOverlay(state.phys.s, state.phys.y, profilePanel);
+      ctxSide.fillStyle = '#2e7d32';
+      ctxSide.beginPath(); ctxSide.arc(p.x, p.y, 6, 0, Math.PI*2); ctxSide.fill();
+
+      ctxSide.restore();
+
+      ctxSide.fillStyle = '#ffffff';
+      ctxSide.font = '11px system-ui, Arial';
+      ctxSide.textBaseline = 'bottom';
+      ctxSide.fillText('Elevation profile', profilePanel.x + pad.left, profilePanel.y + profilePanel.height - 6);
     }
-    ctxSide.stroke();
 
-    drawBoostCrossSection(ctxSide);
-
-    const p = worldToOverlay(state.phys.s, state.phys.y);
-    ctxSide.fillStyle = '#2e7d32';
-    ctxSide.beginPath(); ctxSide.arc(p.x, p.y, 6, 0, Math.PI*2); ctxSide.fill();
+    drawBoostCrossSection(ctxSide, boostPanel);
 
     const { dy, d2y } = groundProfileAt(state.phys.s);
     const kap = computeCurvature(dy, d2y);
