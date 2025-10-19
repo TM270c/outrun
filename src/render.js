@@ -1621,12 +1621,11 @@
       sparkGroup.rng = rng;
       while (sparkGroup.spawnAccumulator >= 1){
         sparkGroup.spawnAccumulator -= 1;
-        const baseX = sparkInfo.minX + sparkInfo.span * rng();
-        const jitter = (rng() - 0.5) * 0.05;
-        const pxNorm = clamp(baseX + jitter, -0.65, 0.65);
+        const clusterRadius = 0.015;
+        const pxNorm = clamp((rng() - 0.5) * clusterRadius * 2, -0.1, 0.1);
         const startY = 0.35 + rng() * 0.1;
         const upward = 0.55 + rng() * 0.35;
-        const lateral = (0.18 + rng() * 0.12) * sparkInfo.side;
+        const lateral = (rng() - 0.5) * 0.12;
         const life = 0.35 + rng() * 0.3;
         const sizeNorm = clamp(0.5 + rng() * 0.5, 0, 1);
         const alphaSpark = clamp(0.7 + rng() * 0.25, 0, 1);
