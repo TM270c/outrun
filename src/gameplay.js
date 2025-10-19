@@ -291,11 +291,12 @@
   const DRIFT_SMOKE_FORWARD_INHERITANCE = 0.4;
   const DRIFT_SMOKE_DRAG = 1.75;
 
-  const ENGINE_GLOW_INTERVAL = 1 / 60;
-  const ENGINE_GLOW_LIFETIME = 10 / 60;
-  const ENGINE_GLOW_LONGITUDINAL_JITTER = segmentLength * 0.001;
-  const ENGINE_GLOW_FORWARD_INHERITANCE = 0;
-  const ENGINE_GLOW_DRAG = 0;
+  const SPARKS_INTERVAL = 0.1 / 60;
+  const SPARKS_INTERVAL_JITTER = 0.25;
+  const SPARKS_LIFETIME = 30 / 60;
+  const SPARKS_LONGITUDINAL_JITTER = segmentLength * 0.01;
+  const SPARKS_FORWARD_INHERITANCE = 0.4;
+  const SPARKS_DRAG = 1.75;
 
   const DEFAULT_SPRITE_META = {
     PLAYER: {
@@ -330,7 +331,7 @@
     },
     PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
     DRIFT_SMOKE: { wN: 0.1, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], tex: () => null },
-    ENGINE_GLOW: { wN: 0.05, aspect: 1.0, tint: [1.0, 0.25, 0.25, 0.9], tex: () => null },
+    SPARKS: { wN: 0.1, aspect: 1.0, tint: [1.0, 0.6, 0.2, 0.9], tex: () => null },
     ANIM_PLATE: {
       wN: 0.1,
       aspect: 1.0,
@@ -935,7 +936,7 @@
   }
 
   const driftSmokePool = [];
-  const engineGlowPool = [];
+  const sparksPool = [];
 
   function computeDriftSmokeInterval() {
     const base = Math.max(1e-4, DRIFT_SMOKE_INTERVAL);
@@ -964,12 +965,20 @@
     driftSmokePool.push(sprite);
   }
 
-  function allocEngineGlowSprite() {
-    return engineGlowPool.length ? engineGlowPool.pop() : { kind: 'ENGINE_GLOW' };
+  function computeSparksInterval() {
+    const base = Math.max(1e-4, SPARKS_INTERVAL);
+    const jitter = Math.max(0, SPARKS_INTERVAL_JITTER);
+    if (jitter <= 1e-6) return base;
+    const span = base * jitter;
+    return base + (Math.random() * 2 - 1) * span;
   }
 
-  function recycleEngineGlowSprite(sprite) {
-    if (!sprite || sprite.kind !== 'ENGINE_GLOW') return;
+  function allocSparksSprite() {
+    return sparksPool.length ? sparksPool.pop() : { kind: 'SPARKS' };
+  }
+
+  function recycleSparksSprite(sprite) {
+    if (!sprite || sprite.kind !== 'SPARKS') return;
     sprite.animation = null;
     sprite.impactState = null;
     sprite.driftMotion = null;
@@ -980,13 +989,13 @@
     sprite.s = 0;
     sprite.ttl = 0;
     sprite.offset = 0;
-    engineGlowPool.push(sprite);
+    sparksPool.push(sprite);
   }
 
   function recycleTransientSprite(sprite) {
     if (!sprite) return;
     if (sprite.kind === 'DRIFT_SMOKE') recycleDriftSmokeSprite(sprite);
-    if (sprite.kind === 'ENGINE_GLOW') recycleEngineGlowSprite(sprite);
+    if (sprite.kind === 'SPARKS') recycleSparksSprite(sprite);
   }
 
   const NPC_DEFAULTS = { total: 20, edgePad: 0.02, avoidLookaheadSegs: 20 };
@@ -1069,8 +1078,8 @@
     },
     driftSmokeTimer: 0,
     driftSmokeNextInterval: computeDriftSmokeInterval(),
-    engineGlowTimer: 0,
-    engineGlowNextInterval: ENGINE_GLOW_INTERVAL,
+    sparksTimer: 0,
+    sparksNextInterval: computeSparksInterval(),
     cars: [],
     spriteMeta: DEFAULT_SPRITE_META,
     getKindScale: defaultGetKindScale,
@@ -1231,14 +1240,16 @@
     }
   }
 
-  function spawnEngineGlowSprites() {
+  function spawnSparksSprites(contactSide = 0) {
     if (!hasSegments()) return;
     const { phys } = state;
     if (!phys || !phys.grounded) return;
     const seg = segmentAtS(phys.s);
     if (!seg) return;
     const half = playerHalfWN();
-    const offsets = [state.playerN - half * 0.5, state.playerN + half * 0.5];
+    const sideSign = contactSide !== 0 ? Math.sign(contactSide) || 0 : (state.playerN >= 0 ? 1 : -1);
+    if (sideSign === 0) return;
+    const offsets = [state.playerN + sideSign * half * 0.85];
     const sprites = ensureArray(seg, 'sprites');
     const baseS = Number.isFinite(phys.s)
       ? phys.s
@@ -1246,22 +1257,24 @@
     const trackLength = trackLengthRef();
     const forwardSpeed = Math.max(0, Number.isFinite(phys.vtan) ? phys.vtan : 0);
     for (const baseOffset of offsets) {
-      const sprite = allocEngineGlowSprite();
+      const sprite = allocSparksSprite();
       const spawnOffset = baseOffset;
-      const sJitter = (Math.random() * 2 - 1) * ENGINE_GLOW_LONGITUDINAL_JITTER;
+      const sJitter = (Math.random() * 2 - 1) * SPARKS_LONGITUDINAL_JITTER;
       const spawnS = trackLength > 0 ? wrapDistance(baseS, sJitter, trackLength) : baseS + sJitter;
-      const inheritedForward = forwardSpeed * ENGINE_GLOW_FORWARD_INHERITANCE;
-      sprite.kind = 'ENGINE_GLOW';
+      const inheritedForward = forwardSpeed * SPARKS_FORWARD_INHERITANCE * (0.8 + 0.4 * Math.random());
+      sprite.kind = 'SPARKS';
       sprite.offset = spawnOffset;
       sprite.segIndex = seg.index;
       sprite.s = spawnS;
-      sprite.ttl = ENGINE_GLOW_LIFETIME;
+      sprite.ttl = SPARKS_LIFETIME;
       sprite.interactable = false;
       sprite.interacted = false;
       sprite.impactable = false;
-      sprite.driftMotion = (inheritedForward !== 0)
-        ? { forwardVel: inheritedForward, drag: ENGINE_GLOW_DRAG, lateralVel: 0 }
-        : null;
+      sprite.driftMotion = {
+        forwardVel: inheritedForward,
+        drag: SPARKS_DRAG,
+        lateralVel: 0,
+      };
       sprites.push(sprite);
     }
   }
@@ -2074,6 +2087,8 @@
     let segmentsCrossedDuringStep = [];
     let segNow = segmentAtS(phys.s);
     let guardRailContact = false;
+    let guardRailSlowing = false;
+    let guardRailSide = 0;
     let offRoadNow = false;
     const segFeatures = segNow ? segNow.features : null;
     const zonesHere = boostZonesForPlayer(segNow, state.playerN);
@@ -2202,15 +2217,21 @@
       state.driftSmokeNextInterval = computeDriftSmokeInterval();
     }
 
-    state.engineGlowTimer += dt;
-    let glowInterval = (Number.isFinite(state.engineGlowNextInterval) && state.engineGlowNextInterval > 0)
-      ? state.engineGlowNextInterval
-      : ENGINE_GLOW_INTERVAL;
-    while (state.engineGlowTimer >= glowInterval) {
-      spawnEngineGlowSprites();
-      state.engineGlowTimer -= glowInterval;
+    if (guardRailSlowing) {
+      state.sparksTimer += dt;
+      let interval = (Number.isFinite(state.sparksNextInterval) && state.sparksNextInterval > 0)
+        ? state.sparksNextInterval
+        : computeSparksInterval();
+      while (state.sparksTimer >= interval) {
+        spawnSparksSprites(guardRailSide);
+        state.sparksTimer -= interval;
+        interval = computeSparksInterval();
+      }
+      state.sparksNextInterval = interval;
+    } else {
+      state.sparksTimer = 0;
+      state.sparksNextInterval = computeSparksInterval();
     }
-    state.engineGlowNextInterval = glowInterval;
 
     phys.t += dt;
 
@@ -2261,11 +2282,13 @@
       offRoadNow = Math.abs(preClamp) > OFF_ROAD_THRESHOLD || Math.abs(state.playerN) > OFF_ROAD_THRESHOLD;
       const hasGuardRail = !!(segNow.features && segNow.features.rail);
       guardRailContact = hasGuardRail && scraping;
-      if (scraping) {
+      if (guardRailContact) {
+        guardRailSide = Math.sign(preClamp) || Math.sign(state.playerN) || guardRailSide;
         const offRoadDecelLimit = player.topSpeed / 4;
         if (Math.abs(phys.vtan) > offRoadDecelLimit) {
           const sign = Math.sign(phys.vtan) || 1;
           phys.vtan -= sign * (player.topSpeed * 0.8) * (1 / 60);
+          guardRailSlowing = true;
         }
       }
     } else if (metrics) {
@@ -2555,8 +2578,8 @@
     state.boostTimer = 0;
     state.driftSmokeTimer = 0;
     state.driftSmokeNextInterval = computeDriftSmokeInterval();
-    state.engineGlowTimer = 0;
-    state.engineGlowNextInterval = ENGINE_GLOW_INTERVAL;
+    state.sparksTimer = 0;
+    state.sparksNextInterval = computeSparksInterval();
 
     state.camRollDeg = 0;
     state.playerTiltDeg = 0;
