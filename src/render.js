@@ -756,6 +756,20 @@
     const uv = item.uv || { u1: 0, v1: 0, u2: 1, v2: 0, u3: 1, v3: 1, u4: 0, v4: 1 };
     let quad = { ...baseQuad };
 
+    const fogFactor = clamp(fogFactorFromZ(item.z || 0), 0, 1);
+    const closeness = clamp(1 - fogFactor, 0, 1);
+    const physState = state && state.phys ? state.phys : null;
+    const playerSpeed = Math.abs(
+      physState && Number.isFinite(physState.vtan) ? physState.vtan : 0,
+    );
+    const sparkSpeed = Math.abs(Number.isFinite(item.guardSparkSpeed) ? item.guardSparkSpeed : 0);
+    const topSpeed = (player && Number.isFinite(player.topSpeed) && player.topSpeed !== 0)
+      ? Math.abs(player.topSpeed)
+      : 1;
+    const speedPct = topSpeed > 1e-6
+      ? clamp(Math.max(playerSpeed, sparkSpeed) / topSpeed, 0, 1)
+      : 0;
+
     if (guardSparkStretchFactor > 0){
       const px = item.x;
       const py = item.y - item.h * 0.5;
@@ -764,17 +778,13 @@
       const dirX = px - viewCenterX;
       const dirY = py - viewCenterY;
       const dirLen = Math.hypot(dirX, dirY);
-      const topSpeed = (player && Number.isFinite(player.topSpeed) && player.topSpeed !== 0)
-        ? Math.abs(player.topSpeed)
-        : 1;
-      const speedRaw = Number.isFinite(item.guardSparkSpeed) ? item.guardSparkSpeed : 0;
-      const speedPct = clamp(Math.abs(speedRaw) / topSpeed, 0, 1);
-      if (dirLen > 1e-3 && speedPct > 1e-3){
+      const stretchStrength = speedPct * closeness;
+      if (dirLen > 1e-3 && stretchStrength > 1e-3){
         const normDirX = dirX / dirLen;
         const normDirY = dirY / dirLen;
         const maxRadius = Math.max(1, Math.hypot(viewCenterX, viewCenterY));
         const radialFactor = clamp(dirLen / maxRadius, 0, 1);
-        const stretchBase = item.h * 0.5 * speedPct * guardSparkStretchFactor;
+        const stretchBase = item.h * 0.5 * stretchStrength * guardSparkStretchFactor;
         const stretchAmount = Math.min(
           item.h * guardSparkStretchFactor,
           stretchBase * lerp(0.2, 1.1, radialFactor),
