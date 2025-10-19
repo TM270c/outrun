@@ -1494,13 +1494,63 @@
       ? build.version
       : null;
     const versionHUD = buildVersion ? `ver:${buildVersion}  ` : '';
-    const hud = `${versionHUD}${boostingHUD}${driftHUD}  vtan:${state.phys.vtan.toFixed(1)}  grounded:${state.phys.grounded}  kappa:${kap.toFixed(5)}  n:${state.playerN.toFixed(2)}  cars:${state.cars.length}`;
+    const nearMissDebug = state.nearMiss ? `  near:${state.nearMiss.count}` : '';
+    const hud = `${versionHUD}${boostingHUD}${driftHUD}  vtan:${state.phys.vtan.toFixed(1)}  grounded:${state.phys.grounded}  kappa:${kap.toFixed(5)}  n:${state.playerN.toFixed(2)}  cars:${state.cars.length}${nearMissDebug}`;
     ctxSide.fillStyle = '#fff';
     ctxSide.strokeStyle = '#000';
     ctxSide.lineWidth = 3;
     ctxSide.font = '12px system-ui, Arial';
     ctxSide.strokeText(hud, 10, SH-12);
     ctxSide.fillText(hud, 10, SH-12);
+  }
+
+  function renderHud() {
+    if (!ctxHUD) return;
+    if (state.resetMatteActive) {
+      ctxHUD.clearRect(0, 0, HUD_W, HUD_H);
+      return;
+    }
+
+    ctxHUD.clearRect(0, 0, HUD_W, HUD_H);
+
+    const nearMiss = state.nearMiss;
+    if (!nearMiss || nearMiss.recentTimer <= 0) return;
+
+    const duration = (nearMiss.displayDuration && nearMiss.displayDuration > 1e-4)
+      ? nearMiss.displayDuration
+      : 1;
+    const ratio = clamp(nearMiss.recentTimer / duration, 0, 1);
+    const alpha = clamp(Math.pow(ratio, 0.65), 0, 1);
+    if (alpha <= 1e-3) return;
+
+    ctxHUD.save();
+    ctxHUD.globalAlpha = alpha;
+    ctxHUD.fillStyle = '#ffffff';
+    ctxHUD.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+    ctxHUD.lineWidth = 6;
+    ctxHUD.textAlign = 'center';
+    ctxHUD.textBaseline = 'middle';
+
+    const centerX = HUD_W * 0.5;
+    const centerY = HUD_H * 0.3;
+
+    ctxHUD.font = '600 40px "Segoe UI", Arial, sans-serif';
+    const title = 'NEAR MISS!';
+    ctxHUD.strokeText(title, centerX, centerY);
+    ctxHUD.fillText(title, centerX, centerY);
+
+    ctxHUD.font = '500 22px "Segoe UI", Arial, sans-serif';
+    const countText = `Total ${nearMiss.count}`;
+    ctxHUD.strokeText(countText, centerX, centerY + 38);
+    ctxHUD.fillText(countText, centerX, centerY + 38);
+
+    if (nearMiss.lastCarType) {
+      const detailText = `vs ${nearMiss.lastCarType}`;
+      ctxHUD.strokeText(detailText, centerX, centerY + 64);
+      ctxHUD.fillText(detailText, centerX, centerY + 64);
+    }
+
+    ctxHUD.restore();
   }
 
   const resetMatte = (() => {
@@ -1585,6 +1635,7 @@
       }
       renderScene();
       renderOverlay();
+      renderHud();
       resetMatte.draw();
       if (state.phys.boostFlashTimer>0) state.phys.boostFlashTimer=Math.max(0, state.phys.boostFlashTimer - dt);
       requestAnimationFrame(loop);

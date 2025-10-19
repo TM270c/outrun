@@ -933,6 +933,12 @@
   const INTERACTABLE_COLLISION_PUSH_FORWARD_MAX_SEGMENTS = 12;
   const INTERACTABLE_COLLISION_PUSH_LATERAL_MAX = 1;
   const CAR_COLLISION_STAMP = Symbol('carCollisionStamp');
+  const CAR_NEAR_MISS_STAMP = Symbol('carNearMissStamp');
+  const NEAR_MISS_LATERAL_SCALE = 1.2;
+  const NEAR_MISS_LONGITUDINAL_SEGMENTS = 0.45;
+  const NEAR_MISS_COOLDOWN = 0.75;
+  const NEAR_MISS_DISPLAY_TIME = 1.5;
+  const NEAR_MISS_RELATIVE_SPEED_SCALE = 0.05;
 
   const defaultGetKindScale = (kind) => (kind === 'PLAYER' ? player.scale : 1);
 
@@ -968,12 +974,20 @@
     spriteMeta: DEFAULT_SPRITE_META,
     getKindScale: defaultGetKindScale,
     input: { left: false, right: false, up: false, down: false, hop: false },
+    nearMiss: {
+      count: 0,
+      recentTimer: 0,
+      displayDuration: NEAR_MISS_DISPLAY_TIME,
+      lastDistance: null,
+      lastCarType: null,
+    },
     callbacks: {
       onQueueReset: null,
       onToggleOverlay: null,
       onResetScene: null,
       onQueueRespawn: null,
       onRaceFinish: null,
+      onNearMiss: null,
     },
     camera: {
       fieldOfView: camera.fovDeg,
@@ -1426,6 +1440,14 @@
     return wrapByLength(v + dv, max);
   }
 
+  function distanceAlongTrack(a, b) {
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return Infinity;
+    const length = trackLengthRef();
+    if (!Number.isFinite(length) || length <= 0) return Math.abs(a - b);
+    const diff = Math.abs(a - b) % length;
+    return diff > length * 0.5 ? length - diff : diff;
+  }
+
   function nearestSegmentCenter(s) {
     return Math.round(s / segmentLength) * segmentLength + segmentLength * 0.5;
   }
@@ -1602,6 +1624,59 @@
 
   const overlap = (ax, aw, bx, bw, scale = 1) => Math.abs(ax - bx) < (aw + bw) * scale;
 
+  function registerNearMiss(car, lateralGap, combinedHalfWidth) {
+    if (!state.nearMiss) return;
+    const nearMiss = state.nearMiss;
+    nearMiss.count += 1;
+    nearMiss.displayDuration = NEAR_MISS_DISPLAY_TIME;
+    nearMiss.recentTimer = NEAR_MISS_DISPLAY_TIME;
+    nearMiss.lastDistance = Math.max(0, lateralGap - combinedHalfWidth);
+    nearMiss.lastCarType = car && typeof car.type === 'string' ? car.type : null;
+    if (typeof state.callbacks.onNearMiss === 'function') {
+      try {
+        state.callbacks.onNearMiss({
+          carType: nearMiss.lastCarType,
+          count: nearMiss.count,
+          distance: nearMiss.lastDistance,
+          time: state.phys.t,
+        });
+      } catch (err) {
+        console.warn('Near miss callback failed', err);
+      }
+    }
+  }
+
+  function considerNearMiss(car, playerHalf, carHalf) {
+    if (!car) return false;
+    const combinedHalfWidth = playerHalf + carHalf;
+    if (!(combinedHalfWidth > 0)) return false;
+
+    const lateralGap = Math.abs(state.playerN - car.offset);
+    if (!(lateralGap > combinedHalfWidth)) return false;
+    if (lateralGap >= combinedHalfWidth * NEAR_MISS_LATERAL_SCALE) return false;
+
+    const segLength = Number.isFinite(segmentLength) && segmentLength > 0 ? segmentLength : 1;
+    const longitudinalLimit = segLength * NEAR_MISS_LONGITUDINAL_SEGMENTS;
+    const longitudinalGap = distanceAlongTrack(state.phys.s, car.z);
+    if (!Number.isFinite(longitudinalGap) || longitudinalGap > longitudinalLimit) return false;
+
+    const now = state.phys.t;
+    if (!Number.isFinite(now)) return false;
+    const lastNearMiss = car[CAR_NEAR_MISS_STAMP] ?? -Infinity;
+    if ((now - lastNearMiss) <= NEAR_MISS_COOLDOWN) return false;
+
+    const playerForwardSpeed = currentPlayerForwardSpeed();
+    const npcSpeed = npcForwardSpeed(car);
+    const relativeSpeed = Math.abs(playerForwardSpeed - npcSpeed);
+    const topSpeed = player && Number.isFinite(player.topSpeed) ? Math.max(player.topSpeed, 0) : 0;
+    const minRelativeSpeed = Math.max(1, topSpeed * NEAR_MISS_RELATIVE_SPEED_SCALE);
+    if (!(relativeSpeed >= minRelativeSpeed)) return false;
+
+    car[CAR_NEAR_MISS_STAMP] = now;
+    registerNearMiss(car, lateralGap, combinedHalfWidth);
+    return true;
+  }
+
   function doHop() {
     const { phys } = state;
     if (!phys.grounded || phys.t < phys.nextHopTime) return false;
@@ -1684,7 +1759,9 @@
     for (let i = 0; i < seg.cars.length; i += 1) {
       const car = seg.cars[i];
       if (!car) continue;
-      if (!overlap(state.playerN, pHalf, car.offset, carHalfWN(car), 1)) continue;
+      const carHalf = carHalfWN(car);
+      considerNearMiss(car, pHalf, carHalf);
+      if (!overlap(state.playerN, pHalf, car.offset, carHalf, 1)) continue;
 
       if (!phys.grounded && playerBaseHeight() >= carHitboxTopY(car)) continue;
 
@@ -1832,6 +1909,14 @@
   function updatePhysics(dt) {
     const { phys, input } = state;
     if (!hasSegments()) return;
+
+    if (state.nearMiss && state.nearMiss.recentTimer > 0) {
+      state.nearMiss.recentTimer = Math.max(0, state.nearMiss.recentTimer - dt);
+      if (state.nearMiss.recentTimer <= 0) {
+        state.nearMiss.lastDistance = null;
+        state.nearMiss.lastCarType = null;
+      }
+    }
 
     if (input.hop) {
       doHop();
@@ -2312,6 +2397,13 @@
     state.prevPlayerN = state.playerN;
     state.lateralRate = 0;
     state.pendingRespawn = null;
+
+    if (state.nearMiss) {
+      state.nearMiss.recentTimer = 0;
+      state.nearMiss.lastDistance = null;
+      state.nearMiss.lastCarType = null;
+      state.nearMiss.displayDuration = NEAR_MISS_DISPLAY_TIME;
+    }
   }
 
   function respawnPlayerAt(sTarget, nNorm = 0) {
@@ -2380,6 +2472,13 @@
       playerN: 0,
       timers: { t: 0, nextHopTime: 0, boostFlashTimer: 0 },
     });
+    if (state.nearMiss) {
+      state.nearMiss.count = 0;
+      state.nearMiss.recentTimer = 0;
+      state.nearMiss.lastDistance = null;
+      state.nearMiss.lastCarType = null;
+      state.nearMiss.displayDuration = NEAR_MISS_DISPLAY_TIME;
+    }
     state.race.active = false;
     state.race.targetLaps = 1;
     state.race.lapsCompleted = 0;
