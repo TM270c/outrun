@@ -960,10 +960,11 @@
         const zObj = lerp(p1.camera.z, p2.camera.z, t) + 1e-3;
         const farS = spriteFarScaleFromZ(zObj);
         const scaleFactor = Number.isFinite(spr.scale) ? spr.scale : 1;
+        const stretchFactor = Number.isFinite(spr.stretch) ? spr.stretch : 1;
         let wPx = Math.max(6, scale * meta.wN * rw * HALF_VIEW);
         let hPx = Math.max(10, wPx * meta.aspect);
         wPx *= scaleFactor;
-        hPx *= scaleFactor;
+        hPx *= scaleFactor * stretchFactor;
         wPx *= farS;
         hPx *= farS;
         const drawX = xCenter;
