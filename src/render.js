@@ -28,7 +28,7 @@
   } = Config;
 
   const defaultCameraTilt = {
-    direction: 1,
+    direction: -1,
     maxDeg: 40,
     lateralWeight: -2.5,
     curveWeight: -0.25,
@@ -38,7 +38,7 @@
 
   const defaultSurfaceTilt = {
     enabled: true,
-    direction: 1,
+    direction: -1,
     maxDeg: 18,
     sampleRadius: 0.35,
     clampN: 2.5,
