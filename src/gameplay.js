@@ -2087,7 +2087,6 @@
     let segmentsCrossedDuringStep = [];
     let segNow = segmentAtS(phys.s);
     let guardRailContact = false;
-    let guardRailSlowing = false;
     let guardRailSide = 0;
     let offRoadNow = false;
     const segFeatures = segNow ? segNow.features : null;
@@ -2217,7 +2216,7 @@
       state.driftSmokeNextInterval = computeDriftSmokeInterval();
     }
 
-    if (guardRailSlowing) {
+    if (guardRailContact) {
       state.sparksTimer += dt;
       let interval = (Number.isFinite(state.sparksNextInterval) && state.sparksNextInterval > 0)
         ? state.sparksNextInterval
@@ -2288,7 +2287,6 @@
         if (Math.abs(phys.vtan) > offRoadDecelLimit) {
           const sign = Math.sign(phys.vtan) || 1;
           phys.vtan -= sign * (player.topSpeed * 0.8) * (1 / 60);
-          guardRailSlowing = true;
         }
       }
     } else if (metrics) {
