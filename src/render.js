@@ -254,7 +254,33 @@
   let HUD_H = 0;
   let HUD_COVER_RADIUS = 0;
 
-  let overlayOn = true;
+  let overlayOn = false;
+
+  function computeOverlayEnabled() {
+    const app = global.App || null;
+    if (app && typeof app.isDebugEnabled === 'function') {
+      try {
+        return !!app.isDebugEnabled();
+      } catch (err) {
+        // Fall through to config-based detection below.
+      }
+    }
+    return debug && debug.mode !== 'off';
+  }
+
+  function syncOverlayVisibility(force = false) {
+    const shouldShow = computeOverlayEnabled();
+    if (force || overlayOn !== shouldShow) {
+      overlayOn = shouldShow;
+      if (canvasOverlay) {
+        canvasOverlay.style.display = overlayOn ? 'block' : 'none';
+      }
+      if (!overlayOn && ctxSide) {
+        ctxSide.clearRect(0, 0, SW, SH);
+      }
+    }
+    return overlayOn;
+  }
 
   function createPoint(worldOrX, y, z){
     if (typeof worldOrX === 'object' && worldOrX !== null){
@@ -1402,7 +1428,7 @@
     ctx.restore();
   }
   function renderOverlay(){
-    if (!overlayOn || !ctxSide) return;
+    if (!syncOverlayVisibility() || !ctxSide) return;
     ctxSide.clearRect(0,0,SW,SH);
 
     const panels = computeDebugPanels();
@@ -1531,7 +1557,7 @@
       ctxSide = canvasOverlay.getContext('2d', { alpha:true });
       SW = canvasOverlay.width;
       SH = canvasOverlay.height;
-      canvasOverlay.style.display = overlayOn ? 'block' : 'none';
+      syncOverlayVisibility(true);
     }
     if (canvasHUD){
       ctxHUD = canvasHUD.getContext('2d', { alpha:true });
