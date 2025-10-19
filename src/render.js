@@ -1486,6 +1486,56 @@
 
     drawBoostCrossSection(ctxSide, boostPanel);
 
+    const metrics = state.metrics || null;
+    if (metrics) {
+      const fmtSeconds = (value) => {
+        if (!Number.isFinite(value) || value <= 0) return '0.00s';
+        return `${value.toFixed(2)}s`;
+      };
+      const fmtCount = (value) => (Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0);
+      const fmtSpeed = (value) => {
+        if (!Number.isFinite(value) || value <= 0) return '0.0';
+        return value.toFixed(1);
+      };
+      const debugLines = [
+        `NPC hits: ${fmtCount(metrics.npcHits)}`,
+        `Guardrail hits: ${fmtCount(metrics.guardRailHits)}`,
+        `Guardrail time: ${fmtSeconds(metrics.guardRailContactTime)}`,
+        `Pickups: ${fmtCount(metrics.pickupsCollected)}`,
+        `Air time: ${fmtSeconds(metrics.airTime)}`,
+        `Drift time: ${fmtSeconds(metrics.driftTime)}`,
+        `Top speed: ${fmtSpeed(metrics.topSpeed)} u/s`,
+        `Respawns: ${fmtCount(metrics.respawnCount)}`,
+        `Off-road time: ${fmtSeconds(metrics.offRoadTime)}`,
+      ];
+      const listPanelX = DEBUG_PANEL_MARGIN;
+      const listPanelY = boostPanel.y + boostPanel.height + DEBUG_PANEL_GAP;
+      const listPanelWidth = Math.max(180, Math.min(300, SW - listPanelX - DEBUG_PANEL_MARGIN));
+      const lineHeight = 16;
+      const listPanelHeight = debugLines.length * lineHeight + 12;
+      if (listPanelWidth > 0 && listPanelHeight > 0 && listPanelY < SH) {
+        const availableHeight = Math.max(0, SH - listPanelY - DEBUG_PANEL_MARGIN);
+        const clampedHeight = Math.max(0, Math.min(listPanelHeight, availableHeight));
+        ctxSide.fillStyle = 'rgba(0,0,0,0.55)';
+        if (clampedHeight > 0) {
+          ctxSide.fillRect(listPanelX, listPanelY, listPanelWidth, clampedHeight);
+          ctxSide.strokeStyle = 'rgba(255,255,255,0.25)';
+          ctxSide.lineWidth = 1;
+          ctxSide.strokeRect(listPanelX, listPanelY, listPanelWidth, clampedHeight);
+          ctxSide.fillStyle = '#ffffff';
+          ctxSide.font = '12px system-ui, Arial';
+          ctxSide.textBaseline = 'top';
+          const textX = listPanelX + 8;
+          let textY = listPanelY + 6;
+          for (const line of debugLines) {
+            if (textY + lineHeight > listPanelY + clampedHeight) break;
+            ctxSide.fillText(line, textX, textY);
+            textY += lineHeight;
+          }
+        }
+      }
+    }
+
     const { dy, d2y } = groundProfileAt(state.phys.s);
     const kap = computeCurvature(dy, d2y);
     const boostingHUD = (state.boostTimer>0) ? `boost:${state.boostTimer.toFixed(2)}s ` : '';

@@ -933,8 +933,26 @@
   const INTERACTABLE_COLLISION_PUSH_FORWARD_MAX_SEGMENTS = 12;
   const INTERACTABLE_COLLISION_PUSH_LATERAL_MAX = 1;
   const CAR_COLLISION_STAMP = Symbol('carCollisionStamp');
+  const GUARD_RAIL_HIT_COOLDOWN = 0.5;
+  const OFF_ROAD_THRESHOLD = 1;
 
   const defaultGetKindScale = (kind) => (kind === 'PLAYER' ? player.scale : 1);
+
+  function createInitialMetrics() {
+    return {
+      npcHits: 0,
+      guardRailHits: 0,
+      guardRailContactTime: 0,
+      pickupsCollected: 0,
+      airTime: 0,
+      driftTime: 0,
+      topSpeed: 0,
+      respawnCount: 0,
+      offRoadTime: 0,
+      guardRailCooldownTimer: 0,
+      guardRailContactActive: false,
+    };
+  }
 
   const state = {
     phys: { s: 0, y: 0, vx: 0, vy: 0, vtan: 0, grounded: true, t: 0, nextHopTime: 0, boostFlashTimer: 0 },
@@ -982,6 +1000,7 @@
       playerZ: 0,
       updateFromFov: null,
     },
+    metrics: createInitialMetrics(),
   };
 
   const CLIFF_LIMIT_DEG = Number.isFinite(cliffs.cliffLimit) ? cliffs.cliffLimit : null;
@@ -1654,6 +1673,9 @@
 
       if (spr.interactable && !spr.interacted) {
         spr.interacted = true;
+        if (spr.toggleOnInteract && state.metrics) {
+          state.metrics.pickupsCollected += 1;
+        }
         const mode = spr.interactionMode || 'static';
         if (mode === 'playAnim' && spr.animation && spr.animation.clips && spr.animation.clips.interact) {
           switchSpriteAnimationClip(spr.animation, 'interact', true);
@@ -1724,6 +1746,9 @@
       applyNpcCollisionPush(car, playerForwardSpeed);
 
       car[CAR_COLLISION_STAMP] = now;
+      if (state.metrics) {
+        state.metrics.npcHits += 1;
+      }
       return true;
     }
     return false;
@@ -1833,6 +1858,12 @@
     const { phys, input } = state;
     if (!hasSegments()) return;
 
+    const metrics = state.metrics || null;
+    if (metrics && dt > 0) {
+      const cooldown = Number.isFinite(metrics.guardRailCooldownTimer) ? metrics.guardRailCooldownTimer : 0;
+      metrics.guardRailCooldownTimer = Math.max(0, cooldown - dt);
+    }
+
     if (input.hop) {
       doHop();
       input.hop = false;
@@ -1871,6 +1902,8 @@
     const startS = phys.s;
     let segmentsCrossedDuringStep = [];
     let segNow = segmentAtS(phys.s);
+    let guardRailContact = false;
+    let offRoadNow = false;
     const segFeatures = segNow ? segNow.features : null;
     const zonesHere = boostZonesForPlayer(segNow, state.playerN);
     const hasZonesHere = zonesHere.length > 0;
@@ -2043,12 +2076,32 @@
       const preClamp = state.playerN;
       state.playerN = clamp(state.playerN, -bound, bound);
       const scraping = Math.abs(preClamp) > bound - 1e-6 || Math.abs(state.playerN) >= bound - 1e-6;
+      offRoadNow = Math.abs(preClamp) > OFF_ROAD_THRESHOLD || Math.abs(state.playerN) > OFF_ROAD_THRESHOLD;
+      guardRailContact = scraping && segNow.features && segNow.features.rail;
       if (scraping) {
         const offRoadDecelLimit = player.topSpeed / 4;
         if (Math.abs(phys.vtan) > offRoadDecelLimit) {
           const sign = Math.sign(phys.vtan) || 1;
           phys.vtan -= sign * (player.topSpeed * 0.8) * (1 / 60);
         }
+      }
+    } else if (metrics) {
+      metrics.guardRailContactActive = false;
+    }
+
+    if (metrics) {
+      if (guardRailContact) {
+        metrics.guardRailContactTime += dt;
+        if (!metrics.guardRailContactActive && metrics.guardRailCooldownTimer <= 0) {
+          metrics.guardRailHits += 1;
+          metrics.guardRailCooldownTimer = GUARD_RAIL_HIT_COOLDOWN;
+        }
+        metrics.guardRailContactActive = true;
+      } else {
+        metrics.guardRailContactActive = false;
+      }
+      if (offRoadNow) {
+        metrics.offRoadTime += dt;
       }
     }
 
@@ -2070,6 +2123,19 @@
       const bodyY = phys.grounded ? (floorElevationAt ? floorElevationAt(phys.s, state.playerN) : phys.y) : phys.y;
       if (bodyY != null && (roadY - bodyY) > failsafe.dropUnits) {
         queueRespawn(phys.s);
+      }
+    }
+
+    if (metrics) {
+      if (!phys.grounded) {
+        metrics.airTime += dt;
+      }
+      if (state.driftState === 'drifting') {
+        metrics.driftTime += dt;
+      }
+      const speed = Math.abs(phys.vtan);
+      if (Number.isFinite(speed) && speed > metrics.topSpeed) {
+        metrics.topSpeed = speed;
       }
     }
   }
@@ -2312,6 +2378,10 @@
     state.prevPlayerN = state.playerN;
     state.lateralRate = 0;
     state.pendingRespawn = null;
+    if (state.metrics) {
+      state.metrics.guardRailContactActive = false;
+      state.metrics.guardRailCooldownTimer = 0;
+    }
   }
 
   function respawnPlayerAt(sTarget, nNorm = 0) {
@@ -2373,6 +2443,8 @@
       pushZone(cliffZones, 0, segmentCount - 1, 3);
     }
 
+    state.metrics = createInitialMetrics();
+
     await spawnProps();
     spawnCars();
     resetPlayerState({
@@ -2398,7 +2470,11 @@
   function queueRespawn(sAtFail) {
     if (state.resetMatteActive) return;
     const targetS = nearestSegmentCenter(sAtFail);
+    const wasPending = !!state.pendingRespawn;
     state.pendingRespawn = { targetS, targetN: 0 };
+    if (!wasPending && state.metrics) {
+      state.metrics.respawnCount += 1;
+    }
     if (typeof state.callbacks.onQueueRespawn === 'function') {
       state.callbacks.onQueueRespawn(state.pendingRespawn);
     }
