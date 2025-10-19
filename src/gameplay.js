@@ -324,28 +324,6 @@
     },
     PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
     DRIFT_SMOKE: { wN: 0.1, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], tex: () => null },
-    GUARD_RAIL_SPARKS: {
-      wN: 1,
-      aspect: 1,
-      tint: [1, 1, 1, 1],
-      tex() {
-        const textures = (World && World.assets && World.assets.textures)
-          ? World.assets.textures
-          : null;
-        return (textures && textures.sparks) || null;
-      },
-      frameCount: 16,
-      framesPerRow: 4,
-      frameUv(frameIndex = 0) {
-        const cols = Number.isFinite(this.framesPerRow) && this.framesPerRow > 0
-          ? this.framesPerRow
-          : 4;
-        const total = Number.isFinite(this.frameCount) && this.frameCount > 0
-          ? this.frameCount
-          : 16;
-        return atlasFrameUv(frameIndex, cols, total);
-      },
-    },
     ANIM_PLATE: {
       wN: 0.1,
       aspect: 1.0,
@@ -983,129 +961,6 @@
     if (sprite.kind === 'DRIFT_SMOKE') recycleDriftSmokeSprite(sprite);
   }
 
-  const GUARD_RAIL_SPARK_KIND = 'GUARD_RAIL_SPARKS';
-  const GUARD_RAIL_SPARK_FRAMES = Array.from({ length: 16 }, (_, idx) => idx);
-  const GUARD_RAIL_SPARK_ATLAS_INFO = Object.freeze({ columns: 4, totalFrames: 16 });
-  const GUARD_RAIL_SPARK_FRAME_DURATION = 1 / 30;
-  const GUARD_RAIL_SPARK_STRETCH = 0.65;
-
-  function guardRailSpriteKey(direction) {
-    return direction < 0 ? 'left' : 'right';
-  }
-
-  function detachGuardRailSparkSprite(sprite) {
-    if (!sprite) return;
-    const owner = sprite._ownerSegment;
-    if (owner && Array.isArray(owner.sprites)) {
-      const idx = owner.sprites.indexOf(sprite);
-      if (idx >= 0) owner.sprites.splice(idx, 1);
-    } else if (Number.isFinite(sprite.segIndex)) {
-      const seg = segmentAtIndex(sprite.segIndex);
-      if (seg && Array.isArray(seg.sprites)) {
-        const idx = seg.sprites.indexOf(sprite);
-        if (idx >= 0) seg.sprites.splice(idx, 1);
-      }
-    }
-    sprite._ownerSegment = null;
-  }
-
-  function ensureGuardRailSparkSprite(direction) {
-    const key = guardRailSpriteKey(direction);
-    if (!state.guardRailSparkSprites[key]) {
-      const baseFrame = GUARD_RAIL_SPARK_FRAMES.length ? GUARD_RAIL_SPARK_FRAMES[0] : 0;
-      const sprite = {
-        kind: GUARD_RAIL_SPARK_KIND,
-        offset: 0,
-        segIndex: 0,
-        s: 0,
-        scale: 1,
-        stretch: GUARD_RAIL_SPARK_STRETCH,
-        interactable: false,
-        interacted: false,
-        impactable: false,
-        guardRailSide: direction < 0 ? -1 : 1,
-        ttl: null,
-        atlasInfo: { ...GUARD_RAIL_SPARK_ATLAS_INFO },
-      };
-      const animState = createSpriteAnimationState(
-        { frames: GUARD_RAIL_SPARK_FRAMES, playback: 'loop' },
-        null,
-        GUARD_RAIL_SPARK_FRAME_DURATION,
-        baseFrame,
-      );
-      if (animState) {
-        sprite.animation = animState;
-        sprite.animFrame = Number.isFinite(animState.currentFrame)
-          ? animState.currentFrame
-          : baseFrame;
-      } else {
-        sprite.animation = null;
-        sprite.animFrame = baseFrame;
-      }
-      updateSpriteUv(sprite);
-      state.guardRailSparkSprites[key] = sprite;
-    }
-    return state.guardRailSparkSprites[key];
-  }
-
-  function attachGuardRailSparkSprite(sprite, seg) {
-    if (!sprite || !seg) return;
-    if (sprite._ownerSegment !== seg) {
-      detachGuardRailSparkSprite(sprite);
-      sprite._ownerSegment = seg;
-    }
-    const container = ensureArray(seg, 'sprites');
-    if (container.indexOf(sprite) < 0) container.push(sprite);
-    sprite.segIndex = seg.index;
-  }
-
-  function disableGuardRailSparkSprite(sprite) {
-    if (!sprite) return;
-    detachGuardRailSparkSprite(sprite);
-    sprite.active = false;
-    if (sprite.animation) {
-      sprite.animation.playing = false;
-      sprite.animation.finished = false;
-    }
-  }
-
-  function removeGuardRailSparkSprites() {
-    const sprites = state.guardRailSparkSprites;
-    if (!sprites) return;
-    disableGuardRailSparkSprite(sprites.left);
-    disableGuardRailSparkSprite(sprites.right);
-  }
-
-  function updateGuardRailSparkEffect(active, contactSide, seg) {
-    if (!active || !seg) {
-      removeGuardRailSparkSprites();
-      return;
-    }
-
-    const direction = contactSide < 0 ? -1 : 1;
-    const sprite = ensureGuardRailSparkSprite(direction);
-    const opposite = ensureGuardRailSparkSprite(-direction);
-    if (opposite && opposite !== sprite) disableGuardRailSparkSprite(opposite);
-    attachGuardRailSparkSprite(sprite, seg);
-
-    const length = trackLengthRef();
-    const baseS = state.phys ? state.phys.s : 0;
-    sprite.s = length > 0 ? wrapByLength(baseS, length) : baseS;
-    sprite.guardRailSide = direction;
-    sprite.offset = state.playerN + direction * playerHalfWN();
-    sprite.scale = 1;
-    sprite.stretch = GUARD_RAIL_SPARK_STRETCH;
-    sprite.active = true;
-
-    if (sprite.animation) {
-      sprite.animation.playing = true;
-      sprite.animation.finished = false;
-      if (sprite.animation.frameDuration !== GUARD_RAIL_SPARK_FRAME_DURATION) {
-        sprite.animation.frameDuration = GUARD_RAIL_SPARK_FRAME_DURATION;
-      }
-    }
-  }
-
   const NPC_DEFAULTS = { total: 20, edgePad: 0.02, avoidLookaheadSegs: 20 };
   const NPC = { ...NPC_DEFAULTS, ...trafficConfig };
   const CAR_TYPES = ['CAR', 'SEMI'];
@@ -1187,7 +1042,6 @@
     driftSmokeTimer: 0,
     driftSmokeNextInterval: computeDriftSmokeInterval(),
     cars: [],
-    guardRailSparkSprites: { left: null, right: null },
     spriteMeta: DEFAULT_SPRITE_META,
     getKindScale: defaultGetKindScale,
     input: { left: false, right: false, up: false, down: false, hop: false },
@@ -2155,7 +2009,6 @@
     let segmentsCrossedDuringStep = [];
     let segNow = segmentAtS(phys.s);
     let guardRailContact = false;
-    let guardRailContactSide = 0;
     let offRoadNow = false;
     const segFeatures = segNow ? segNow.features : null;
     const zonesHere = boostZonesForPlayer(segNow, state.playerN);
@@ -2333,11 +2186,6 @@
       offRoadNow = Math.abs(preClamp) > OFF_ROAD_THRESHOLD || Math.abs(state.playerN) > OFF_ROAD_THRESHOLD;
       const hasGuardRail = !!(segNow.features && segNow.features.rail);
       guardRailContact = hasGuardRail && scraping;
-      if (guardRailContact) {
-        const preferred = Math.sign(preClamp);
-        const fallback = Math.sign(state.playerN);
-        guardRailContactSide = preferred || fallback || 1;
-      }
       if (scraping) {
         const offRoadDecelLimit = player.topSpeed / 4;
         if (Math.abs(phys.vtan) > offRoadDecelLimit) {
@@ -2348,8 +2196,6 @@
     } else if (metrics) {
       metrics.guardRailContactActive = false;
     }
-
-    updateGuardRailSparkEffect(guardRailContact, guardRailContactSide, segNow);
 
     if (metrics) {
       if (guardRailContact) {

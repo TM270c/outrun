@@ -1296,19 +1296,6 @@
         wPx *= farS;
         hPx *= farS;
         let angle = null;
-        if (spr.kind === 'GUARD_RAIL_SPARKS') {
-          const leftSide = (spr.guardRailSide || spr.offset) < 0;
-          const railStart = leftSide ? p1LS : p1RS;
-          const railEnd = leftSide ? p2LS : p2RS;
-          if (railStart && railEnd && railStart.screen && railEnd.screen) {
-            const dxRail = (railEnd.screen.x - railStart.screen.x);
-            const dyRail = (railEnd.screen.y - railStart.screen.y);
-            if (Number.isFinite(dxRail) && Number.isFinite(dyRail)) {
-              const theta = Math.atan2(dyRail, dxRail);
-              angle = theta - Math.PI * 0.5;
-            }
-          }
-        }
         const drawX = xCenter;
         const texture = typeof meta.tex === 'function' ? meta.tex(spr) : (meta.tex || null);
         let uv = null;
