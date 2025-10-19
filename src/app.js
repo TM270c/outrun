@@ -23,6 +23,7 @@
       description: 'Lightweight racer built for speed.',
       atlasTextureKey: 'playerCar',
       previewPath: 'tex/player-select-car.png',
+      previewAtlas: { columns: 9, rows: 9, frameCount: 81, frameRate: 24 },
     },
     {
       key: 'van',
@@ -30,11 +31,13 @@
       description: 'Sturdy ride with room to spare.',
       atlasTextureKey: 'playerVan',
       previewPath: 'tex/player-select-van.png',
+      previewAtlas: { columns: 9, rows: 9, frameCount: 81, frameRate: 24 },
     },
   ];
 
   const settingsMenuKeys = ['snow', 'back'];
   const IDLE_TIMEOUT_MS = 5000;
+  const DEFAULT_VEHICLE_PREVIEW_FRAME_DURATION = 1 / 24;
 
   const state = {
     mode: 'menu',
@@ -57,6 +60,7 @@
       menuLayer: null,
       menuPanel: null,
       attractVideo: null,
+      vehiclePreview: null,
     },
   };
 
@@ -108,6 +112,55 @@
       return path;
     }
     return path;
+  }
+
+  function normalizePreviewAtlas(raw = null) {
+    if (!raw || typeof raw !== 'object') return null;
+    const rawColumns = Number(raw.columns);
+    const rawRows = Number(raw.rows);
+    const rawFrameCount = Number(raw.frameCount);
+    const rawFrameRate = Number(raw.frameRate);
+    const rawFrameDuration = Number(raw.frameDuration);
+
+    let columns = Number.isFinite(rawColumns) && rawColumns > 0 ? Math.round(rawColumns) : null;
+    let rows = Number.isFinite(rawRows) && rawRows > 0 ? Math.round(rawRows) : null;
+    let frameCount = Number.isFinite(rawFrameCount) && rawFrameCount > 0 ? Math.round(rawFrameCount) : null;
+    let frameDuration = Number.isFinite(rawFrameDuration) && rawFrameDuration > 0
+      ? rawFrameDuration
+      : null;
+
+    if (!frameDuration && Number.isFinite(rawFrameRate) && rawFrameRate > 0) {
+      frameDuration = 1 / rawFrameRate;
+    }
+
+    if (!columns && rows && frameCount) {
+      columns = Math.max(1, Math.ceil(frameCount / rows));
+    }
+    if (!rows && columns && frameCount) {
+      rows = Math.max(1, Math.ceil(frameCount / columns));
+    }
+    if (!frameCount && columns && rows) {
+      frameCount = columns * rows;
+    }
+
+    if (!columns || !frameCount) {
+      return null;
+    }
+
+    if (!rows) {
+      rows = Math.max(1, Math.ceil(frameCount / columns));
+    }
+
+    const safeFrameDuration = frameDuration && frameDuration > 0
+      ? frameDuration
+      : DEFAULT_VEHICLE_PREVIEW_FRAME_DURATION;
+
+    return {
+      columns,
+      rows,
+      frameCount,
+      frameDuration: safeFrameDuration,
+    };
   }
 
   function formatTimeMs(value) {
@@ -283,6 +336,7 @@
         optionIndex: index,
         optionCount: total,
         previewSrc: option.previewPath || '',
+        previewAtlas: normalizePreviewAtlas(option.previewAtlas),
       },
       { escapeHtml, resolveAssetUrl: resolveAssetUrlSafe },
     );
@@ -363,6 +417,8 @@
     }
     menuPanel.innerHTML = html;
 
+    setupVehiclePreviewAnimation();
+
     if (state.mode === 'attract') {
       const video = menuPanel.querySelector('#appAttractVideo');
       state.dom.attractVideo = video || null;
@@ -373,6 +429,93 @@
       stopAttractPlayback();
       state.dom.attractVideo = null;
     }
+  }
+
+  function applyVehiclePreviewFrame(preview) {
+    if (!preview || !preview.element) return;
+    const { element, columns, rows, frameCount } = preview;
+    const safeFrameCount = Math.max(1, frameCount | 0);
+    const frame = ((preview.frameIndex % safeFrameCount) + safeFrameCount) % safeFrameCount;
+    const col = columns > 0 ? frame % columns : 0;
+    const row = columns > 0 ? Math.floor(frame / columns) : 0;
+    const xPercent = columns <= 1 ? 0 : (col / Math.max(1, columns - 1)) * 100;
+    const yPercent = rows <= 1 ? 0 : (row / Math.max(1, rows - 1)) * 100;
+    element.style.backgroundPosition = `${xPercent}% ${yPercent}%`;
+  }
+
+  function setupVehiclePreviewAnimation() {
+    const { menuPanel } = state.dom;
+    if (!menuPanel || state.mode !== 'vehicleSelect') {
+      state.dom.vehiclePreview = null;
+      return;
+    }
+
+    const el = menuPanel.querySelector('.vehicle-select-image[data-vehicle-preview]');
+    if (!el) {
+      state.dom.vehiclePreview = null;
+      return;
+    }
+
+    const columnsRaw = Number.parseInt(el.getAttribute('data-columns') || '', 10);
+    const rowsRaw = Number.parseInt(el.getAttribute('data-rows') || '', 10);
+    const frameCountRaw = Number.parseInt(el.getAttribute('data-frame-count') || '', 10);
+    const frameDurationRaw = Number.parseFloat(el.getAttribute('data-frame-duration') || '');
+
+    const columns = Number.isFinite(columnsRaw) && columnsRaw > 0 ? columnsRaw : 1;
+    const rows = Number.isFinite(rowsRaw) && rowsRaw > 0 ? rowsRaw : 1;
+    const frameCount = Number.isFinite(frameCountRaw) && frameCountRaw > 0
+      ? frameCountRaw
+      : columns * rows;
+    const frameDuration = Number.isFinite(frameDurationRaw) && frameDurationRaw > 0
+      ? frameDurationRaw
+      : DEFAULT_VEHICLE_PREVIEW_FRAME_DURATION;
+
+    el.style.backgroundSize = `${Math.max(1, columns) * 100}% ${Math.max(1, rows) * 100}%`;
+    el.style.backgroundRepeat = 'no-repeat';
+
+    if (frameCount <= 1) {
+      state.dom.vehiclePreview = null;
+      el.style.backgroundPosition = '0% 0%';
+      return;
+    }
+
+    const preview = {
+      element: el,
+      columns: Math.max(1, columns),
+      rows: Math.max(1, rows),
+      frameCount: Math.max(1, frameCount),
+      frameDuration: Math.max(frameDuration, 1 / 120),
+      frameIndex: 0,
+      accumulator: 0,
+    };
+
+    applyVehiclePreviewFrame(preview);
+    state.dom.vehiclePreview = preview;
+  }
+
+  function updateVehiclePreviewAnimation(dt) {
+    const preview = state.dom.vehiclePreview;
+    if (!preview) return;
+    if (state.mode !== 'vehicleSelect') {
+      state.dom.vehiclePreview = null;
+      return;
+    }
+    const { element } = preview;
+    if (!element || !element.isConnected) {
+      state.dom.vehiclePreview = null;
+      return;
+    }
+    const frameDuration = preview.frameDuration > 0
+      ? preview.frameDuration
+      : DEFAULT_VEHICLE_PREVIEW_FRAME_DURATION;
+    preview.accumulator += dt;
+    if (preview.accumulator < frameDuration) {
+      return;
+    }
+    const framesToAdvance = Math.max(1, Math.floor(preview.accumulator / frameDuration));
+    preview.accumulator -= framesToAdvance * frameDuration;
+    preview.frameIndex = (preview.frameIndex + framesToAdvance) % Math.max(1, preview.frameCount);
+    applyVehiclePreviewFrame(preview);
   }
 
   function clampIndex(index, total) {
@@ -967,6 +1110,8 @@
     if (state.mode === 'raceComplete') {
       updateRaceComplete(dt);
     }
+
+    updateVehiclePreviewAnimation(dt);
 
     if (state.mode !== 'playing') {
       const suppressIdle = state.mode === 'raceComplete' && state.raceComplete.active && state.raceComplete.phase !== 'entry';

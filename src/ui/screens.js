@@ -70,6 +70,7 @@
       optionIndex = 0,
       optionCount = 0,
       previewSrc = '',
+      previewAtlas = null,
     } = ctx;
     const escapeHtml = ensureEscapeHtml(helpers);
     const resolveAssetUrl = typeof helpers.resolveAssetUrl === 'function'
@@ -77,13 +78,52 @@
       : (value) => value;
 
     const previewUrl = previewSrc ? resolveAssetUrl(previewSrc) : '';
+    const atlas = previewAtlas && typeof previewAtlas === 'object' ? previewAtlas : null;
+    const atlasColumns = atlas && Number.isFinite(atlas.columns)
+      ? Math.max(1, Math.round(atlas.columns))
+      : null;
+    const atlasFrameCount = atlas && Number.isFinite(atlas.frameCount)
+      ? Math.max(1, Math.round(atlas.frameCount))
+      : null;
+    const atlasRowsRaw = atlas && Number.isFinite(atlas.rows)
+      ? Math.max(1, Math.round(atlas.rows))
+      : null;
+    const atlasRows = atlasRowsRaw || (atlasColumns && atlasFrameCount
+      ? Math.max(1, Math.ceil(atlasFrameCount / atlasColumns))
+      : null);
+    const atlasFrameDuration = atlas && Number.isFinite(atlas.frameDuration)
+      ? Math.max(1 / 60, atlas.frameDuration)
+      : null;
+    const animatedPreview = !!(atlasColumns && atlasRows && atlasFrameCount && atlasFrameCount > 1 && atlasFrameDuration);
     const clampedIndex = optionCount > 0 ? Math.min(optionCount, Math.max(1, optionIndex + 1)) : 0;
     const counterLabel = optionCount > 0
       ? `${clampedIndex} / ${optionCount}`
       : '';
 
+    const previewDataAttrs = animatedPreview
+      ? [
+          'data-vehicle-preview="true"',
+          `data-columns="${escapeHtml(String(atlasColumns))}"`,
+          `data-rows="${escapeHtml(String(atlasRows))}"`,
+          `data-frame-count="${escapeHtml(String(atlasFrameCount))}"`,
+          `data-frame-duration="${escapeHtml(String(atlasFrameDuration))}"`,
+        ].join(' ')
+      : '';
+    const previewStyles = [];
+    if (previewUrl) {
+      previewStyles.push(`background-image:url('${escapeHtml(previewUrl)}')`);
+    }
+    if (atlasColumns) {
+      previewStyles.push(`--vehicle-preview-columns:${atlasColumns}`);
+    }
+    if (atlasRows) {
+      previewStyles.push(`--vehicle-preview-rows:${atlasRows}`);
+    }
+    const previewStyleAttr = previewStyles.length ? ` style="${previewStyles.join(';')}"` : '';
+    const previewClass = `vehicle-select-image${animatedPreview ? ' is-animated' : ''}`;
+    const previewAriaLabel = vehicleLabel ? vehicleLabel : 'Vehicle preview';
     const previewHtml = previewUrl
-      ? `<img class="vehicle-select-image" src="${escapeHtml(previewUrl)}" alt="${escapeHtml(vehicleLabel || 'Vehicle')}" />`
+      ? `<div class="${previewClass}" role="img" aria-label="${escapeHtml(previewAriaLabel)}"${previewDataAttrs ? ` ${previewDataAttrs}` : ''}${previewStyleAttr}></div>`
       : '';
     const counterHtml = counterLabel
       ? `<p class="vehicle-select-counter">${escapeHtml(counterLabel)}</p>`
