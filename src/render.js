@@ -62,15 +62,15 @@
 
   const PLAYER_ATLAS_COLUMNS = 9;
   const PLAYER_ATLAS_ROWS = 9;
-  const PLAYER_SPRITE_DEADZONE = 0.08;
-  const PLAYER_SPRITE_HEIGHT_DEADZONE = 0.06;
+  const PLAYER_SPRITE_DEADZONE = 0;
+  const PLAYER_SPRITE_HEIGHT_DEADZONE = 0;
   const PLAYER_SPRITE_SMOOTH_TIME = 0.12;
   const PLAYER_SPRITE_LATERAL_MAX = 0.045;
   const PLAYER_SPRITE_INPUT_WEIGHT = 0.55;
   const PLAYER_SPRITE_LATERAL_WEIGHT = 0.3;
   const PLAYER_SPRITE_CURVE_WEIGHT = 0.15;
   const PLAYER_SPRITE_SPEED_FLOOR = 0.25;
-  const PLAYER_SPRITE_HEIGHT_RANGE_SCALE = 1.0;
+  const PLAYER_SPRITE_HEIGHT_RANGE_SCALE = 0.6;
 
   const playerSpriteBlendState = {
     steer: 0,
@@ -175,29 +175,15 @@
     const maxRow = rws - 1;
     const colPos = clamp(((steerValue + 1) * 0.5) * maxCol, 0, maxCol);
     const rowPos = clamp(((heightValue + 1) * 0.5) * maxRow, 0, maxRow);
-    const col0 = Math.floor(colPos);
-    const row0 = Math.floor(rowPos);
-    const col1 = Math.min(maxCol, col0 + 1);
-    const row1 = Math.min(maxRow, row0 + 1);
-    const colT = colPos - col0;
-    const rowT = rowPos - row0;
+    const col = clamp(Math.round(colPos), 0, maxCol);
+    const row = clamp(Math.round(rowPos), 0, maxRow);
 
-    const weights = [
-      { col: col0, row: row0, weight: (1 - colT) * (1 - rowT) },
-      { col: col1, row: row0, weight: colT * (1 - rowT) },
-      { col: col0, row: row1, weight: (1 - colT) * rowT },
-      { col: col1, row: row1, weight: colT * rowT },
-    ].filter((entry) => entry.weight > 1e-4);
-
-    const total = weights.reduce((sum, entry) => sum + entry.weight, 0);
-    const norm = total > 0 ? 1 / total : 0;
-
-    return weights.map((entry) => ({
-      col: entry.col,
-      row: entry.row,
-      weight: entry.weight * norm,
-      uv: atlasUvFromRowCol(entry.row, entry.col, cols, rws),
-    }));
+    return [{
+      col,
+      row,
+      weight: 1,
+      uv: atlasUvFromRowCol(row, col, cols, rws),
+    }];
   }
 
   function computePlayerSpriteSamples(frame, meta){
@@ -278,7 +264,10 @@
       );
     }
 
-    const steerValue = clamp(playerSpriteBlendState.steer, -1, 1);
+    const rawSteerValue = clamp(playerSpriteBlendState.steer, -1, 1);
+    const isDrifting = state && state.driftState === 'drifting';
+    const steerLimit = isDrifting ? 1 : 0.5;
+    const steerValue = clamp(rawSteerValue, -steerLimit, steerLimit);
     const heightValue = clamp(playerSpriteBlendState.height, -1, 1);
     const samples = computePlayerAtlasSamples(steerValue, heightValue, columns, rows);
 
