@@ -1310,26 +1310,108 @@
         } else if (spr && spr.uv) {
           uv = spr.uv;
         }
-        drawList.push({
-          type: 'prop',
-          depth: zObj,
-          x: drawX,
-          y: drawY,
-          w: wPx,
-          h: hPx,
-          z: zObj,
-          tint: meta.tint,
-          tex: texture,
-          uv,
-          angle,
-          kind: spr.kind || null,
-          colorKey: `prop:${spr.kind || 'generic'}`,
-        });
+        if (spr.kind === 'SPARKS') {
+          const stretch = spr.sparkStretch || {};
+          const innerSample = stretch.innerSample;
+          const rawSide = Number.isFinite(stretch.side) && stretch.side !== 0
+            ? Math.sign(stretch.side)
+            : (spr.offset >= 0 ? 1 : -1);
+          const sideSign = rawSide === 0 ? 1 : rawSide;
+          const innerOffset = (innerSample && Number.isFinite(innerSample.offset))
+            ? innerSample.offset
+            : spr.offset;
+          const innerScreenOffsetX = (innerSample && Number.isFinite(innerSample.screenOffsetX))
+            ? innerSample.screenOffsetX
+            : screenOffsetX;
+          const innerScreenOffsetY = (innerSample && Number.isFinite(innerSample.screenOffsetY))
+            ? innerSample.screenOffsetY
+            : screenOffsetY;
+          const outerCenterX = drawX;
+          const outerCenterY = drawY;
+          const innerCenterXBase = baseX + scale * innerOffset * rw * HALF_VIEW + innerScreenOffsetX;
+          const innerCenterYBase = baseY + innerScreenOffsetY;
+          const lag = Number.isFinite(stretch.lag) ? Math.max(0, stretch.lag) : 0;
+          const maxLag = Number.isFinite(stretch.maxLag) ? Math.max(stretch.maxLag, 1e-3) : 0.25;
+          const lagRatio = maxLag > 1e-3 ? clamp(lag / maxLag, 0, 1) : 0;
+          const amplify = 1 + lagRatio * 1.3;
+          const deltaX = outerCenterX - innerCenterXBase;
+          const deltaY = outerCenterY - innerCenterYBase;
+          const innerCenterX = outerCenterX - deltaX * amplify;
+          const innerCenterY = outerCenterY - deltaY * amplify;
+          const topOuter = outerCenterY - hPx;
+          const topInner = innerCenterY - hPx;
+          const halfW = wPx * 0.5;
+          let quad;
+          if (sideSign >= 0) {
+            quad = {
+              x1: innerCenterX - halfW,
+              y1: topInner,
+              x2: outerCenterX + halfW,
+              y2: topOuter,
+              x3: outerCenterX + halfW,
+              y3: outerCenterY,
+              x4: innerCenterX - halfW,
+              y4: innerCenterY,
+            };
+          } else {
+            quad = {
+              x1: outerCenterX - halfW,
+              y1: topOuter,
+              x2: innerCenterX + halfW,
+              y2: topInner,
+              x3: innerCenterX + halfW,
+              y3: innerCenterY,
+              x4: outerCenterX - halfW,
+              y4: outerCenterY,
+            };
+          }
+          drawList.push({
+            type: 'spark',
+            depth: zObj,
+            z: zObj,
+            quad,
+            tint: meta.tint,
+            tex: texture,
+            uv,
+            colorKey: `prop:${spr.kind || 'generic'}`,
+          });
+        } else {
+          drawList.push({
+            type: 'prop',
+            depth: zObj,
+            x: drawX,
+            y: drawY,
+            w: wPx,
+            h: hPx,
+            z: zObj,
+            tint: meta.tint,
+            tex: texture,
+            uv,
+            angle,
+            kind: spr.kind || null,
+            colorKey: `prop:${spr.kind || 'generic'}`,
+          });
+        }
       }
 
     }
 
     return drawList;
+  }
+
+  function renderSparkItem(item){
+    if (!item || !item.quad) return;
+    const texturesEnabled = areTexturesEnabled();
+    const uv = item.uv || { u1: 0, v1: 0, u2: 1, v2: 0, u3: 1, v3: 1, u4: 0, v4: 1 };
+    const fog = fogArray(item.z);
+    if (texturesEnabled && item.tex) {
+      glr.drawQuadTextured(item.tex, item.quad, uv, undefined, fog);
+    } else {
+      const tint = Array.isArray(item.tint)
+        ? item.tint
+        : randomColorFor(item.colorKey || 'spark');
+      glr.drawQuadSolid(item.quad, tint, fog);
+    }
   }
 
   function enqueuePlayer(drawList, frame){
@@ -1418,6 +1500,9 @@
             item.colorKey,
           );
         }
+      } else if (item.type === 'spark'){
+        perf.registerSprite('prop');
+        renderSparkItem(item);
       } else if (item.type === 'snowScreen'){
         perf.registerSnowScreen();
         renderSnowScreen(item);
