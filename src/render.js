@@ -727,13 +727,6 @@
     const drawList = [];
     const trackLength = getTrackLength();
     const SPRITE_META = state.spriteMeta;
-    const sparkState = state.guardRailSparks || null;
-    const sparkSegIndex = (sparkState && Number.isFinite(sparkState.segIndex)) ? sparkState.segIndex : null;
-    const sparkSegT = (sparkState && Number.isFinite(sparkState.segT)) ? clamp(sparkState.segT, 0, 1) : 0;
-    const sparkIntensity = (sparkState && Number.isFinite(sparkState.intensity)) ? clamp(sparkState.intensity, 0, 1) : 0;
-    const sparkSpeed = (sparkState && Number.isFinite(sparkState.speed)) ? Math.max(0, sparkState.speed) : 0;
-    const sparkSide = (sparkState && Number.isFinite(sparkState.side)) ? (Math.sign(sparkState.side) || 0) : 0;
-    const sparkActive = sparkIntensity > 1e-3 && sparkSegIndex != null;
     const snowMaxSegments = Number.isFinite(snowScreenDistance)
       ? Math.max(0, Math.floor(snowScreenDistance))
       : track.drawDistance;
@@ -878,57 +871,6 @@
             segIndex: seg.index,
           });
         }
-      }
-
-      if (sparkActive && idx === sparkSegIndex && seg && seg.features && seg.features.rail){
-        const xLeftNear = x1 - w1 * track.railInset;
-        const xLeftFar = x2 - w2 * track.railInset;
-        const xRightNear = x1 + w1 * track.railInset;
-        const xRightFar = x2 + w2 * track.railInset;
-        const sparkZ = lerp(p1.camera.z, p2.camera.z, sparkSegT);
-
-        const pushSparkScreen = (side, topNearX, topFarX, bottomNearY, bottomFarY) => {
-          const topNear = { x: topNearX, y: y1 };
-          const topFar = { x: topFarX, y: y2 };
-          const bottomNear = { x: topNearX, y: bottomNearY };
-          const bottomFar = { x: topFarX, y: bottomFarY };
-          const topPoint = {
-            x: lerp(topNear.x, topFar.x, sparkSegT),
-            y: lerp(topNear.y, topFar.y, sparkSegT),
-          };
-          const bottomPoint = {
-            x: lerp(bottomNear.x, bottomFar.x, sparkSegT),
-            y: lerp(bottomNear.y, bottomFar.y, sparkSegT),
-          };
-          const horizVec = { x: topFar.x - topNear.x, y: topFar.y - topNear.y };
-          const horizLen = Math.hypot(horizVec.x, horizVec.y);
-          const horizDir = horizLen > 1e-3 ? { x: horizVec.x / horizLen, y: horizVec.y / horizLen } : { x: 0, y: -1 };
-          const halfWidth = Math.max(18, Math.min(90, horizLen * 0.45));
-          const axisU = { x: horizDir.x * halfWidth, y: horizDir.y * halfWidth };
-          const vertVec = { x: bottomPoint.x - topPoint.x, y: bottomPoint.y - topPoint.y };
-          const vertLen = Math.hypot(vertVec.x, vertVec.y);
-          const vertDir = vertLen > 1e-3 ? { x: vertVec.x / vertLen, y: vertVec.y / vertLen } : { x: 0, y: 1 };
-          const halfHeight = Math.max(16, Math.min(80, vertLen * 0.75));
-          const axisV = { x: vertDir.x * halfHeight, y: vertDir.y * halfHeight };
-          const center = {
-            x: topPoint.x + axisV.x * 0.25,
-            y: topPoint.y + axisV.y * 0.25,
-          };
-          drawList.push({
-            type: 'sparkScreen',
-            depth: sparkZ + 5e-4,
-            center,
-            axisU,
-            axisV,
-            z: sparkZ,
-            speed: sparkSpeed,
-            intensity: side === sparkSide ? sparkIntensity : 0,
-            seed: idx * 9973 + (side < 0 ? 1 : 2),
-          });
-        };
-
-        pushSparkScreen(-1, xLeftNear, xLeftFar, p1LS.screen.y, p2LS.screen.y);
-        pushSparkScreen(1, xRightNear, xRightFar, p1RS.screen.y, p2RS.screen.y);
       }
 
       for (let i = 0; i < seg.cars.length; i++){
@@ -1103,8 +1045,6 @@
         );
       } else if (item.type === 'snowScreen'){
         renderSnowScreen(item);
-      } else if (item.type === 'sparkScreen'){
-        renderSparkScreen(item);
       } else if (item.type === 'player'){
         renderPlayer(item, SPRITE_META);
       }
@@ -1202,116 +1142,6 @@
       }, {});
 
       glr.drawQuadSolid(quad, flakeColor, fogVals);
-    }
-  }
-
-  const fract = (value) => value - Math.floor(value);
-
-  function sparkYOffset(t){
-    const norm = clamp(t, 0, 1);
-    if (norm < 0.2){
-      const r = norm / 0.2;
-      return lerp(0, -0.75, r * r);
-    }
-    if (norm < 0.7){
-      const r = (norm - 0.2) / 0.5;
-      const eased = Math.sin(r * Math.PI * 0.5);
-      return lerp(-0.75, -0.2, eased);
-    }
-    const r = (norm - 0.7) / 0.3;
-    return lerp(-0.2, 1.1, r * r);
-  }
-
-  function renderSparkScreen(item){
-    if (!glr) return;
-    if (!item) return;
-    const { center, axisU, axisV, intensity = 0, z = 0, speed = 0, seed = 0 } = item;
-    if (!center || !axisU || !axisV) return;
-    if (intensity <= 1e-4) return;
-
-    const axisULen = Math.hypot(axisU.x || 0, axisU.y || 0);
-    const axisVLen = Math.hypot(axisV.x || 0, axisV.y || 0);
-    if (axisULen <= 1e-3 || axisVLen <= 1e-3) return;
-
-    const uUnit = { x: axisU.x / axisULen, y: axisU.y / axisULen };
-    const vUnit = { x: axisV.x / axisVLen, y: axisV.y / axisVLen };
-
-    const time = (state && state.phys && typeof state.phys.t === 'number')
-      ? state.phys.t
-      : ((typeof performance !== 'undefined' && typeof performance.now === 'function')
-        ? performance.now() / 1000
-        : 0);
-
-    const fogVals = fogArray(z || 0);
-    const sparkCount = Math.max(3, Math.round(6 + intensity * 10));
-    const topSpeed = (player && Number.isFinite(player.topSpeed) && player.topSpeed !== 0)
-      ? Math.abs(player.topSpeed)
-      : 1;
-    const speedPct = clamp(Math.abs(speed) / topSpeed, 0, 1);
-    const baseFlow = 1.6 + speedPct * 2.8;
-    const stretchFactor = Math.max(0, snowStretchFactor);
-
-    for (let i = 0; i < sparkCount; i += 1){
-      const base = i / sparkCount;
-      const jitter = fract(Math.sin((base + seed * 0.173) * 43758.5453) * 12.345);
-      const t = fract(time * baseFlow + base + jitter * 0.45);
-      const travel = clamp(-0.2 + t * 1.2 + (jitter - 0.5) * 0.15, -1.25, 1.25);
-      const arc = clamp(sparkYOffset(t) + (jitter - 0.5) * 0.08, -1.4, 1.4);
-      const pos = {
-        x: center.x + axisU.x * travel + axisV.x * arc,
-        y: center.y + axisU.y * travel + axisV.y * arc,
-      };
-
-      const baseSize = 3 + (1 - t) * 4 + intensity * 2;
-      const halfW = baseSize * (0.45 + intensity * 0.4);
-      const halfH = halfW * (0.55 + 0.3 * (1 - jitter));
-      const sparkAxisU = { x: uUnit.x * halfW, y: uUnit.y * halfW };
-      const sparkAxisV = { x: vUnit.x * halfH, y: vUnit.y * halfH };
-
-      const quad = {
-        x1: pos.x - sparkAxisU.x - sparkAxisV.x,
-        y1: pos.y - sparkAxisU.y - sparkAxisV.y,
-        x2: pos.x + sparkAxisU.x - sparkAxisV.x,
-        y2: pos.y + sparkAxisU.y - sparkAxisV.y,
-        x3: pos.x + sparkAxisU.x + sparkAxisV.x,
-        y3: pos.y + sparkAxisU.y + sparkAxisV.y,
-        x4: pos.x - sparkAxisU.x + sparkAxisV.x,
-        y4: pos.y - sparkAxisU.y + sparkAxisV.y,
-      };
-
-      if (speedPct > 1e-4 && stretchFactor > 1e-4){
-        const stretch = halfW * speedPct * stretchFactor * (0.5 + 0.5 * (1 - t));
-        if (stretch > 1e-3){
-          const verts = [
-            { keyX: 'x1', keyY: 'y1', x: quad.x1, y: quad.y1 },
-            { keyX: 'x2', keyY: 'y2', x: quad.x2, y: quad.y2 },
-            { keyX: 'x3', keyY: 'y3', x: quad.x3, y: quad.y3 },
-            { keyX: 'x4', keyY: 'y4', x: quad.x4, y: quad.y4 },
-          ];
-          verts.sort((a, b) => {
-            const da = (a.x - pos.x) * uUnit.x + (a.y - pos.y) * uUnit.y;
-            const db = (b.x - pos.x) * uUnit.x + (b.y - pos.y) * uUnit.y;
-            return da - db;
-          });
-          for (let j = 2; j < verts.length; j += 1){
-            verts[j].x += uUnit.x * stretch;
-            verts[j].y += uUnit.y * stretch;
-          }
-          for (const vert of verts){
-            quad[vert.keyX] = vert.x;
-            quad[vert.keyY] = vert.y;
-          }
-        }
-      }
-
-      const color = [
-        1,
-        clamp(0.58 + 0.32 * (1 - t) + 0.08 * intensity, 0, 1),
-        clamp(0.12 + 0.25 * jitter, 0, 1),
-        clamp(0.55 + 0.4 * intensity, 0, 1),
-      ];
-
-      glr.drawQuadSolid(quad, color, fogVals);
     }
   }
 
@@ -1459,7 +1289,6 @@
       } else {
         glr.drawQuadSolid(quadRPadded, randomColorFor(`railR:${segIndex}`), railFogR);
       }
-
     }
   }
 
