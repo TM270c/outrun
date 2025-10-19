@@ -54,6 +54,7 @@
     car:       resolveAssetUrl('tex/player-car.png'),
     playerVan: resolveAssetUrl('tex/player-van.png'),
     semi:      resolveAssetUrl('tex/semi.png'),
+    sparks:    resolveAssetUrl('tex/sparks.png'),
   };
 
   const textures = {};
