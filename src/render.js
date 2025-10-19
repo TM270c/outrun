@@ -176,7 +176,7 @@
     const maxCol = cols - 1;
     const maxRow = rws - 1;
     const colPos = clamp(((steerValue + 1) * 0.5) * maxCol, 0, maxCol);
-    const rowPos = clamp(((heightValue + 1) * 0.5) * maxRow, 0, maxRow);
+    const rowPos = clamp(((-heightValue + 1) * 0.5) * maxRow, 0, maxRow);
     const col = clamp(Math.round(colPos), 0, maxCol);
     const row = clamp(Math.round(rowPos), 0, maxRow);
 
