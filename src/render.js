@@ -11,7 +11,6 @@
     camera,
     grid,
     fog,
-    colors,
     debug,
     sprites,
     parallaxLayers,
@@ -59,6 +58,23 @@
 
   const textures = assets ? assets.textures : {};
   const state = Gameplay.state;
+  const areTexturesEnabled = () => debug.textures !== false;
+
+  const randomColorFor = (() => {
+    const cache = new Map();
+    const rng = mulberry32(0x6a09e667);
+    const makeColor = () => {
+      const brightness = 0.55 + rng() * 0.2;
+      const span = 0.12;
+      const channel = () => clamp(brightness + (rng() - 0.5) * span, 0.25, 0.9);
+      return [channel(), channel(), channel(), 1];
+    };
+    return (key) => {
+      const id = key || 'default';
+      if (!cache.has(id)) cache.set(id, makeColor());
+      return cache.get(id);
+    };
+  })();
 
   function isSnowFeatureEnabled(){
     const app = global.App;
@@ -341,7 +357,7 @@
   const BACKDROP_SCALE = 1.25;
 
   function drawParallaxLayer(tex, cfg){
-    if (!glr || !tex) return;
+    if (!glr) return;
     const uOffset = state.playerN * cfg.parallaxX;
     const scaledW = W * BACKDROP_SCALE;
     const scaledH = H * BACKDROP_SCALE;
@@ -360,7 +376,12 @@
       y4: centerY + halfScaledH,
     };
     const uv = {u1: uOffset, v1: 0, u2: uOffset+cfg.uvSpanX, v2: 0, u3: uOffset+cfg.uvSpanX, v3: cfg.uvSpanY, u4: uOffset, v4: cfg.uvSpanY};
-    glr.drawQuadTextured(tex, quad, uv);
+    const useTextures = areTexturesEnabled() && tex;
+    if (useTextures){
+      glr.drawQuadTextured(tex, quad, uv);
+    } else {
+      glr.drawQuadSolid(quad, randomColorFor(`parallax:${cfg.key || 'layer'}`));
+    }
   }
   function renderHorizon(){
     for (const layer of parallaxLayers){
@@ -368,9 +389,12 @@
     }
   }
 
-  function drawRoadStrip(x1,y1,w1, x2,y2,w2, v0, v1, fogRoad, tex){
+  function drawRoadStrip(x1,y1,w1, x2,y2,w2, v0, v1, fogRoad, tex, segIndex){
     if (!glr) return;
-    if (!tex) tex = glr.whiteTex;
+    const texturesEnabled = areTexturesEnabled();
+    let roadTex = tex;
+    if (texturesEnabled) roadTex = roadTex || glr.whiteTex;
+    const roadColorKey = `road:${segIndex}`;
 
     const dy   = Math.abs(y1 - y2);
     const rows = Math.max(1, Math.min(grid.maxRows, Math.ceil(dy / grid.rowHeightPx)));
@@ -409,13 +433,19 @@
           padRight: colPadR,
         });
         const uv = { u1:u0, v1:vv0, u2:u1, v2:vv0, u3:u1, v3:vv1, u4:u0, v4:vv1 };
-        glr.drawQuadTextured(tex, quad, uv, colors.road, [fA,fA,fB,fB]);
+        const fogValues = [fA, fA, fB, fB];
+        if (texturesEnabled && roadTex){
+          glr.drawQuadTextured(roadTex, quad, uv, undefined, fogValues);
+        } else {
+          glr.drawQuadSolid(quad, randomColorFor(roadColorKey), fogValues);
+        }
       }
     }
   }
 
-  function drawBoostZonesOnStrip(zones, xNear, yNear, xFar, yFar, wNear, wFar, fogRoad){
+  function drawBoostZonesOnStrip(zones, xNear, yNear, xFar, yFar, wNear, wFar, fogRoad, segIndex){
     if (!glr || !zones || !zones.length) return;
+    const texturesEnabled = areTexturesEnabled();
 
     const dy   = Math.abs(yNear - yFar);
     const rows = Math.max(1, Math.min(grid.maxRows, Math.ceil(dy / grid.rowHeightPx)));
@@ -468,10 +498,11 @@
           const uv = { u1:u0, v1:t0, u2:u1, v2:t0, u3:u1, v3:t1, u4:u0, v4:t1 };
           const fog = [fA, fA, fB, fB];
 
-          if (tex) {
-            glr.drawQuadTextured(tex, quad, uv, solid, fog);
+          const tint = texturesEnabled ? solid : randomColorFor(`boost:${segIndex}:${zone.type || 'zone'}`);
+          if (texturesEnabled && tex) {
+            glr.drawQuadTextured(tex, quad, uv, tint, fog);
           } else {
-            glr.drawQuadSolid(quad, solid, fog);
+            glr.drawQuadSolid(quad, tint, fog);
           }
         }
       }
@@ -487,16 +518,22 @@
     tint = [1, 1, 1, 1],
     texture = null,
     uvOverride = null,
+    colorKey = null,
   ){
     if (!glr) return;
+    const texturesEnabled = areTexturesEnabled();
     const x1 = anchorX - wPx/2;
     const x2 = anchorX + wPx/2;
     const y1 = baseY - hPx, y2 = baseY;
     const uv = uvOverride || {u1:0,v1:0,u2:1,v2:0,u3:1,v3:1,u4:0,v4:1};
     const fog = fogArray(fogZ);
     const quad = {x1:x1, y1:y1, x2:x2, y2:y1, x3:x2, y3:y2, x4:x1, y4:y2};
-    if (texture) glr.drawQuadTextured(texture, quad, uv, tint, fog);
-    else         glr.drawQuadSolid(quad, tint, fog);
+    const useTexture = texturesEnabled && texture;
+    if (useTexture) {
+      glr.drawQuadTextured(texture, quad, uv, tint, fog);
+    } else {
+      glr.drawQuadSolid(quad, randomColorFor(colorKey || 'billboard'), fog);
+    }
   }
 
   function segmentAtS(s) {
@@ -779,6 +816,7 @@
           z: zObj,
           tint: car.meta.tint,
           tex: car.meta.tex ? car.meta.tex() : null,
+          colorKey: `npc:${car.type || 'car'}`,
         });
       }
 
@@ -870,12 +908,14 @@
           tint: meta.tint,
           tex: texture,
           uv,
+          colorKey: `prop:${spr.kind || 'generic'}`,
         });
       }
 
       if (seg.pickups && seg.pickups.length){
         const pickupMeta = SPRITE_META.PICKUP;
-        for (const pk of seg.pickups){
+        for (let pi = 0; pi < seg.pickups.length; pi += 1){
+          const pk = seg.pickups[pi];
           if (pk.collected) continue;
           const scale = p1.screen.scale;
           const xCenter = p1.screen.x + scale * pk.offset * rw1 * HALF_VIEW;
@@ -896,6 +936,7 @@
             z: zObj,
             tint: pickupMeta.tint,
             tex: pickupMeta.tex ? pickupMeta.tex() : null,
+            colorKey: `pickup:${seg.index}:${pi}`,
           });
         }
       }
@@ -948,6 +989,7 @@
           item.tint,
           item.tex,
           item.uv,
+          item.colorKey,
         );
       } else if (item.type === 'pickup'){
         drawBillboard(
@@ -959,6 +1001,7 @@
           item.tint,
           item.tex,
           item.uv,
+          item.colorKey,
         );
       } else if (item.type === 'snowScreen'){
         renderSnowScreen(item);
@@ -1087,6 +1130,8 @@
       p2RS,
     } = it;
 
+    const texturesEnabled = areTexturesEnabled();
+
     const x1 = p1.screen.x;
     const y1 = p1.screen.y;
     const x2 = p2.screen.x;
@@ -1101,8 +1146,9 @@
     const fogCliff = fogArray(p1.camera.z, p2.camera.z);
     const group = ((segIndex / debug.span) | 0) % 2;
     const tint = group ? debug.colors.a : debug.colors.b;
-    const cliffTex = textures.cliff || glr.whiteTex;
     const debugFill = debug.mode === 'fill';
+    const cliffTex = texturesEnabled ? (textures.cliff || glr.whiteTex) : null;
+    const fillCliffs = debugFill || !texturesEnabled;
 
     const leftQuadA = padWithSpriteOverlap(L.quadA);
     const leftQuadB = padWithSpriteOverlap(L.quadB);
@@ -1112,31 +1158,33 @@
     const drawLeftCliffs = (solid = false) => {
       const uvA = { ...L.uvA, v1: v0Cliff, v2: v0Cliff, v3: v1Cliff, v4: v1Cliff };
       const uvB = { ...L.uvB, v1: v0Cliff, v2: v0Cliff, v3: v1Cliff, v4: v1Cliff };
-      if (solid){
-        glr.drawQuadSolid(leftQuadA, tint, fogCliff);
-        glr.drawQuadSolid(leftQuadB, tint, fogCliff);
+      if (solid || !cliffTex){
+        const solidTint = debugFill ? tint : randomColorFor(`cliffL:${segIndex}`);
+        glr.drawQuadSolid(leftQuadA, solidTint, fogCliff);
+        glr.drawQuadSolid(leftQuadB, solidTint, fogCliff);
       } else {
-        glr.drawQuadTextured(cliffTex, leftQuadA, uvA, colors.wall, fogCliff);
-        glr.drawQuadTextured(cliffTex, leftQuadB, uvB, colors.wall, fogCliff);
+        glr.drawQuadTextured(cliffTex, leftQuadA, uvA, undefined, fogCliff);
+        glr.drawQuadTextured(cliffTex, leftQuadB, uvB, undefined, fogCliff);
       }
     };
 
     const drawRightCliffs = (solid = false) => {
       const uvA = { ...R.uvA, v1: v0Cliff, v2: v0Cliff, v3: v1Cliff, v4: v1Cliff };
       const uvB = { ...R.uvB, v1: v0Cliff, v2: v0Cliff, v3: v1Cliff, v4: v1Cliff };
-      if (solid){
-        glr.drawQuadSolid(rightQuadA, tint, fogCliff);
-        glr.drawQuadSolid(rightQuadB, tint, fogCliff);
+      if (solid || !cliffTex){
+        const solidTint = debugFill ? tint : randomColorFor(`cliffR:${segIndex}`);
+        glr.drawQuadSolid(rightQuadA, solidTint, fogCliff);
+        glr.drawQuadSolid(rightQuadB, solidTint, fogCliff);
       } else {
-        glr.drawQuadTextured(cliffTex, rightQuadA, uvA, colors.wall, fogCliff);
-        glr.drawQuadTextured(cliffTex, rightQuadB, uvB, colors.wall, fogCliff);
+        glr.drawQuadTextured(cliffTex, rightQuadA, uvA, undefined, fogCliff);
+        glr.drawQuadTextured(cliffTex, rightQuadB, uvB, undefined, fogCliff);
       }
     };
 
-    if (leftIsNegative) drawLeftCliffs(debugFill);
-    if (rightIsNegative) drawRightCliffs(debugFill);
+    if (leftIsNegative) drawLeftCliffs(fillCliffs);
+    if (rightIsNegative) drawRightCliffs(fillCliffs);
 
-    if (debugFill){
+    if (debugFill || !texturesEnabled){
       const quad = {
         x1: x1 - w1,
         y1: y1,
@@ -1147,18 +1195,22 @@
         x4: x2 - w2,
         y4: y2,
       };
-      glr.drawQuadSolid(quad, tint, fogRoad);
+      const roadTint = debugFill ? tint : randomColorFor(`road:${segIndex}`);
+      glr.drawQuadSolid(quad, roadTint, fogRoad);
+      if (!debugFill && !texturesEnabled){
+        drawBoostZonesOnStrip(boostZones, x1, y1, x2, y2, w1, w2, fogRoad, segIndex);
+      }
     } else {
       const roadTex = textures.road || glr.whiteTex;
-      drawRoadStrip(x1, y1, w1, x2, y2, w2, v0Road, v1Road, fogRoad, roadTex);
-      drawBoostZonesOnStrip(boostZones, x1, y1, x2, y2, w1, w2, fogRoad);
+      drawRoadStrip(x1, y1, w1, x2, y2, w2, v0Road, v1Road, fogRoad, roadTex, segIndex);
+      drawBoostZonesOnStrip(boostZones, x1, y1, x2, y2, w1, w2, fogRoad, segIndex);
     }
 
-    if (!leftIsNegative) drawLeftCliffs(debugFill);
-    if (!rightIsNegative) drawRightCliffs(debugFill);
+    if (!leftIsNegative) drawLeftCliffs(fillCliffs);
+    if (!rightIsNegative) drawRightCliffs(fillCliffs);
 
     if (seg && seg.features && seg.features.rail){
-      const texRail = textures.rail || glr.whiteTex;
+      const texRail = texturesEnabled ? (textures.rail || glr.whiteTex) : null;
 
       const xL1 = x1 - w1 * track.railInset;
       const xL2 = x2 - w2 * track.railInset;
@@ -1169,7 +1221,13 @@
         x4: xL2, y4: p2LS.screen.y,
       };
       const uvL = { u1: 0, v1: v0Rail, u2: 1, v2: v0Rail, u3: 1, v3: v1Rail, u4: 0, v4: v1Rail };
-      glr.drawQuadTextured(texRail, padWithSpriteOverlap(quadL), uvL, colors.rail, fogArray(p1LS.camera.z, p2LS.camera.z));
+      const railFogL = fogArray(p1LS.camera.z, p2LS.camera.z);
+      const quadLPadded = padWithSpriteOverlap(quadL);
+      if (texturesEnabled && texRail){
+        glr.drawQuadTextured(texRail, quadLPadded, uvL, undefined, railFogL);
+      } else {
+        glr.drawQuadSolid(quadLPadded, randomColorFor(`railL:${segIndex}`), railFogL);
+      }
 
       const xR1 = x1 + w1 * track.railInset;
       const xR2 = x2 + w2 * track.railInset;
@@ -1184,11 +1242,18 @@
         y4: y2,
       };
       const uvR = { u1: 0, v1: v0Rail, u2: 1, v2: v0Rail, u3: 1, v3: v1Rail, u4: 0, v4: v1Rail };
-      glr.drawQuadTextured(texRail, padWithSpriteOverlap(quadR), uvR, colors.rail, fogArray(p1RS.camera.z, p2RS.camera.z));
+      const railFogR = fogArray(p1RS.camera.z, p2RS.camera.z);
+      const quadRPadded = padWithSpriteOverlap(quadR);
+      if (texturesEnabled && texRail){
+        glr.drawQuadTextured(texRail, quadRPadded, uvR, undefined, railFogR);
+      } else {
+        glr.drawQuadSolid(quadRPadded, randomColorFor(`railR:${segIndex}`), railFogR);
+      }
     }
   }
 
   function renderPlayer(item, SPRITE_META){
+    const texturesEnabled = areTexturesEnabled();
     const fogShadow = fogArray(item.zShadow || 0);
     const fogBody = fogArray(item.zBody || 0);
     const shH = Math.max(3, item.h * 0.06);
@@ -1203,10 +1268,12 @@
     const ang = (state.playerTiltDeg * Math.PI) / 180;
 
     const shQuad = makeRotatedQuad(shCX, shCY, item.w, shH, ang);
-    glr.drawQuadSolid(shQuad, [0.13, 0.13, 0.13, 1], fogShadow);
+    const shadowColor = texturesEnabled ? [0.13, 0.13, 0.13, 1] : randomColorFor('player:shadow');
+    glr.drawQuadSolid(shQuad, shadowColor, fogShadow);
 
     const bodyQuad = makeRotatedQuad(bodyCX, bodyCY, item.w, item.h, ang);
-    glr.drawQuadSolid(bodyQuad, SPRITE_META.PLAYER.tint, fogBody);
+    const bodyColor = texturesEnabled ? SPRITE_META.PLAYER.tint : randomColorFor('player:body');
+    glr.drawQuadSolid(bodyQuad, bodyColor, fogBody);
   }
 
   function worldToOverlay(s,y){

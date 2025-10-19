@@ -69,12 +69,6 @@ const fog = {
 };
 
 // Default fallback tint values for world primitives.
-const colors = {
-  road: [0.5, 0.5, 0.5, 1],
-  wall: [0.5, 0.5, 0.5, 1],
-  rail: [0.5, 0.5, 0.5, 1],
-};
-
 // Snow screen rendering controls.
 const snowScreenDistance = 40;
 const snowScreenDensity = 2;
@@ -89,6 +83,7 @@ const debug = {
   mode: 'off',
   span: 3,
   colors: { a: [1, 1, 1, 1], b: [0.82, 0.9, 1, 1] },
+  textures: true,
 };
 
 // Sprite rendering adjustments.
@@ -169,7 +164,6 @@ window.Config = {
   cliffs,
   failsafe,
   fog,
-  colors,
   debug,
   sprites,
   parallaxLayers,
