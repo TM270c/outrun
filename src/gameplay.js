@@ -457,6 +457,28 @@
       .filter((token) => token.length > 0);
   }
 
+  function parsePlacementMode(value){
+    if (value == null) return 'uniform';
+    const normalized = value.toString().trim().toLowerCase();
+    switch (normalized) {
+      case 'taperscale':
+      case 'taper-scale':
+      case 'taper_scale':
+        return 'taperScale';
+      case 'taperatlas':
+      case 'taper-atlas':
+      case 'taper_atlas':
+        return 'taperAtlas';
+      case 'taperboth':
+      case 'taper-both':
+      case 'taper_both':
+        return 'taperBoth';
+      case 'uniform':
+      default:
+        return 'uniform';
+    }
+  }
+
   function normalizeSeed(seed, a = 0, b = 0){
     if (Number.isFinite(seed)) {
       const normalized = (Math.floor(seed) >>> 0);
@@ -486,6 +508,77 @@
     if (Math.abs(max - min) <= 1e-9) return min;
     const sample = typeof rng === 'function' ? rng() : Math.random();
     return min + sample * (max - min);
+  }
+
+  function computeAxisTaperWeight(count, index){
+    if (!Number.isFinite(count) || count < 3) return 1;
+    if (!Number.isFinite(index)) return 1;
+    const clampedIndex = clamp(Math.floor(index), 0, Math.max(0, Math.floor(count) - 1));
+    const total = Math.max(1, Math.floor(count));
+    if (total < 3) return 1;
+    const center = (total - 1) / 2;
+    const maxDistance = Math.max(center, 1e-9);
+    const distance = Math.abs(clampedIndex - center);
+    return clamp01(1 - clamp(distance / maxDistance, 0, 1));
+  }
+
+  function computePlacementBias(segCount, segIndex, laneCount, laneIndex){
+    const weights = [];
+    if (Number.isFinite(segCount) && segCount >= 3) {
+      weights.push(computeAxisTaperWeight(segCount, segIndex));
+    }
+    if (Number.isFinite(laneCount) && laneCount >= 3) {
+      weights.push(computeAxisTaperWeight(laneCount, laneIndex));
+    }
+    if (!weights.length) return null;
+    return weights.reduce((acc, value) => acc * value, 1);
+  }
+
+  function biasedRandom01(weight, rng){
+    if (!Number.isFinite(weight)) {
+      return typeof rng === 'function' ? rng() : Math.random();
+    }
+    const sample = typeof rng === 'function' ? rng() : Math.random();
+    const clamped = clamp01(weight);
+    return clamp01((sample + clamped) * 0.5);
+  }
+
+  function sampleScaleValue(scaleRange, rng, bias, useTaper){
+    const min = Number.isFinite(scaleRange[0]) ? scaleRange[0] : 1;
+    const max = Number.isFinite(scaleRange[1]) ? scaleRange[1] : min;
+    if (!useTaper || bias == null) {
+      return randomInRange([min, max], rng, min);
+    }
+    if (Math.abs(max - min) <= 1e-9) return min;
+    const t = biasedRandom01(bias, rng);
+    return lerp(min, max, t);
+  }
+
+  function sampleUniformIndex(count, rng){
+    if (!Number.isFinite(count) || count <= 1) return 0;
+    const sample = typeof rng === 'function' ? rng() : Math.random();
+    const idx = Math.floor(sample * count) % count;
+    return clamp(idx, 0, count - 1);
+  }
+
+  function sampleBiasedIndex(count, rng, bias){
+    if (!Number.isFinite(count) || count <= 1) return 0;
+    if (bias == null || !Number.isFinite(bias)) {
+      return sampleUniformIndex(count, rng);
+    }
+    const t = clamp01(bias);
+    const r = typeof rng === 'function' ? rng() : Math.random();
+    let power;
+    if (t <= 0.5) {
+      const local = t / 0.5;
+      power = 3 - (3 - 1) * local;
+    } else {
+      const local = (t - 0.5) / 0.5;
+      power = 1 - (1 - 0.3) * local;
+    }
+    const sample = Math.pow(r, Math.max(power, 1e-3));
+    const idx = Math.floor(sample * count);
+    return clamp(idx, 0, count - 1);
   }
 
   function computeLaneStep(range, repeatLane){
@@ -540,23 +633,25 @@
     return { start, end };
   }
 
-  function selectAsset(assets, rng){
+  function selectAsset(assets, rng, options = {}){
     if (!Array.isArray(assets) || !assets.length) return null;
-    if (assets.length === 1) {
-      const single = assets[0];
-      return single ? { ...single, frames: Array.isArray(single.frames) ? single.frames.slice() : [] } : null;
-    }
-    const index = Math.floor((typeof rng === 'function' ? rng() : Math.random()) * assets.length) % assets.length;
+    const atlasBias = options.atlasBias;
+    const index = assets.length === 1
+      ? 0
+      : sampleBiasedIndex(assets.length, rng, atlasBias);
     const asset = assets[index] || assets[0];
     return asset ? { ...asset, frames: Array.isArray(asset.frames) ? asset.frames.slice() : [] } : null;
   }
 
-  function determineInitialFrame(entry, asset, rng){
+  function determineInitialFrame(entry, asset, rng, options = {}){
     if (entry && entry.baseClip && Array.isArray(entry.baseClip.frames) && entry.baseClip.frames.length > 0) {
       return entry.baseClip.frames[0];
     }
     if (asset && Array.isArray(asset.frames) && asset.frames.length > 0) {
-      const index = Math.floor((typeof rng === 'function' ? rng() : Math.random()) * asset.frames.length) % asset.frames.length;
+      const atlasBias = options.atlasBias;
+      const index = atlasBias == null
+        ? sampleUniformIndex(asset.frames.length, rng)
+        : sampleBiasedIndex(asset.frames.length, rng, atlasBias);
       return asset.frames[index];
     }
     return 0;
@@ -589,6 +684,7 @@
       const laneStep = computeLaneStep(laneRange, spec.repeatLane);
       const lanePositionsRaw = computeLanePositions(laneRange.start, laneRange.end, laneStep);
       const lanePositions = lanePositionsRaw.length ? lanePositionsRaw : [laneRange.start];
+      const laneCount = lanePositions.length;
       const seed = normalizeSeed(spec.randomSeed, segRange.start, laneRange.start);
       const rng = createRng(seed);
       const scaleRange = spec.scaleRange || [1, 1];
@@ -596,22 +692,34 @@
       const jitterLaneRange = spec.jitterLaneRange || null;
       const segStep = Math.max(1, Math.floor(spec.repeatSegment || 1));
       const direction = segRange.end >= segRange.start ? 1 : -1;
+      const segmentIndices = [];
       for (let segIdx = segRange.start; ; segIdx += direction * segStep) {
         const seg = segmentAtIndex(segIdx);
-        if (!seg) {
-          if (segIdx === segRange.end) break;
-          continue;
-        }
-        for (const laneBase of lanePositions) {
+        if (seg) segmentIndices.push(segIdx);
+        if (segIdx === segRange.end) break;
+        if ((direction > 0 && segIdx > segRange.end) || (direction < 0 && segIdx < segRange.end)) break;
+      }
+      const placementMode = spec.placementMode || 'uniform';
+      const useScaleTaper = placementMode === 'taperScale' || placementMode === 'taperBoth';
+      const useAtlasTaper = placementMode === 'taperAtlas' || placementMode === 'taperBoth';
+      const segSlotCount = segmentIndices.length;
+      for (let segSlot = 0; segSlot < segSlotCount; segSlot += 1) {
+        const segIdx = segmentIndices[segSlot];
+        const seg = segmentAtIndex(segIdx);
+        if (!seg) continue;
+        for (let laneIndex = 0; laneIndex < laneCount; laneIndex += 1) {
+          const laneBase = lanePositions[laneIndex];
           const entry = pool.length === 1
             ? pool[0]
             : pool[Math.floor(rng() * pool.length) % pool.length];
           if (!entry) continue;
-          const scale = randomInRange(scaleRange, rng, scaleRange[0] ?? 1);
+          const bias = computePlacementBias(segSlotCount, segSlot, laneCount, laneIndex);
+          const scale = sampleScaleValue(scaleRange, rng, bias, useScaleTaper);
           const jitterSeg = jitterSegRange ? randomInRange(jitterSegRange, rng, 0) : 0;
           const jitterLane = jitterLaneRange ? randomInRange(jitterLaneRange, rng, 0) : 0;
-          const asset = selectAsset(entry.assets, rng);
-          const initialFrame = determineInitialFrame(entry, asset, rng);
+          const atlasBias = useAtlasTaper && bias != null ? bias : null;
+          const asset = selectAsset(entry.assets, rng, { atlasBias });
+          const initialFrame = determineInitialFrame(entry, asset, rng, { atlasBias });
           instances.push({
             entry,
             segIndex: segIdx,
@@ -622,8 +730,6 @@
             initialFrame,
           });
         }
-        if (segIdx === segRange.end) break;
-        if ((direction > 0 && segIdx > segRange.end) || (direction < 0 && segIdx < segRange.end)) break;
       }
     }
     return instances;
@@ -715,6 +821,9 @@
       const randomSeedRaw = header ? (record.randomSeed || '') : (row[6] || '');
       const jitterSegRaw = header ? (record.jitterSeg || '') : (row[7] || '');
       const jitterLaneRaw = header ? (record.jitterLane || '') : (row[8] || '');
+      const placementModeRaw = header
+        ? (record.placementMode || record.placement || record.distribution || record.placementFunction || '')
+        : (row.length > 9 ? row[9] || '' : '');
       const segmentRange = parseNumberRange(segmentRaw, { allowFloat: false }) || { start: 0, end: 0 };
       const laneRange = parseNumberRange(laneRaw, { allowFloat: true }) || { start: 0, end: 0 };
       const repeatSegment = parseFloat(repeatSegRaw);
@@ -733,6 +842,7 @@
         randomSeed: Number.isFinite(randomSeed) ? randomSeed : null,
         jitterSegRange,
         jitterLaneRange,
+        placementMode: parsePlacementMode(placementModeRaw),
       });
     }
     return placements;
