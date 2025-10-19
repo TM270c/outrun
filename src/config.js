@@ -147,30 +147,10 @@ const lanes = {
   boost: { min: -1, max: 1 },
 };
 
-// Tilt behaviour used by the camera, surface response, and player sprite.
+// Tilt behaviour used by the camera and UI.
 const tilt = {
-  camera: {
-    direction: -1,
-    maxDeg: 40,
-    lateralWeight: -2.5,
-    curveWeight: -0.25,
-    response: 0.1,
-    speedPower: 1,
-  },
-  surface: {
-    enabled: true,
-    direction: -1,
-    maxDeg: 18,
-    sampleRadius: 0.35,
-    clampN: 2.5,
-    forwardSample: track.segmentSize * 0.75,
-    influence: 1,
-  },
-  player: {
-    leanScale: 0.6,
-    response: 0.35,
-    maxDeg: 22,
-  },
+  base: { tiltMaxDeg: 45, tiltSens: -3, tiltCurveWeight: -0.2, tiltEase: 0.08, tiltDir: 1 },
+  additive: { tiltAddEnabled: true, tiltAddMaxDeg: null },
 };
 
 // Near miss tuning controls.

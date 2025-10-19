@@ -15,10 +15,16 @@
     drift,
     boost,
     lanes,
+    tilt: tiltConfig = {},
     traffic: trafficConfig = {},
     nearMiss: nearMissConfig = {},
     forceLandingOnCarImpact = false,
   } = Config;
+
+  const {
+    base: tiltBase = { tiltDir: 1, tiltCurveWeight: 0, tiltEase: 0.1, tiltSens: 0, tiltMaxDeg: 0 },
+    additive: tiltAdd = { tiltAddEnabled: false, tiltAddMaxDeg: null },
+  } = tiltConfig;
 
   const {
     forwardDistanceScale: nearMissForwardScale = 0.5,
@@ -1020,7 +1026,6 @@
     prevPlayerN: 0,
     camRollDeg: 0,
     playerTiltDeg: 0,
-    surfaceTiltDeg: 0,
     resetMatteActive: false,
     pendingRespawn: null,
     race: {
@@ -1633,6 +1638,28 @@
     const info = cliffSurfaceInfoAt(segIndex, nNorm, t);
     return info.slope;
   }
+
+  function getAdditiveTiltDeg() {
+    if (!tiltAdd.tiltAddEnabled) return 0;
+    const seg = segmentAtS(state.phys.s);
+    if (!seg) return 0;
+    const segT = clamp01((state.phys.s - seg.p1.world.z) / segmentLength);
+    const info = cliffSurfaceInfoAt(seg.index, state.playerN, segT);
+    const slopeA = info.slopeA ?? 0;
+    const slopeB = info.slopeB ?? 0;
+    let slope = info.slope ?? 0;
+    if (info.section === 'A') {
+      slope = slopeA;
+    } else if (info.section === 'B') {
+      slope = slopeB;
+    }
+    const angleDeg = (180 / Math.PI) * Math.atan(slope);
+    const tiltDeg = tiltBase.tiltDir * angleDeg;
+    if (tiltAdd.tiltAddMaxDeg == null) return tiltDeg;
+    return clamp(tiltDeg, -tiltAdd.tiltAddMaxDeg, tiltAdd.tiltAddMaxDeg);
+  }
+
+  state.getAdditiveTiltDeg = getAdditiveTiltDeg;
 
   function updateCameraFromFieldOfView() {
     const halfRad = (state.camera.fieldOfView * 0.5) * Math.PI / 180;
