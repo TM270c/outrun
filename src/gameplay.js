@@ -292,9 +292,9 @@
   const DRIFT_SMOKE_DRAG = 1.75;
 
   const SPARKS_INTERVAL = 0.1 / 60;
-  const SPARKS_INTERVAL_JITTER = .5;
-  const SPARKS_LIFETIME = 30 / 60;
-  const SPARKS_LONGITUDINAL_JITTER = segmentLength * 0.01;
+  const SPARKS_INTERVAL_JITTER = 5;
+  const SPARKS_LIFETIME = 4 / 60;
+  const SPARKS_LONGITUDINAL_JITTER = segmentLength * 1;
   const SPARKS_FORWARD_INHERITANCE = 0.4;
   const SPARKS_DRAG = 1.75;
 
@@ -331,7 +331,7 @@
     },
     PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
     DRIFT_SMOKE: { wN: 0.1, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], tex: () => null },
-    SPARKS: { wN: 0.1, aspect: 1.0, tint: [1.0, 0.6, 0.2, 0.9], tex: () => null },
+    SPARKS: { wN: 0.01, aspect: 1.0, tint: [1.0, 0.6, 0.2, 0.9], tex: () => null },
     ANIM_PLATE: {
       wN: 0.1,
       aspect: 1.0,
