@@ -1296,7 +1296,10 @@
         wPx *= farS;
         hPx *= farS;
         let angle = null;
-        const drawX = xCenter;
+        const screenOffsetX = Number.isFinite(spr.screenOffsetX) ? spr.screenOffsetX : 0;
+        const screenOffsetY = Number.isFinite(spr.screenOffsetY) ? spr.screenOffsetY : 0;
+        const drawX = xCenter + screenOffsetX;
+        const drawY = yBase + screenOffsetY;
         const texture = typeof meta.tex === 'function' ? meta.tex(spr) : (meta.tex || null);
         let uv = null;
         if (texture && typeof meta.frameUv === 'function'){
@@ -1311,7 +1314,7 @@
           type: 'prop',
           depth: zObj,
           x: drawX,
-          y: yBase,
+          y: drawY,
           w: wPx,
           h: hPx,
           z: zObj,
