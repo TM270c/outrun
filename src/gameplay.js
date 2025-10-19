@@ -2216,22 +2216,6 @@
       state.driftSmokeNextInterval = computeDriftSmokeInterval();
     }
 
-    if (guardRailContact) {
-      state.sparksTimer += dt;
-      let interval = (Number.isFinite(state.sparksNextInterval) && state.sparksNextInterval > 0)
-        ? state.sparksNextInterval
-        : computeSparksInterval();
-      while (state.sparksTimer >= interval) {
-        spawnSparksSprites(guardRailSide);
-        state.sparksTimer -= interval;
-        interval = computeSparksInterval();
-      }
-      state.sparksNextInterval = interval;
-    } else {
-      state.sparksTimer = 0;
-      state.sparksNextInterval = computeSparksInterval();
-    }
-
     phys.t += dt;
 
     const length = trackLengthRef();
@@ -2291,6 +2275,22 @@
       }
     } else if (metrics) {
       metrics.guardRailContactActive = false;
+    }
+
+    if (guardRailContact) {
+      state.sparksTimer += dt;
+      let interval = (Number.isFinite(state.sparksNextInterval) && state.sparksNextInterval > 0)
+        ? state.sparksNextInterval
+        : computeSparksInterval();
+      while (state.sparksTimer >= interval) {
+        spawnSparksSprites(guardRailSide);
+        state.sparksTimer -= interval;
+        interval = computeSparksInterval();
+      }
+      state.sparksNextInterval = interval;
+    } else {
+      state.sparksTimer = 0;
+      state.sparksNextInterval = computeSparksInterval();
     }
 
     if (metrics) {
