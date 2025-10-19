@@ -157,6 +157,13 @@ const tilt = {
   additive: { tiltAddEnabled: true, tiltAddMaxDeg: null },
 };
 
+// Near miss tuning controls.
+const nearMiss = {
+  forwardDistanceScale: 0.5,
+  forwardDistanceMin: 5,
+  forwardDistanceFallback: 12,
+};
+
 const forceLandingOnCarImpact = false;
 
 window.Config = {
@@ -176,6 +183,7 @@ window.Config = {
   boost,
   lanes,
   tilt,
+  nearMiss,
   forceLandingOnCarImpact,
   snowScreenDistance,
   snowScreenDensity,

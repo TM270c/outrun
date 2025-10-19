@@ -19,6 +19,7 @@
     guardSparkRailClearance = 0.01,
     tilt: tiltConfig = {},
     traffic: trafficConfig = {},
+    nearMiss: nearMissConfig = {},
     forceLandingOnCarImpact = false,
   } = Config;
 
@@ -26,6 +27,26 @@
     base: tiltBase = { tiltDir: 1, tiltCurveWeight: 0, tiltEase: 0.1, tiltSens: 0, tiltMaxDeg: 0 },
     additive: tiltAdd = { tiltAddEnabled: false, tiltAddMaxDeg: null },
   } = tiltConfig;
+
+  const {
+    forwardDistanceScale: nearMissForwardScale = 0.5,
+    forwardDistanceMin: nearMissForwardMinRaw = 5,
+    forwardDistanceFallback: nearMissForwardFallbackRaw = 12,
+  } = nearMissConfig;
+
+  const NEAR_MISS_FORWARD_MIN = Math.max(
+    0,
+    Number.isFinite(nearMissForwardMinRaw) ? nearMissForwardMinRaw : 5,
+  );
+  const NEAR_MISS_FORWARD_FALLBACK = (() => {
+    const fallback = Number.isFinite(nearMissForwardFallbackRaw)
+      ? nearMissForwardFallbackRaw
+      : 12;
+    return Math.max(NEAR_MISS_FORWARD_MIN, fallback);
+  })();
+  const NEAR_MISS_FORWARD_SCALE = Number.isFinite(nearMissForwardScale)
+    ? nearMissForwardScale
+    : 0.5;
 
   const {
     clamp,
@@ -998,6 +1019,25 @@
   const INTERACTABLE_COLLISION_PUSH_FORWARD_MAX_SEGMENTS = 12;
   const INTERACTABLE_COLLISION_PUSH_LATERAL_MAX = 1;
   const CAR_COLLISION_STAMP = Symbol('carCollisionStamp');
+  const CAR_NEAR_MISS_READY = Symbol('carNearMissReady');
+  const NEAR_MISS_LATERAL_SCALE = 1.2;
+  const NEAR_MISS_RESET_SCALE = 1.8;
+  const NEAR_MISS_FORWARD_DISTANCE = (() => {
+    if (
+      Number.isFinite(segmentLength)
+      && segmentLength > 0
+      && NEAR_MISS_FORWARD_SCALE > 0
+    ) {
+      const scaledDistance = segmentLength * NEAR_MISS_FORWARD_SCALE;
+      if (Number.isFinite(scaledDistance) && scaledDistance > 0) {
+        return Math.max(NEAR_MISS_FORWARD_MIN, scaledDistance);
+      }
+    }
+    return NEAR_MISS_FORWARD_FALLBACK > 0
+      ? NEAR_MISS_FORWARD_FALLBACK
+      : Math.max(12, NEAR_MISS_FORWARD_MIN);
+  })();
+  const NEAR_MISS_SPEED_MARGIN = 1;
   const GUARD_RAIL_HIT_COOLDOWN = 0.5;
   const OFF_ROAD_THRESHOLD = 1;
 
@@ -1006,6 +1046,7 @@
   function createInitialMetrics() {
     return {
       npcHits: 0,
+      nearMisses: 0,
       guardRailHits: 0,
       guardRailContactTime: 0,
       pickupsCollected: 0,
@@ -1398,6 +1439,35 @@
     return Math.max(0, car.speed);
   }
 
+  function ensureCarNearMissReset(car, combinedHalf, lateralGap) {
+    if (!car) return;
+    if (!Number.isFinite(lateralGap) || !Number.isFinite(combinedHalf) || combinedHalf <= 0) {
+      car[CAR_NEAR_MISS_READY] = true;
+      return;
+    }
+    if (lateralGap >= combinedHalf * NEAR_MISS_RESET_SCALE) {
+      car[CAR_NEAR_MISS_READY] = true;
+    }
+  }
+
+  function tryRegisterCarNearMiss(car, combinedHalf, lateralGap) {
+    if (!car || !state.metrics) return;
+    if (car[CAR_NEAR_MISS_READY] === false) return;
+    if (!Number.isFinite(lateralGap) || !Number.isFinite(combinedHalf) || combinedHalf <= 0) return;
+    if (lateralGap >= combinedHalf * NEAR_MISS_LATERAL_SCALE) return;
+
+    const phys = state.phys || {};
+    const forwardGap = Math.abs(shortestSignedTrackDistance(phys.s || 0, car.z || 0));
+    if (!Number.isFinite(forwardGap) || forwardGap > NEAR_MISS_FORWARD_DISTANCE) return;
+
+    const playerSpeed = currentPlayerForwardSpeed();
+    const npcSpeed = npcForwardSpeed(car);
+    if ((playerSpeed - npcSpeed) < NEAR_MISS_SPEED_MARGIN) return;
+
+    car[CAR_NEAR_MISS_READY] = false;
+    state.metrics.nearMisses += 1;
+  }
+
   function computeCollisionPush(
     forwardSpeed,
     playerOffset,
@@ -1635,6 +1705,18 @@
 
   function wrapDistance(v, dv, max) {
     return wrapByLength(v + dv, max);
+  }
+
+  function shortestSignedTrackDistance(a, b) {
+    const length = trackLengthRef();
+    if (!Number.isFinite(length) || length <= 0) {
+      return a - b;
+    }
+    let delta = (a - b) % length;
+    if (!Number.isFinite(delta)) return 0;
+    if (delta > length * 0.5) delta -= length;
+    if (delta < -length * 0.5) delta += length;
+    return delta;
   }
 
   function nearestSegmentCenter(s) {
@@ -1898,7 +1980,14 @@
     for (let i = 0; i < seg.cars.length; i += 1) {
       const car = seg.cars[i];
       if (!car) continue;
-      if (!overlap(state.playerN, pHalf, car.offset, carHalfWN(car), 1)) continue;
+      const carHalf = carHalfWN(car);
+      const combinedHalf = pHalf + carHalf;
+      const lateralGap = Math.abs(state.playerN - car.offset);
+      ensureCarNearMissReset(car, combinedHalf, lateralGap);
+      if (!overlap(state.playerN, pHalf, car.offset, carHalf, 1)) {
+        tryRegisterCarNearMiss(car, combinedHalf, lateralGap);
+        continue;
+      }
 
       if (!phys.grounded && playerBaseHeight() >= carHitboxTopY(car)) continue;
 
@@ -1938,6 +2027,7 @@
       applyNpcCollisionPush(car, playerForwardSpeed);
 
       car[CAR_COLLISION_STAMP] = now;
+      car[CAR_NEAR_MISS_READY] = true;
       if (state.metrics) {
         state.metrics.npcHits += 1;
       }

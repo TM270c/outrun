@@ -119,6 +119,131 @@
     };
   })();
 
+  function createPerfTracker(){
+    const makeFrameStats = () => ({
+      drawCalls: 0,
+      quadCount: 0,
+      solidQuadCount: 0,
+      texturedQuadCount: 0,
+      drawListSize: 0,
+      stripCount: 0,
+      spriteCount: 0,
+      npcCount: 0,
+      propCount: 0,
+      playerCount: 0,
+      snowScreenCount: 0,
+      snowQuadCount: 0,
+      boostQuadCount: 0,
+      physicsSteps: 0,
+      segments: 0,
+    });
+
+    const stats = {
+      current: makeFrameStats(),
+      last: makeFrameStats(),
+      fps: 0,
+      frameTimeMs: 0,
+      solidDepth: 0,
+    };
+
+    const tracker = {
+      beginFrame(dt){
+        stats.current = makeFrameStats();
+        stats.solidDepth = 0;
+        if (Number.isFinite(dt) && dt > 0){
+          const fpsNow = 1 / dt;
+          if (Number.isFinite(fpsNow)){
+            stats.fps = stats.fps + (fpsNow - stats.fps) * (stats.fps ? 0.15 : 1);
+          }
+          const frameMs = dt * 1000;
+          if (Number.isFinite(frameMs)){
+            stats.frameTimeMs = stats.frameTimeMs + (frameMs - stats.frameTimeMs) * (stats.frameTimeMs ? 0.15 : 1);
+          }
+        }
+      },
+      endFrame(){
+        stats.last = { ...stats.current };
+      },
+      wrapRenderer(renderer){
+        if (!renderer || renderer.__perfWrapped) return;
+        const originalTextured = renderer.drawQuadTextured.bind(renderer);
+        const originalSolid = renderer.drawQuadSolid.bind(renderer);
+        renderer.drawQuadTextured = function(tex, quad, uv, tint, fog){
+          const isSolid = tracker.isSolidActive() || tex === renderer.whiteTex;
+          tracker.countDrawCall({ solid: isSolid });
+          return originalTextured(tex, quad, uv, tint, fog);
+        };
+        renderer.drawQuadSolid = function(...args){
+          tracker.markSolidStart();
+          try {
+            return originalSolid(...args);
+          } finally {
+            tracker.markSolidEnd();
+          }
+        };
+        renderer.__perfWrapped = true;
+      },
+      markSolidStart(){
+        stats.solidDepth += 1;
+      },
+      markSolidEnd(){
+        stats.solidDepth = Math.max(0, stats.solidDepth - 1);
+      },
+      isSolidActive(){
+        return stats.solidDepth > 0;
+      },
+      countDrawCall({ solid = false } = {}){
+        stats.current.drawCalls += 1;
+        stats.current.quadCount += 1;
+        if (solid){
+          stats.current.solidQuadCount += 1;
+        } else {
+          stats.current.texturedQuadCount += 1;
+        }
+      },
+      registerDrawListSize(size){
+        stats.current.drawListSize = Number.isFinite(size) ? size : 0;
+      },
+      registerStrip(){
+        stats.current.stripCount += 1;
+      },
+      registerSprite(kind){
+        stats.current.spriteCount += 1;
+        if (kind === 'npc') stats.current.npcCount += 1;
+        else if (kind === 'prop') stats.current.propCount += 1;
+        else if (kind === 'player') stats.current.playerCount += 1;
+      },
+      registerSnowScreen(){
+        stats.current.snowScreenCount += 1;
+      },
+      registerSnowQuad(){
+        stats.current.snowQuadCount += 1;
+      },
+      registerBoostQuad(){
+        stats.current.boostQuadCount += 1;
+      },
+      registerPhysicsSteps(count){
+        if (Number.isFinite(count) && count > 0){
+          stats.current.physicsSteps += count;
+        }
+      },
+      registerSegment(){
+        stats.current.segments += 1;
+      },
+      getLastFrameStats(){
+        return {
+          fps: stats.fps,
+          frameTimeMs: stats.frameTimeMs,
+          ...stats.last,
+        };
+      },
+    };
+
+    return tracker;
+  }
+
+  const perf = createPerfTracker();
+
   function isSnowFeatureEnabled(){
     const app = global.App;
     if (app && typeof app.isSnowEnabled === 'function') {
@@ -578,6 +703,7 @@
           const fallbackColor = texturesEnabled
             ? solidColor
             : randomColorFor(`boost:${segIndex}:${zone.type || 'zone'}`);
+          perf.registerBoostQuad();
           if (texturesEnabled && tex) {
             glr.drawQuadTextured(tex, quad, uv, undefined, fog);
           } else {
@@ -824,6 +950,8 @@
       x += dx;
       dx += seg.curve;
       if (p1.camera.z <= state.camera.nearZ) continue;
+
+      perf.registerSegment();
 
       const depth = Math.max(p1.camera.z, p2.camera.z);
       const visibleRoad = p2.screen.y < p1.screen.y;
@@ -1109,10 +1237,15 @@
 
   function renderDrawList(drawList){
     const SPRITE_META = state.spriteMeta;
-    for (const item of drawList){
+    const items = Array.isArray(drawList) ? drawList : [];
+    perf.registerDrawListSize(items.length);
+    if (!items.length) return;
+    for (const item of items){
       if (item.type === 'strip'){
+        perf.registerStrip();
         renderStrip(item);
-      } else if (item.type === 'npc'){
+      } else if (item.type === 'npc' || item.type === 'prop'){
+        perf.registerSprite(item.type === 'npc' ? 'npc' : 'prop');
         drawBillboard(
           item.x,
           item.y,
@@ -1141,8 +1274,10 @@
           );
         }
       } else if (item.type === 'snowScreen'){
+        perf.registerSnowScreen();
         renderSnowScreen(item);
       } else if (item.type === 'player'){
+        perf.registerSprite('player');
         renderPlayer(item, SPRITE_META);
       }
     }
@@ -1238,6 +1373,7 @@
         return acc;
       }, {});
 
+      perf.registerSnowQuad();
       glr.drawQuadSolid(quad, flakeColor, fogVals);
     }
   }
@@ -1584,18 +1720,25 @@
     drawBoostCrossSection(ctxSide, boostPanel);
 
     const metrics = state.metrics || null;
+    const fmtSeconds = (value) => {
+      if (!Number.isFinite(value) || value <= 0) return '0.00s';
+      return `${value.toFixed(2)}s`;
+    };
+    const fmtCount = (value) => (Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0);
+    const fmtSpeed = (value) => {
+      if (!Number.isFinite(value) || value <= 0) return '0.0';
+      return value.toFixed(1);
+    };
+    const fmtFloat = (value, digits = 1, fallback = '0.0') => (
+      Number.isFinite(value) ? value.toFixed(digits) : fallback
+    );
+
+    const debugLines = [];
+
     if (metrics) {
-      const fmtSeconds = (value) => {
-        if (!Number.isFinite(value) || value <= 0) return '0.00s';
-        return `${value.toFixed(2)}s`;
-      };
-      const fmtCount = (value) => (Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0);
-      const fmtSpeed = (value) => {
-        if (!Number.isFinite(value) || value <= 0) return '0.0';
-        return value.toFixed(1);
-      };
-      const debugLines = [
+      debugLines.push(
         `NPC hits: ${fmtCount(metrics.npcHits)}`,
+        `Near misses: ${fmtCount(metrics.nearMisses)}`,
         `Guardrail hits: ${fmtCount(metrics.guardRailHits)}`,
         `Guardrail time: ${fmtSeconds(metrics.guardRailContactTime)}`,
         `Pickups: ${fmtCount(metrics.pickupsCollected)}`,
@@ -1604,7 +1747,24 @@
         `Top speed: ${fmtSpeed(metrics.topSpeed)} u/s`,
         `Respawns: ${fmtCount(metrics.respawnCount)}`,
         `Off-road time: ${fmtSeconds(metrics.offRoadTime)}`,
-      ];
+      );
+    }
+
+    const perfStats = perf.getLastFrameStats();
+    if (perfStats) {
+      const fpsDisplay = fmtFloat(perfStats.fps, 1, '0.0');
+      const frameMsDisplay = fmtFloat(perfStats.frameTimeMs, 2, '0.00');
+      debugLines.push(
+        `FPS: ${fpsDisplay} (${frameMsDisplay}ms)`,
+        `Visible quads: ${fmtCount(perfStats.quadCount)} (solid ${fmtCount(perfStats.solidQuadCount)}, textured ${fmtCount(perfStats.texturedQuadCount)})`,
+        `Draw calls: ${fmtCount(perfStats.drawCalls)} | Draw list: ${fmtCount(perfStats.drawListSize)} items`,
+        `Strips: ${fmtCount(perfStats.stripCount)} | Sprites: ${fmtCount(perfStats.spriteCount)} (NPC ${fmtCount(perfStats.npcCount)}, props ${fmtCount(perfStats.propCount)}, player ${fmtCount(perfStats.playerCount)})`,
+        `Snow: ${fmtCount(perfStats.snowQuadCount)} quads across ${fmtCount(perfStats.snowScreenCount)} screens`,
+        `Boost quads: ${fmtCount(perfStats.boostQuadCount)} | Physics steps: ${fmtCount(perfStats.physicsSteps)} | Segments: ${fmtCount(perfStats.segments)}`,
+      );
+    }
+
+    if (debugLines.length) {
       const listPanelX = DEBUG_PANEL_MARGIN;
       const listPanelY = boostPanel.y + boostPanel.height + DEBUG_PANEL_GAP;
       const listPanelWidth = Math.max(180, Math.min(300, SW - listPanelX - DEBUG_PANEL_MARGIN));
@@ -1697,6 +1857,7 @@
 
   function attach(glRenderer, dom){
     glr = glRenderer;
+    perf.wrapRenderer(glr);
     canvas3D = dom && dom.canvas || null;
     canvasOverlay = dom && dom.overlay || null;
     canvasHUD = dom && dom.hud || null;
@@ -1724,13 +1885,20 @@
     const fps = 60, step = 1/fps;
     let last=performance.now(), acc=0;
     function loop(now){
-      const dt=Math.min(0.25,(now-last)/1000); last=now; acc+=dt;
+      const rawDt = (now-last)/1000;
+      const dt=Math.min(0.25,rawDt);
+      last=now; acc+=dt;
+      perf.beginFrame(rawDt);
+      let stepsThisFrame = 0;
       while(acc>=step){
         if (typeof stepFn === 'function') stepFn(step);
         resetMatte.tick();
         acc-=step;
+        stepsThisFrame += 1;
       }
+      perf.registerPhysicsSteps(stepsThisFrame);
       renderScene();
+      perf.endFrame();
       renderOverlay();
       resetMatte.draw();
       if (state.phys.boostFlashTimer>0) state.phys.boostFlashTimer=Math.max(0, state.phys.boostFlashTimer - dt);
