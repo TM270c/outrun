@@ -325,8 +325,8 @@
     PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
     DRIFT_SMOKE: { wN: 0.1, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], tex: () => null },
     GUARD_RAIL_SPARKS: {
-      wN: 0.12,
-      aspect: 0.25,
+      wN: 1,
+      aspect: 1,
       tint: [1, 1, 1, 1],
       tex() {
         const textures = (World && World.assets && World.assets.textures)
@@ -987,8 +987,8 @@
   const GUARD_RAIL_SPARK_FRAMES = Array.from({ length: 16 }, (_, idx) => idx);
   const GUARD_RAIL_SPARK_ATLAS_INFO = Object.freeze({ columns: 4, totalFrames: 16 });
   const GUARD_RAIL_SPARK_FRAME_DURATION = 1 / 30;
-  const GUARD_RAIL_SPARK_MIN_WIDTH = 0.04;
-  const GUARD_RAIL_SPARK_MAX_WIDTH = 0.3;
+  const GUARD_RAIL_SPARK_MIN_WIDTH = 1;
+  const GUARD_RAIL_SPARK_MAX_WIDTH = 1;
   const GUARD_RAIL_SPARK_STRETCH = 0.65;
 
   function detachGuardRailSparkSprite(sprite) {
