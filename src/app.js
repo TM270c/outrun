@@ -1,8 +1,8 @@
 (function (global) {
-  const { Gameplay, AppScreens } = global;
+  const { Gameplay, AppScreens, Config } = global;
 
-  if (!Gameplay || !AppScreens) {
-    throw new Error('App module requires Gameplay and AppScreens globals');
+  if (!Gameplay || !AppScreens || !Config) {
+    throw new Error('App module requires Gameplay, AppScreens, and Config globals');
   }
 
   const mainMenuOptions = [
@@ -24,7 +24,7 @@
     mainMenuIndex: 0,
     pauseMenuIndex: 0,
     settingsMenuIndex: 0,
-    settings: { snowEnabled: true },
+    settings: { snowEnabled: true, debugEnabled: false },
     lastInteractionAt: Date.now(),
     leaderboard: {
       loading: false,
@@ -434,6 +434,27 @@
     updateMenuLayer();
   }
 
+  function applyDebugModeSetting() {
+    if (!Config || !Config.debug || typeof Config.debug !== 'object') {
+      return;
+    }
+    try {
+      Config.debug.mode = state.settings.debugEnabled ? 'fill' : 'off';
+    } catch (err) {
+      console.warn('Failed to update debug mode', err);
+    }
+  }
+
+  function setDebugEnabled(enabled) {
+    state.settings.debugEnabled = !!enabled;
+    applyDebugModeSetting();
+  }
+
+  function toggleDebugSetting() {
+    setDebugEnabled(!state.settings.debugEnabled);
+    updateMenuLayer();
+  }
+
   function resetGameplayInputs() {
     if (!Gameplay || !Gameplay.state || !Gameplay.state.input) return;
     const input = Gameplay.state.input;
@@ -736,6 +757,15 @@
   }
 
   function handleKeyDown(e) {
+    if (e.code === 'KeyB') {
+      toggleDebugSetting();
+      if (state.mode !== 'playing') {
+        markInteraction();
+      }
+      e.preventDefault();
+      return;
+    }
+
     if (e.code === 'KeyP') {
       if (state.mode === 'playing') {
         setMode('paused');
@@ -814,12 +844,17 @@
     state.settingsMenuIndex = 0;
     state.lastInteractionAt = now();
     resetRaceCompleteState();
+    applyDebugModeSetting();
     setMode('menu');
     requestLeaderboard();
   }
 
   function isSnowEnabled() {
     return !!state.settings.snowEnabled;
+  }
+
+  function isDebugEnabled() {
+    return !!state.settings.debugEnabled;
   }
 
   global.App = {
@@ -830,5 +865,6 @@
     handleKeyUp,
     handleRaceFinish,
     isSnowEnabled,
+    isDebugEnabled,
   };
 })(window);
