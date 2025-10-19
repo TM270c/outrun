@@ -25,7 +25,6 @@
     snowSpeed = { min: 0.1, max: 0.2 },
     snowStretch = 1,
     snowScreenSize = 1,
-    guardSparkStretch = 1,
   } = Config;
 
   const {
@@ -286,7 +285,6 @@
   const snowDensityFactor = Math.max(0, numericOr(snowDensity, 1));
   const snowStretchFactor = Math.max(0, numericOr(snowStretch, 1));
   const snowScreenSizeFactor = Math.max(0, numericOr(snowScreenSize, 1));
-  const guardSparkStretchFactor = Math.max(0, numericOr(guardSparkStretch, 1));
   const SNOW_SCREEN_MIN_RADIUS = 12;
   const SNOW_SCREEN_FOOTPRINT_SCALE = 0.8;
   const SNOW_SCREEN_BASE_EXPANSION = 5; // expand the base snow screen footprint without altering per-axis scaling math
@@ -744,90 +742,6 @@
     }
   }
 
-  function drawGuardSpark(item){
-    if (!glr) return;
-    const texturesEnabled = areTexturesEnabled();
-    const halfW = item.w * 0.5;
-    const x1 = item.x - halfW;
-    const x2 = item.x + halfW;
-    const y1 = item.y - item.h;
-    const y2 = item.y;
-    const baseQuad = { x1, y1, x2, y2: y1, x3: x2, y3: y2, x4: x1, y4: y2 };
-    const uv = item.uv || { u1: 0, v1: 0, u2: 1, v2: 0, u3: 1, v3: 1, u4: 0, v4: 1 };
-    let quad = { ...baseQuad };
-
-    const fogFactor = clamp(fogFactorFromZ(item.z || 0), 0, 1);
-    const closeness = clamp(1 - fogFactor, 0, 1);
-    const physState = state && state.phys ? state.phys : null;
-    const playerSpeed = Math.abs(
-      physState && Number.isFinite(physState.vtan) ? physState.vtan : 0,
-    );
-    const sparkSpeed = Math.abs(Number.isFinite(item.guardSparkSpeed) ? item.guardSparkSpeed : 0);
-    const topSpeed = (player && Number.isFinite(player.topSpeed) && player.topSpeed !== 0)
-      ? Math.abs(player.topSpeed)
-      : 1;
-    const speedPct = topSpeed > 1e-6
-      ? clamp(Math.max(playerSpeed, sparkSpeed) / topSpeed, 0, 1)
-      : 0;
-
-    if (guardSparkStretchFactor > 0){
-      const px = item.x;
-      const py = item.y - item.h * 0.5;
-      const viewCenterX = (HALF_VIEW && HALF_VIEW > 0) ? HALF_VIEW : (W * 0.5);
-      const viewCenterY = (H && H > 0) ? H * 0.5 : py;
-      const dirX = px - viewCenterX;
-      const dirY = py - viewCenterY;
-      const dirLen = Math.hypot(dirX, dirY);
-      const stretchStrength = speedPct * closeness;
-      if (dirLen > 1e-3 && stretchStrength > 1e-3){
-        const normDirX = dirX / dirLen;
-        const normDirY = dirY / dirLen;
-        const maxRadius = Math.max(1, Math.hypot(viewCenterX, viewCenterY));
-        const radialFactor = clamp(dirLen / maxRadius, 0, 1);
-        const stretchBase = item.h * 0.5 * stretchStrength * guardSparkStretchFactor;
-        const stretchAmount = Math.min(
-          item.h * guardSparkStretchFactor,
-          stretchBase * lerp(0.2, 1.1, radialFactor),
-        );
-        if (stretchAmount > 1e-3){
-          const quadVerts = [
-            { keyX: 'x1', keyY: 'y1', x: baseQuad.x1, y: baseQuad.y1 },
-            { keyX: 'x2', keyY: 'y2', x: baseQuad.x2, y: baseQuad.y2 },
-            { keyX: 'x3', keyY: 'y3', x: baseQuad.x3, y: baseQuad.y3 },
-            { keyX: 'x4', keyY: 'y4', x: baseQuad.x4, y: baseQuad.y4 },
-          ];
-          const vertsByDot = quadVerts
-            .map((v) => ({
-              vert: v,
-              dot: (v.x - viewCenterX) * normDirX + (v.y - viewCenterY) * normDirY,
-            }))
-            .sort((a, b) => a.dot - b.dot);
-          for (let i = 2; i < vertsByDot.length; i += 1){
-            const { vert } = vertsByDot[i];
-            vert.x += normDirX * stretchAmount;
-            vert.y += normDirY * stretchAmount;
-          }
-          quad = quadVerts.reduce((acc, v) => {
-            acc[v.keyX] = v.x;
-            acc[v.keyY] = v.y;
-            return acc;
-          }, {});
-        }
-      }
-    }
-
-    const fog = fogArray(item.z);
-    const useTexture = texturesEnabled && item.tex;
-    if (useTexture){
-      glr.drawQuadTextured(item.tex, quad, uv, undefined, fog);
-    } else {
-      const solidTint = Array.isArray(item.tint)
-        ? item.tint
-        : randomColorFor(item.colorKey || 'billboard');
-      glr.drawQuadSolid(quad, solidTint, fog);
-    }
-  }
-
   function segmentAtS(s) {
     const length = getTrackLength();
     if (!segments.length || length <= 0) return null;
@@ -1204,9 +1118,6 @@
           tex: texture,
           uv,
           kind: spr.kind || null,
-          guardSparkSpeed: spr.kind === 'GUARD_SPARK'
-            ? Math.max(0, Number.isFinite(spr.sparkStretchSpeed) ? spr.sparkStretchSpeed : 0)
-            : undefined,
           colorKey: `prop:${spr.kind || 'generic'}`,
         });
       }
@@ -1267,22 +1178,6 @@
           item.uv,
           item.colorKey,
         );
-      } else if (item.type === 'prop'){
-        if (item.kind === 'GUARD_SPARK'){
-          drawGuardSpark(item);
-        } else {
-          drawBillboard(
-            item.x,
-            item.y,
-            item.w,
-            item.h,
-            item.z,
-            item.tint,
-            item.tex,
-            item.uv,
-            item.colorKey,
-          );
-        }
       } else if (item.type === 'snowScreen'){
         perf.registerSnowScreen();
         renderSnowScreen(item);

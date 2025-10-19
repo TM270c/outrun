@@ -78,10 +78,6 @@ const snowSize = { min: 0.75, max: 1.25 };
 const snowSpeed = { min: 0.1, max: .2 };
 const snowStretch = 10;
 
-const guardSparkSideOffset = 0.035;
-const guardSparkRailClearance = 0.01;
-const guardSparkStretch = 6;
-
 // Debug overlay defaults for development builds.
 const debug = {
   mode: 'off',
@@ -192,9 +188,6 @@ window.Config = {
   snowSize,
   snowSpeed,
   snowStretch,
-  guardSparkSideOffset,
-  guardSparkRailClearance,
-  guardSparkStretch,
 };
 
 Object.freeze(window.Config);
