@@ -302,6 +302,10 @@
   const SPARKS_SCREEN_VERTICAL_SPEED = { min: -120, max: -60 };
   const SPARKS_SCREEN_GRAVITY = 360;
   const SPARKS_SCREEN_DRAG = 3;
+  const SPARKS_STRETCH_LEAD_MAX = 8 / 60;
+  const SPARKS_STRETCH_SPEED_RATIO_START = 0.35;
+  const SPARKS_STRETCH_SPEED_RATIO_END = 0.95;
+  const SPARKS_STRETCH_MIN_REMAIN = 1 / 120;
 
   const DEFAULT_SPRITE_META = {
     PLAYER: {
@@ -978,6 +982,24 @@
     return base + (Math.random() * 2 - 1) * span;
   }
 
+  function computeSparkStretchLead(forwardSpeed = 0) {
+    const baseSpeed = Math.max(0, Number.isFinite(forwardSpeed) ? forwardSpeed : 0);
+    const topSpeed = (player && Number.isFinite(player.topSpeed) && player.topSpeed > 0)
+      ? player.topSpeed
+      : baseSpeed;
+    if (topSpeed <= 1e-4) return 0;
+
+    const startSpeed = Math.max(0, topSpeed * SPARKS_STRETCH_SPEED_RATIO_START);
+    const endSpeed = Math.max(startSpeed + 1e-4, topSpeed * SPARKS_STRETCH_SPEED_RATIO_END);
+    if (baseSpeed <= startSpeed) return 0;
+
+    const span = endSpeed - startSpeed;
+    const speedRatio = clamp01((baseSpeed - startSpeed) / span);
+    const lead = speedRatio * SPARKS_STRETCH_LEAD_MAX;
+    const maxLead = Math.max(0, SPARKS_LIFETIME - SPARKS_STRETCH_MIN_REMAIN);
+    return Math.min(lead, maxLead);
+  }
+
   function allocSparksSprite() {
     return sparksPool.length ? sparksPool.pop() : { kind: 'SPARKS' };
   }
@@ -996,6 +1018,7 @@
     sprite.offset = 0;
     sprite.screenOffsetX = 0;
     sprite.screenOffsetY = 0;
+    sprite.sparkEdge = null;
     sparksPool.push(sprite);
   }
 
@@ -1247,6 +1270,23 @@
     }
   }
 
+  function setupSparkSprite(sprite, seg, spawnS, spawnOffset, driftMotion, edge = null) {
+    if (!sprite || !seg) return null;
+    sprite.kind = 'SPARKS';
+    sprite.offset = spawnOffset;
+    sprite.segIndex = seg.index;
+    sprite.s = spawnS;
+    sprite.ttl = SPARKS_LIFETIME;
+    sprite.interactable = false;
+    sprite.interacted = false;
+    sprite.impactable = false;
+    sprite.driftMotion = driftMotion ? { ...driftMotion } : null;
+    sprite.screenOffsetX = 0;
+    sprite.screenOffsetY = 0;
+    sprite.sparkEdge = edge;
+    return sprite;
+  }
+
   function spawnSparksSprites(contactSide = 0) {
     if (!hasSegments()) return;
     const { phys } = state;
@@ -1257,14 +1297,13 @@
     const sideSign = contactSide !== 0 ? Math.sign(contactSide) || 0 : (state.playerN >= 0 ? 1 : -1);
     if (sideSign === 0) return;
     const offsets = [state.playerN + sideSign * half * 0.85];
-    const sprites = ensureArray(seg, 'sprites');
     const baseS = Number.isFinite(phys.s)
       ? phys.s
       : (seg.p1 && seg.p1.world ? seg.p1.world.z : 0);
     const trackLength = trackLengthRef();
     const forwardSpeed = Math.max(0, Number.isFinite(phys.vtan) ? phys.vtan : 0);
+    const leadTime = computeSparkStretchLead(forwardSpeed);
     for (const baseOffset of offsets) {
-      const sprite = allocSparksSprite();
       const spawnOffset = baseOffset;
       const sJitter = (Math.random() * 2 - 1) * SPARKS_LONGITUDINAL_JITTER;
       const spawnS = trackLength > 0 ? wrapDistance(baseS, sJitter, trackLength) : baseS + sJitter;
@@ -1272,15 +1311,7 @@
       const lateralVel = sideSign * lerp(SPARKS_LATERAL_SPEED.min, SPARKS_LATERAL_SPEED.max, Math.random());
       const screenLateral = sideSign * lerp(SPARKS_SCREEN_LATERAL_SPEED.min, SPARKS_SCREEN_LATERAL_SPEED.max, Math.random());
       const screenVertical = lerp(SPARKS_SCREEN_VERTICAL_SPEED.min, SPARKS_SCREEN_VERTICAL_SPEED.max, Math.random());
-      sprite.kind = 'SPARKS';
-      sprite.offset = spawnOffset;
-      sprite.segIndex = seg.index;
-      sprite.s = spawnS;
-      sprite.ttl = SPARKS_LIFETIME;
-      sprite.interactable = false;
-      sprite.interacted = false;
-      sprite.impactable = false;
-      sprite.driftMotion = {
+      const driftMotion = {
         forwardVel: inheritedForward,
         drag: SPARKS_DRAG,
         lateralVel,
@@ -1290,9 +1321,43 @@
         verticalGravity: SPARKS_SCREEN_GRAVITY,
         verticalDrag: SPARKS_SCREEN_DRAG,
       };
-      sprite.screenOffsetX = 0;
-      sprite.screenOffsetY = 0;
-      sprites.push(sprite);
+
+      const innerSprite = setupSparkSprite(
+        allocSparksSprite(),
+        seg,
+        spawnS,
+        spawnOffset,
+        driftMotion,
+        'inner',
+      );
+      if (innerSprite) {
+        ensureArray(seg, 'sprites').push(innerSprite);
+      }
+
+      const outerSprite = setupSparkSprite(
+        allocSparksSprite(),
+        seg,
+        spawnS,
+        spawnOffset,
+        driftMotion,
+        'outer',
+      );
+
+      if (outerSprite) {
+        let targetSeg = seg;
+        if (leadTime > 1e-5) {
+          const appliedLead = Math.max(0, Math.min(leadTime, SPARKS_LIFETIME));
+          const transferSeg = applySparksMotion(outerSprite, appliedLead, seg);
+          const segAtPos = segmentAtS(outerSprite.s);
+          targetSeg = segAtPos || transferSeg || seg;
+          outerSprite.segIndex = targetSeg.index;
+          outerSprite.ttl = Math.max(
+            SPARKS_STRETCH_MIN_REMAIN,
+            SPARKS_LIFETIME - appliedLead,
+          );
+        }
+        ensureArray(targetSeg, 'sprites').push(outerSprite);
+      }
     }
   }
 
