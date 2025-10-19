@@ -324,6 +324,28 @@
     },
     PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
     DRIFT_SMOKE: { wN: 0.1, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], tex: () => null },
+    GUARD_RAIL_SPARKS: {
+      wN: 0.12,
+      aspect: 0.25,
+      tint: [1, 1, 1, 1],
+      tex() {
+        const textures = (World && World.assets && World.assets.textures)
+          ? World.assets.textures
+          : null;
+        return (textures && textures.sparks) || null;
+      },
+      frameCount: 16,
+      framesPerRow: 4,
+      frameUv(frameIndex = 0) {
+        const cols = Number.isFinite(this.framesPerRow) && this.framesPerRow > 0
+          ? this.framesPerRow
+          : 4;
+        const total = Number.isFinite(this.frameCount) && this.frameCount > 0
+          ? this.frameCount
+          : 16;
+        return atlasFrameUv(frameIndex, cols, total);
+      },
+    },
     ANIM_PLATE: {
       wN: 0.1,
       aspect: 1.0,
@@ -961,6 +983,133 @@
     if (sprite.kind === 'DRIFT_SMOKE') recycleDriftSmokeSprite(sprite);
   }
 
+  const GUARD_RAIL_SPARK_KIND = 'GUARD_RAIL_SPARKS';
+  const GUARD_RAIL_SPARK_FRAMES = Array.from({ length: 16 }, (_, idx) => idx);
+  const GUARD_RAIL_SPARK_ATLAS_INFO = Object.freeze({ columns: 4, totalFrames: 16 });
+  const GUARD_RAIL_SPARK_FRAME_DURATION = 1 / 30;
+  const GUARD_RAIL_SPARK_MIN_WIDTH = 0.04;
+  const GUARD_RAIL_SPARK_MAX_WIDTH = 0.3;
+  const GUARD_RAIL_SPARK_STRETCH = 0.65;
+
+  function detachGuardRailSparkSprite(sprite) {
+    if (!sprite) return;
+    const owner = sprite._ownerSegment;
+    if (owner && Array.isArray(owner.sprites)) {
+      const idx = owner.sprites.indexOf(sprite);
+      if (idx >= 0) owner.sprites.splice(idx, 1);
+    } else if (Number.isFinite(sprite.segIndex)) {
+      const seg = segmentAtIndex(sprite.segIndex);
+      if (seg && Array.isArray(seg.sprites)) {
+        const idx = seg.sprites.indexOf(sprite);
+        if (idx >= 0) seg.sprites.splice(idx, 1);
+      }
+    }
+    sprite._ownerSegment = null;
+  }
+
+  function removeGuardRailSparkSprite() {
+    const sprite = state.guardRailSparkSprite;
+    if (!sprite) return;
+    detachGuardRailSparkSprite(sprite);
+    state.guardRailSparkSprite = null;
+  }
+
+  function ensureGuardRailSparkSprite(seg) {
+    if (!seg) return null;
+    let sprite = state.guardRailSparkSprite;
+    const baseFrame = GUARD_RAIL_SPARK_FRAMES.length ? GUARD_RAIL_SPARK_FRAMES[0] : 0;
+    if (!sprite) {
+      sprite = {
+        kind: GUARD_RAIL_SPARK_KIND,
+        offset: 0,
+        segIndex: seg.index,
+        s: state.phys ? state.phys.s : 0,
+        scale: 1,
+        stretch: GUARD_RAIL_SPARK_STRETCH,
+        interactable: false,
+        interacted: false,
+        impactable: false,
+        guardRailSide: 0,
+        ttl: null,
+        atlasInfo: { ...GUARD_RAIL_SPARK_ATLAS_INFO },
+      };
+      const animState = createSpriteAnimationState(
+        { frames: GUARD_RAIL_SPARK_FRAMES, playback: 'loop' },
+        null,
+        GUARD_RAIL_SPARK_FRAME_DURATION,
+        baseFrame,
+      );
+      if (animState) {
+        sprite.animation = animState;
+        sprite.animFrame = Number.isFinite(animState.currentFrame)
+          ? animState.currentFrame
+          : baseFrame;
+      } else {
+        sprite.animation = null;
+        sprite.animFrame = baseFrame;
+      }
+      updateSpriteUv(sprite);
+      const container = ensureArray(seg, 'sprites');
+      container.push(sprite);
+      sprite._ownerSegment = seg;
+      state.guardRailSparkSprite = sprite;
+    } else if (sprite._ownerSegment !== seg) {
+      detachGuardRailSparkSprite(sprite);
+      const container = ensureArray(seg, 'sprites');
+      if (container.indexOf(sprite) < 0) container.push(sprite);
+      sprite._ownerSegment = seg;
+    } else {
+      const container = ensureArray(seg, 'sprites');
+      if (container.indexOf(sprite) < 0) container.push(sprite);
+    }
+    sprite.segIndex = seg.index;
+    return sprite;
+  }
+
+  function updateGuardRailSparkEffect(active, contactSide, seg) {
+    if (!active || !seg) {
+      removeGuardRailSparkSprite();
+      return;
+    }
+
+    const sprite = ensureGuardRailSparkSprite(seg);
+    if (!sprite) return;
+
+    const direction = contactSide < 0 ? -1 : 1;
+    sprite.guardRailSide = direction;
+
+    const length = trackLengthRef();
+    const baseS = state.phys ? state.phys.s : 0;
+    sprite.s = length > 0 ? wrapByLength(baseS, length) : baseS;
+
+    const guardInset = Number.isFinite(track.railInset) ? track.railInset : 1;
+    const half = playerHalfWN();
+    const carEdge = state.playerN + direction * half;
+    const guardEdge = direction * guardInset;
+    const gap = Math.max(0, Math.abs(guardEdge - carEdge));
+    const widthNorm = clamp(
+      Math.max(gap, GUARD_RAIL_SPARK_MIN_WIDTH),
+      GUARD_RAIL_SPARK_MIN_WIDTH,
+      GUARD_RAIL_SPARK_MAX_WIDTH,
+    );
+
+    const meta = getSpriteMeta(GUARD_RAIL_SPARK_KIND);
+    const baseWidth = Math.max(1e-3, meta && Number.isFinite(meta.wN) ? meta.wN : 0.1);
+    sprite.scale = widthNorm / baseWidth;
+    sprite.stretch = GUARD_RAIL_SPARK_STRETCH;
+
+    const center = carEdge + direction * gap * 0.5;
+    sprite.offset = center;
+
+    if (sprite.animation) {
+      sprite.animation.playing = true;
+      sprite.animation.finished = false;
+      if (sprite.animation.frameDuration !== GUARD_RAIL_SPARK_FRAME_DURATION) {
+        sprite.animation.frameDuration = GUARD_RAIL_SPARK_FRAME_DURATION;
+      }
+    }
+  }
+
   const NPC_DEFAULTS = { total: 20, edgePad: 0.02, avoidLookaheadSegs: 20 };
   const NPC = { ...NPC_DEFAULTS, ...trafficConfig };
   const CAR_TYPES = ['CAR', 'SEMI'];
@@ -1042,6 +1191,7 @@
     driftSmokeTimer: 0,
     driftSmokeNextInterval: computeDriftSmokeInterval(),
     cars: [],
+    guardRailSparkSprite: null,
     spriteMeta: DEFAULT_SPRITE_META,
     getKindScale: defaultGetKindScale,
     input: { left: false, right: false, up: false, down: false, hop: false },
@@ -2203,6 +2353,8 @@
       metrics.guardRailContactActive = false;
     }
 
+    updateGuardRailSparkEffect(guardRailContact, guardRailContactSide, segNow);
+
     if (metrics) {
       if (guardRailContact) {
         metrics.guardRailContactTime += dt;
@@ -2492,6 +2644,7 @@
     state.prevPlayerN = state.playerN;
     state.lateralRate = 0;
     state.pendingRespawn = null;
+    removeGuardRailSparkSprite();
     if (state.metrics) {
       state.metrics.guardRailContactActive = false;
       state.metrics.guardRailCooldownTimer = 0;
@@ -2520,6 +2673,7 @@
 
   async function resetScene() {
     applyDefaultFieldOfView();
+    removeGuardRailSparkSprite();
 
     if (typeof buildTrackFromCSV === 'function') {
       try {
