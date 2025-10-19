@@ -1499,6 +1499,7 @@
       };
       const debugLines = [
         `NPC hits: ${fmtCount(metrics.npcHits)}`,
+        `Near misses: ${fmtCount(metrics.nearMisses)}`,
         `Guardrail hits: ${fmtCount(metrics.guardRailHits)}`,
         `Guardrail time: ${fmtSeconds(metrics.guardRailContactTime)}`,
         `Pickups: ${fmtCount(metrics.pickupsCollected)}`,
