@@ -1295,7 +1295,7 @@
         hPx *= scaleFactor * stretchFactor;
         wPx *= farS;
         hPx *= farS;
-        const angle = Number.isFinite(spr.angle) ? spr.angle : null;
+        let angle = null;
         const screenOffsetX = Number.isFinite(spr.screenOffsetX) ? spr.screenOffsetX : 0;
         const screenOffsetY = Number.isFinite(spr.screenOffsetY) ? spr.screenOffsetY : 0;
         const drawX = xCenter + screenOffsetX;

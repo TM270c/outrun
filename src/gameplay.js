@@ -302,8 +302,6 @@
   const SPARKS_SCREEN_VERTICAL_SPEED = { min: -200, max: 200 };
   const SPARKS_SCREEN_GRAVITY = 40;
   const SPARKS_SCREEN_DRAG = 10;
-  const SPARKS_STRETCH_RANGE = { min: 2.5, max: 4.5 };
-  const SPARKS_TILT_RADIANS = (18 * Math.PI) / 180;
 
   const DEFAULT_SPRITE_META = {
     PLAYER: {
@@ -338,7 +336,7 @@
     },
     PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
     DRIFT_SMOKE: { wN: 0.1, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], tex: () => null },
-    SPARKS: { wN: 0.012, aspect: 3.5, tint: [1.0, 0.6, 0.2, 0.9], tex: () => null },
+    SPARKS: { wN: 0.01, aspect: 1.0, tint: [1.0, 0.6, 0.2, 0.9], tex: () => null },
     ANIM_PLATE: {
       wN: 0.1,
       aspect: 1.0,
@@ -981,8 +979,7 @@
   }
 
   function allocSparksSprite() {
-    if (sparksPool.length) return sparksPool.pop();
-    return { kind: 'SPARKS', stretch: 1, angle: 0 };
+    return sparksPool.length ? sparksPool.pop() : { kind: 'SPARKS' };
   }
 
   function recycleSparksSprite(sprite) {
@@ -997,8 +994,6 @@
     sprite.s = 0;
     sprite.ttl = 0;
     sprite.offset = 0;
-    sprite.stretch = 1;
-    sprite.angle = 0;
     sprite.screenOffsetX = 0;
     sprite.screenOffsetY = 0;
     sparksPool.push(sprite);
@@ -1295,13 +1290,6 @@
         verticalGravity: SPARKS_SCREEN_GRAVITY,
         verticalDrag: SPARKS_SCREEN_DRAG,
       };
-      const stretchFactor = lerp(
-        SPARKS_STRETCH_RANGE.min,
-        SPARKS_STRETCH_RANGE.max,
-        Math.random(),
-      );
-      sprite.stretch = Number.isFinite(stretchFactor) ? stretchFactor : SPARKS_STRETCH_RANGE.min;
-      sprite.angle = sideSign !== 0 ? -sideSign * SPARKS_TILT_RADIANS : 0;
       sprite.screenOffsetX = 0;
       sprite.screenOffsetY = 0;
       sprites.push(sprite);
