@@ -961,6 +961,19 @@
     if (sprite.kind === 'DRIFT_SMOKE') recycleDriftSmokeSprite(sprite);
   }
 
+  function removeGuardRailSparkSprites() {
+    if (!hasSegments()) return;
+    for (const seg of segments) {
+      if (!seg || !Array.isArray(seg.sprites) || !seg.sprites.length) continue;
+      for (let i = seg.sprites.length - 1; i >= 0; i -= 1) {
+        const spr = seg.sprites[i];
+        if (!spr || spr.kind !== 'GUARD_RAIL_SPARK') continue;
+        recycleTransientSprite(spr);
+        seg.sprites.splice(i, 1);
+      }
+    }
+  }
+
   const NPC_DEFAULTS = { total: 20, edgePad: 0.02, avoidLookaheadSegs: 20 };
   const NPC = { ...NPC_DEFAULTS, ...trafficConfig };
   const CAR_TYPES = ['CAR', 'SEMI'];
