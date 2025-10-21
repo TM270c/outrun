@@ -74,6 +74,19 @@
   - **Confidence / assumptions**: High confidence; assumes no other module mutates `state.raceComplete` directly.
   - **Notes**: Reviewer noted there were "no notes" and the helper already looks adequate; I concur and suggest only revisiting if future menu reset work reveals redundant copies or missed shared behavior.
 - `now`
+  - **Purpose**: Helper that grabs the current timestamp so menu flow can compare idle time without repeating the built-in Date.now call.
+  - **Inputs**: None.
+  - **Outputs**: Number of milliseconds since January 1, 1970 returned from Date.now.
+  - **Side effects**: None; it only reads the system clock.
+  - **Shared state & call sites**: Updates and reads state.lastInteractionAt in src/app.js:93, 1119, 1132 when tracking menu idleness.
+  - **Dependencies**: JavaScript built-in Date.now.
+  - **Edge cases**: Does not guard against someone changing the computer clock or supplying mock timers.
+  - **Performance**: Single native call; negligible cost even when polled for idle checks.
+  - **Units / spaces**: Milliseconds of real-world time.
+  - **Determinism**: Returns whatever the system clock reports, so calls made moments apart differ.
+  - **Keep / change / delete**: Change—either inline Date.now, or keep the helper but rename it getTimeNow and allow injecting a test clock to cut indirection.
+  - **Confidence / assumptions**: High confidence; assumes there are no hidden callers outside this file.
+  - **Notes**: You felt the helper was fine and suggested renaming it to getTimeNow; I still recommend inlining Date.now or accepting an injected clock so tests stay predictable.
 - `markInteraction`
 - `escapeHtml`
 - `resolveAssetUrlSafe`
@@ -487,3 +500,4 @@
 - Cache expensive calculations (segment projections, easing curves, texture lookups) so we do them once per update.
 - Limit DOM work by batching menu updates and making sure network requests (like leaderboards) run asynchronously.
 - Watch for code that creates lots of short-lived objects and switch to in-place updates where possible.
+
