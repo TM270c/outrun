@@ -226,6 +226,19 @@
   - Determinism: Given the same starting state and nextMode, the resulting state changes are predictable; repeated calls with the current mode exit immediately.
   - Keep / change / delete: Keep; central gateway for screen changes, simplest alternative would be splitting into separate per-mode helpers and duplicating logic.
   - Confidence / assumptions: High confidence; assumes updateMenuLayer keeps menus in sync and that callers pass the supported mode names.
+  - **Purpose**: Records a just-finished run on the high-score board by packaging the player initials, time, and today’s date, then reorders the list so the new result appears in place immediately.
+  - **Inputs**: `name` (player-entered initials; trimmed, uppercased, limited to three characters, defaults to `---`); `scoreMs` (finish time in milliseconds; non-finite values fall back to 0).
+  - **Outputs**: Returns the newly minted entry object containing a unique `id` symbol, normalized `name`, numeric `score`, formatted `displayValue`, ISO date stamp, and updated `rank` once sorted.
+  - **Side effects**: Appends to `state.leaderboard.entries` and `.localEntries`, re-sorts the leaderboard (which mutates ranks), stamps the current date, and points `state.leaderboard.highlightId` at the new entry for UI emphasis.
+  - **Shared state & call sites**: Touches `state.leaderboard.entries`, `.localEntries`, and `.highlightId` defined in `src/app.js:55-57`; invoked from `src/app.js:638` when a race completion is finalized.
+  - **Dependencies**: Calls `createLeaderboardEntry` for normalization/formatting, `sortLeaderboardEntries` to reorder ranks, and uses `new Date().toISOString()` for the daily stamp.
+  - **Edge cases**: Handles blank names and invalid times via defaults; does not prevent duplicate submissions, oversized leaderboards, or special cases like DNFs/ties beyond alphabetical ordering.
+  - **Performance**: Triggers an array push plus an `Array.sort` (O(n log n)); runs only upon recording a new local result, not every frame.
+  - **Units / spaces**: Works with times measured in milliseconds and stores dates as `YYYY-MM-DD` strings; positions correspond to leaderboard rank order.
+  - **Determinism**: Non-deterministic because it stamps the current date and creates a fresh `Symbol` id; calling twice with the same input produces distinct entries.
+  - **Keep / change / delete**: Keep; consider renaming to `recordLocalLeaderboardEntry` to clarify that it mutates local state.
+  - **Confidence / assumptions**: High confidence; assumes `state.leaderboard` exists with initialized `entries` and `localEntries` arrays and that sorting stays consistent.
+- `setMode`
 - `ensureDom`
 - `renderMainMenu`
 - `renderLeaderboard`
