@@ -219,6 +219,18 @@
 - `renderLeaderboard`
 - `renderSettings`
 - `renderPauseMenu`
+  - Purpose: Builds the pause overlay markup so the player sees the resume and quit choices whenever play is halted.
+  - Inputs: `AppScreens.pauseMenu` template function must exist; `pauseMenuOptions` list of two menu entries (`resume`, `quit`); `state.pauseMenuIndex` zero-based position expected between 0 and options length minus one.
+  - Outputs: Returns the pause menu HTML string with the options array and the currently highlighted index passed through.
+  - Side effects: None; only reads globals.
+  - Shared state touched and call sites: Reads `pauseMenuOptions` (src/app.js:14-17) and `state.pauseMenuIndex` (src/app.js:42-46); invoked inside `updateMenuLayer` when `state.mode === 'paused'` (src/app.js:391-409); index mutated by `changePauseMenuSelection` (src/app.js:533-537), `setMode` (src/app.js:220-235), and `init` (src/app.js:1127-1136).
+  - Dependencies: Calls `AppScreens.pauseMenu` with the local `escapeHtml` helper for safe text output.
+  - Edge cases: Falls back to an empty string when the pause screen template is missing; otherwise expects the options array to contain entries and does not guard against an out-of-range index (resulting in no item selected).
+  - Performance: Maps over two static menu options; runs only when the menu layer redraws during pause transitions or navigation.
+  - Units/spaces: Uses zero-based menu positions; no time or world coordinates involved.
+  - Determinism: Same inputs and state produce the same markup; repeated calls do not alter data.
+  - Keep / change / delete: Keep; already minimal wrapper that could merge into a broader screen renderer during a larger refactor.
+  - Confidence / assumptions: High confidence, assuming the global screen renderer keeps returning deterministic markup.
 - `renderVehicleSelect`
 - `renderAttract`
 - `renderRaceComplete`
