@@ -254,6 +254,18 @@
   - Confidence / assumptions: High confidence; assumes the menu markup is present before init runs.
 - `renderMainMenu`
 - `renderLeaderboard`
+  - **Purpose**: Builds the leaderboard screen markup so players can see the top race times and any highlighted recent run.
+  - **Inputs**: No arguments; reads `state.leaderboard.loading`, `error`, `entries`, and `highlightId` (highlight id may be null).
+  - **Outputs**: Returns an HTML string via `AppScreens.leaderboard`, feeding it an array of up to ten `{ rank, name, score, isHighlight }` rows.
+  - **Side effects**: None; it only derives data for rendering.
+  - **Shared state & call sites**: Reads the leaderboard slice of `state`; called by `updateMenuLayer` when `state.mode === 'leaderboard'` (`src/app.js:404`).
+  - **Dependencies**: Delegates to `AppScreens.leaderboard` and passes the local `escapeHtml` helper for safe text output.
+  - **Edge cases**: Falls back to an empty string if the template is missing, keeps blank placeholder rows for null entries, but still ignores DNFs, ties beyond ordering, or runs past the top ten.
+  - **Performance**: Copies and maps at most ten entries per render; only invoked when the menu swaps into leaderboard mode.
+  - **Units / spaces**: Displays `entry.displayValue` strings already formatted in milliseconds and flags highlights with booleans.
+  - **Determinism**: Yes—given the same leaderboard state it produces the same HTML.
+  - **Keep / change / delete**: Keep; simplest tweak would be to share the top-ten limit as a named constant if reuse expands.
+  - **Confidence / assumptions**: High confidence; assumes upstream code keeps `displayValue` current and entries sorted.
 - `renderSettings`
 - `renderPauseMenu`
 - `renderVehicleSelect`
