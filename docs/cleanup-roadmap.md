@@ -130,6 +130,19 @@
   - **Confidence / assumptions**: High confidence; assumes `World` global remains stable and resolver returns a string.
   - **Notes**: Possible reductions include inlining the null-check if we ever centralize asset helpers or renaming to `safeResolveAssetUrl` so its guard role is clearer. Reviewer summary: “Uses `escapeHtml` so filenames render despite odd characters?” Clarification: this helper never touches HTML escaping and instead just delegates to `World.resolveAssetUrl`, so unusual characters flow through unchanged unless the resolver rewrites them. Future update could link it with a path sanitizer if we discover malformed inputs.
 - `normalizePreviewAtlas`
+  - Purpose: Convert optional preview sprite sheet settings into a safe atlas description for the vehicle preview.
+  - Inputs: `raw` object with `columns`, `rows`, `frameCount`, `frameRate`, `frameDuration`; expects positive numbers or empty.
+  - Outputs: Object with positive `columns`, `rows`, `frameCount`, `frameDuration` seconds, or `null` when data is unusable.
+  - Side effects: None; only reads the default frame duration constant.
+  - Shared state & call sites: Used by `renderVehicleSelect` in `src/app.js:339`; does not mutate shared state.
+  - Dependencies: Basic math helpers (`Number`, `Math`) and `DEFAULT_VEHICLE_PREVIEW_FRAME_DURATION`.
+  - Edge cases: Fills missing counts from other fields, derives duration from frame rate, returns `null` on non-positive or absent data.
+  - Performance: Constant-time arithmetic when building the menu model; no loops beyond a handful of checks.
+  - Units / spaces: Frame duration measured in seconds; counts represent frame totals; independent of render frame rate.
+  - Determinism: Yes; same input produces the same atlas and no persistent changes.
+  - Keep / change / delete: Keep; consolidates validation that would otherwise live inside `renderVehicleSelect`.
+  - Confidence / assumptions: High confidence; assumes preview atlas configs stay small and numeric.
+  - Notes: Reviewer summarized this as the helper that lets `renderVehicleSelect` slice the preview atlas, then asked whether it should merge with the atlas animation handler used by player vehicles and animated billboards; keep it separate for now because the preview path needs unique defaults, null returns, and timing fallbacks, but queue a follow-up to lift the shared frame math if those pipelines ever align.
 - `formatTimeMs`
 - `createLeaderboardEntry`
 - `recomputeLeaderboardRanks`
