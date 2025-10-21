@@ -60,6 +60,19 @@
   - **Confidence / assumptions**: High confidence; assumes `letters` of `'AAA'` is intended default.
   - **Notes**: Possible reductions: none spotted; placement in `src/app.js` matches usage via `resetRaceCompleteState`; consider renaming to shorter `inputNameState` for clarity.
 - `resetRaceCompleteState`
+  - **Purpose**: Resets the race-finish screen data back to a clean slate so the next race starts with blank initials and zeroed time.
+  - **Inputs**: None.
+  - **Outputs**: None; updates in-place.
+  - **Side effects**: Replaces `state.raceComplete` with fresh defaults, wiping any prior letters, timers, or entry IDs.
+  - **Shared state & call sites**: `state.raceComplete` reassigned; invoked at `src/app.js:232,724,1133`.
+  - **Dependencies**: Calls `createInitialRaceCompleteState`.
+  - **Edge cases**: Covers stale data by always cloning defaults; does not special-case DNF/DQ or preserve existing names.
+  - **Performance**: Constant-time object replacement when leaving the race-complete screen, starting a race, or booting.
+  - **Units / spaces**: Defaults include `timeMs` in milliseconds and name letters in uppercase strings.
+  - **Determinism**: Yes—same empty state every call.
+  - **Keep / change / delete**: Keep; simple helper prevents duplicated setup—alternative is to inline the factory call.
+  - **Confidence / assumptions**: High confidence; assumes no other module mutates `state.raceComplete` directly.
+  - **Notes**: Reviewer noted there were "no notes" and the helper already looks adequate; I concur and suggest only revisiting if future menu reset work reveals redundant copies or missed shared behavior.
 - `now`
 - `markInteraction`
 - `escapeHtml`
