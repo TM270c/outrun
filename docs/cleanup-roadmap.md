@@ -73,6 +73,7 @@
   - **Determinism**: Returns whatever the system clock reports, so calls made moments apart differ.
   - **Keep / change / delete**: Change—either inline Date.now, or keep the helper but rename it getTimeNow and allow injecting a test clock to cut indirection.
   - **Confidence / assumptions**: High confidence; assumes there are no hidden callers outside this file.
+  - **Notes**: You felt the helper was fine and suggested renaming it to getTimeNow; I still recommend inlining Date.now or accepting an injected clock so tests stay predictable.
 - `markInteraction`
 - `escapeHtml`
 - `resolveAssetUrlSafe`
@@ -487,7 +488,3 @@
 - Limit DOM work by batching menu updates and making sure network requests (like leaderboards) run asynchronously.
 - Watch for code that creates lots of short-lived objects and switch to in-place updates where possible.
 
-## Notes
-- Possible reductions & updates: You mentioned the helper looks perfectly fine as written, asked why we would inline it or inject a clock, and suggested renaming it to `getTimeNow` for clarity.
-- Response summary: The wrapper merely forwards to `Date.now`, so inlining removes an extra layer, while accepting an injected clock makes it easy to supply predictable timestamps in tests or future simulations without mutating shared state.
-- Recommendation: If we keep a helper, rename it to `getTimeNow` and allow an optional clock dependency for clarity and testability; otherwise, replace the calls with direct `Date.now()` uses to simplify the menu timing code.
