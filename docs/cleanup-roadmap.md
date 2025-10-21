@@ -80,6 +80,19 @@
 - `normalizePreviewAtlas`
 - `formatTimeMs`
 - `createLeaderboardEntry`
+  - Purpose: Builds a leaderboard row with cleaned initials, numeric time, formatted label, saved date, and empty rank.
+  - Inputs: Name text trimmed to three uppercase letters, scoreMs finish time in milliseconds with non-numbers treated as 0, optional date string defaulting to blank.
+  - Outputs: Object holding a unique id, cleaned name, raw score, formatted display string, provided date, and null rank.
+  - Side effects: None; only makes and returns new data.
+  - Shared state touched and where it’s used: No direct shared state; called at src/app.js:212 (local add) and src/app.js:850 (CSV import).
+  - Dependencies: Uses formatTimeMs for the display string.
+  - Edge cases handled or missed: Covers empty names and non-numeric scores; allows negative scores (shown as 0 ms) and ignores DNF/DQ notes or tie rules beyond later sorting.
+  - Performance: Constant-time string and number cleanup when leaderboard entries are made.
+  - Units/spaces: Treats scores as milliseconds and display text suffixed with “ms”.
+  - Determinism: Fields repeat for the same inputs except for a new unique id each call.
+  - Keep / change / delete: Keep; alternative is to inline the object build at the two use sites.
+  - Confidence / assumptions: High confidence; assumes the board expects three-letter uppercase initials and millisecond scores.
+  - Notes: Reviewer asked, “What actually updates the entry in the .csv file?”—right now nothing writes back, because entries only live in memory while `fetch('data/leaderboard.csv')` seeds the list; if persistence ever arrives we could fold this helper into a loader/saver module or attach a dedicated save routine, but until then the clearest update is to document that gap.
 - `recomputeLeaderboardRanks`
 - `sortLeaderboardEntries`
 - `findLeaderboardEntryIndexById`
@@ -487,3 +500,4 @@
 - Cache expensive calculations (segment projections, easing curves, texture lookups) so we do them once per update.
 - Limit DOM work by batching menu updates and making sure network requests (like leaderboards) run asynchronously.
 - Watch for code that creates lots of short-lived objects and switch to in-place updates where possible.
+- Future change: add a persistence step that writes new leaderboard scores back into `data/leaderboard.csv` so race results stay tracked after reloads.
