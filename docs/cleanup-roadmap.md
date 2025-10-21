@@ -734,37 +734,425 @@
   - Keep / change / delete: Keep; central orchestration point for launching races.【F:src/app.js†L722-L734】
   - Confidence / assumptions: High confidence; assumes gameplay module fulfills `resetScene` and `startRaceSession` contracts and handles their own errors after logging.【F:src/app.js†L722-L734】
 - `handleRaceFinish`
+  - Purpose: Transitions the app from gameplay into the race-complete flow by clearing controls, capturing the finish time, and priming name-entry state for the leaderboard screen.【F:src/app.js†L736-L746】
+  - Inputs: `timeMs` — reported finish duration in milliseconds; accepts any number (non-finite or negative values are coerced to `0`).【F:src/app.js†L738-L742】
+  - Outputs: Returns `undefined`; populates `state.raceComplete` with a fresh descriptor for UI rendering and onboarding to the completion sequence.【F:src/app.js†L739-L746】
+  - Side effects: Resets gameplay input flags, rebuilds the race-complete state object, clears any highlighted leaderboard entry, and switches UI mode to `'raceComplete'`.【F:src/app.js†L737-L746】
+  - Shared state touched and where it’s used: Mutates `state.raceComplete` and `state.leaderboard.highlightId`, which feed the race-complete and leaderboard renderers; invoked exclusively from the gameplay callback wired in `setupCallbacks()` when a race ends.【F:src/app.js†L739-L746】【F:src/bootstrap.js†L38-L54】
+  - Dependencies: Calls `resetGameplayInputs`, `createInitialRaceCompleteState`, and `setMode` to prep UI and inputs.【F:src/app.js†L737-L746】
+  - Edge cases handled or missed: Handles NaN/∞/negative times by clamping to zero but has no explicit branch for DNFs/DQs or manual retries.【F:src/app.js†L738-L742】
+  - Performance: Constant-time state updates; no loops or I/O, so negligible overhead when a race finishes.【F:src/app.js†L736-L746】
+  - Units / spaces: Interprets `timeMs` in milliseconds and stores the formatted result for later UI conversion.【F:src/app.js†L738-L745】
+  - Determinism: Deterministic given the same `timeMs` and existing state; repeated calls overwrite the race-complete snapshot with the same derived values.【F:src/app.js†L736-L746】
+  - Keep / change / delete: Keep; it is the single integration point from gameplay completion into the UI pipeline.【F:src/app.js†L736-L746】【F:src/bootstrap.js†L50-L54】
+  - Confidence / assumptions: High confidence; assumes `createInitialRaceCompleteState` returns the canonical template used throughout the race-complete workflow.【F:src/app.js†L739-L745】
+
 - `showLeaderboard`
+  - Purpose: Brings the UI to the leaderboard screen and triggers a fetch if cached data is absent.【F:src/app.js†L749-L752】
+  - Inputs: None; relies on current app state for context.【F:src/app.js†L749-L752】
+  - Outputs: Returns `undefined`; relies on side effects for mode switching and data loading.【F:src/app.js†L749-L752】
+  - Side effects: Sets the mode to `'leaderboard'` and kicks off `requestLeaderboard()` which may update loading/error flags and entries asynchronously.【F:src/app.js†L749-L828】
+  - Shared state touched and where it’s used: Alters `state.mode`, feeding menu rendering logic; invoked when the main-menu option for the leaderboard is activated.【F:src/app.js†L749-L752】【F:src/app.js†L769-L778】
+  - Dependencies: Calls `setMode` and `requestLeaderboard`.【F:src/app.js†L749-L752】
+  - Edge cases handled or missed: Relies on `requestLeaderboard` to avoid duplicate fetches; does not guard against missing network access itself.【F:src/app.js†L749-L828】
+  - Performance: Constant-time aside from the asynchronous fetch performed by `requestLeaderboard`.【F:src/app.js†L749-L828】
+  - Units / spaces: Operates purely on UI mode flags; no special units involved.【F:src/app.js†L749-L752】
+  - Determinism: Deterministic—same state leads to the same mode change and fetch attempt; eventual results depend on network data.【F:src/app.js†L749-L828】
+  - Keep / change / delete: Keep; central helper for multiple entry points to the leaderboard.【F:src/app.js†L749-L778】
+  - Confidence / assumptions: High confidence; assumes `requestLeaderboard` gracefully handles already-loaded state.【F:src/app.js†L800-L828】
+
 - `showSettings`
+  - Purpose: Switches the app into the settings menu without any additional setup.【F:src/app.js†L754-L756】
+  - Inputs: None.【F:src/app.js†L754-L756】
+  - Outputs: Returns `undefined`; relies on mode change for downstream behavior.【F:src/app.js†L754-L756】
+  - Side effects: Updates `state.mode` to `'settings'`, triggering menu rerendering.【F:src/app.js†L754-L756】【F:src/app.js†L391-L417】
+  - Shared state touched and where it’s used: Adjusts the mode consumed by `updateMenuLayer`; primarily invoked from the main menu option handler.【F:src/app.js†L754-L778】
+  - Dependencies: Calls `setMode`.【F:src/app.js†L754-L756】
+  - Edge cases handled or missed: No safeguards; assumes settings are always available.【F:src/app.js†L754-L756】
+  - Performance: Constant-time mode assignment.【F:src/app.js†L754-L756】
+  - Units / spaces: Uses the `'settings'` mode string only.【F:src/app.js†L754-L756】
+  - Determinism: Deterministic for the same current state.【F:src/app.js†L754-L756】
+  - Keep / change / delete: Keep; provides a single semantic entry point for settings navigation.【F:src/app.js†L754-L778】
+  - Confidence / assumptions: High confidence; assumes `setMode` manages any cleanup like resetting indices when applicable.【F:src/app.js†L220-L235】
+
 - `resumeRace`
+  - Purpose: Leaves pause-or-menu states and returns the game to active play.【F:src/app.js†L758-L760】
+  - Inputs: None.【F:src/app.js†L758-L760】
+  - Outputs: Returns `undefined`; relies on mode swap for gameplay resumption.【F:src/app.js†L758-L760】
+  - Side effects: Sets `state.mode` to `'playing'`, which suppresses menu rendering and resumes gameplay stepping.【F:src/app.js†L758-L760】【F:src/app.js†L391-L418】【F:src/app.js†L1106-L1116】
+  - Shared state touched and where it’s used: Mode change influences `updateMenuLayer` and the main loop; invoked from pause menu selection, pause hotkey handling, and escape handling in the pause menu.【F:src/app.js†L781-L990】【F:src/app.js†L1052-L1063】
+  - Dependencies: Calls `setMode`.【F:src/app.js†L758-L760】
+  - Edge cases handled or missed: Does not reinitialize gameplay state; assumes gameplay can resume immediately.【F:src/app.js†L758-L760】
+  - Performance: Constant-time.【F:src/app.js†L758-L760】
+  - Units / spaces: Operates on mode flags only.【F:src/app.js†L758-L760】
+  - Determinism: Deterministic; identical state yields identical mode transition.【F:src/app.js†L758-L760】
+  - Keep / change / delete: Keep; central resume hook shared by UI and keyboard controls.【F:src/app.js†L781-L990】【F:src/app.js†L1052-L1063】
+  - Confidence / assumptions: High confidence; assumes `setMode('playing')` handles resetting menu indices as needed.【F:src/app.js†L220-L228】
+
 - `quitToMenu`
+  - Purpose: Exits gameplay back to the main menu while ensuring controls and scene reset hooks run.【F:src/app.js†L762-L767】
+  - Inputs: None.【F:src/app.js†L762-L767】
+  - Outputs: Returns `undefined`; orchestrates side effects for quitting.【F:src/app.js†L762-L767】
+  - Side effects: Sets mode to `'menu'`, clears gameplay inputs, and invokes `Gameplay.resetScene()` if available, logging failures.【F:src/app.js†L762-L767】
+  - Shared state touched and where it’s used: Alters mode and indirectly triggers menu rendering; called from the pause menu option handler.【F:src/app.js†L762-L789】
+  - Dependencies: Calls `setMode`, `resetGameplayInputs`, and optionally `Gameplay.resetScene`.【F:src/app.js†L762-L767】
+  - Edge cases handled or missed: Safely handles missing `Gameplay.resetScene`; does not wait for reset completion before returning to menu.【F:src/app.js†L765-L767】
+  - Performance: Constant-time aside from the asynchronous scene reset.【F:src/app.js†L762-L767】
+  - Units / spaces: Mode strings only.【F:src/app.js†L762-L767】
+  - Determinism: Deterministic control flow; asynchronous reset outcome may vary but is logged on error.【F:src/app.js†L762-L767】
+  - Keep / change / delete: Keep; consolidates quit behavior for reuse across inputs.【F:src/app.js†L781-L789】
+  - Confidence / assumptions: High confidence; assumes gameplay module tolerates repeated `resetScene` calls.【F:src/app.js†L765-L767】
+
 - `activateMainMenuSelection`
+  - Purpose: Executes the action tied to the currently highlighted main-menu option.【F:src/app.js†L769-L779】
+  - Inputs: None; reads `state.mainMenuIndex` to determine the active option.【F:src/app.js†L769-L776】
+  - Outputs: Returns `undefined`; defers to other helpers for observable outcomes.【F:src/app.js†L769-L779】
+  - Side effects: Depending on selection, may trigger vehicle selection, leaderboard, or settings flows via dedicated helpers.【F:src/app.js†L772-L778】
+  - Shared state touched and where it’s used: Relies on `state.mainMenuIndex` set elsewhere; primarily called from the main menu key handler on confirm.【F:src/app.js†L769-L778】【F:src/app.js†L879-L895】
+  - Dependencies: Calls `showVehicleSelect`, `showLeaderboard`, or `showSettings` based on the option key.【F:src/app.js†L772-L778】
+  - Edge cases handled or missed: Gracefully exits if the index is out of range (`!option`); no feedback for unsupported keys.【F:src/app.js†L769-L778】
+  - Performance: Constant-time branching.【F:src/app.js†L769-L779】
+  - Units / spaces: Uses option keys (`'start'`, `'leaderboard'`, `'settings'`) only.【F:src/app.js†L772-L778】
+  - Determinism: Deterministic for a given menu index and options array.【F:src/app.js†L769-L779】
+  - Keep / change / delete: Keep; keeps menu behavior centralized rather than scattering conditionals across input handlers.【F:src/app.js†L769-L895】
+  - Confidence / assumptions: High confidence; assumes menu options array stays in sync with rendered menu order.【F:src/app.js†L251-L260】【F:src/app.js†L769-L778】
+
 - `activatePauseMenuSelection`
+  - Purpose: Executes the selected pause-menu action (resume or quit).【F:src/app.js†L781-L788】
+  - Inputs: None; consumes `state.pauseMenuIndex`.【F:src/app.js†L781-L787】
+  - Outputs: Returns `undefined`; relies on downstream helpers for observable behavior.【F:src/app.js†L781-L788】
+  - Side effects: Calls `resumeRace` or `quitToMenu`, affecting mode and gameplay state.【F:src/app.js†L784-L788】
+  - Shared state touched and where it’s used: Reads `state.pauseMenuIndex`; invoked by pause key handling and menu confirmation.【F:src/app.js†L781-L988】【F:src/app.js†L1052-L1062】
+  - Dependencies: Calls `resumeRace` or `quitToMenu`.【F:src/app.js†L784-L788】
+  - Edge cases handled or missed: Safely no-ops if index is invalid; no handling for additional pause options.【F:src/app.js†L781-L788】
+  - Performance: Constant-time.【F:src/app.js†L781-L788】
+  - Units / spaces: Works with option keys `'resume'` and `'quit'`.【F:src/app.js†L784-L787】
+  - Determinism: Deterministic for a given index state.【F:src/app.js†L781-L788】
+  - Keep / change / delete: Keep; isolates pause-menu behaviors for reuse by multiple input paths.【F:src/app.js†L781-L988】【F:src/app.js†L1052-L1062】
+  - Confidence / assumptions: High confidence; assumes pause options remain limited to resume/quit until expanded.【F:src/app.js†L314-L322】【F:src/app.js†L781-L788】
+
 - `activateSettingsSelection`
+  - Purpose: Applies the settings menu action currently highlighted (toggle snow or leave the menu).【F:src/app.js†L791-L797】
+  - Inputs: None; checks `settingsMenuKeys[state.settingsMenuIndex]`.【F:src/app.js†L791-L796】
+  - Outputs: Returns `undefined`; relies on invoked helpers for visible outcomes.【F:src/app.js†L791-L797】
+  - Side effects: Toggles snow rendering or returns to the main menu depending on selection.【F:src/app.js†L793-L797】
+  - Shared state touched and where it’s used: Reads `state.settingsMenuIndex` and writes via `toggleSnowSetting`/`setMode`; triggered from settings key handling.【F:src/app.js†L791-L937】
+  - Dependencies: Calls `toggleSnowSetting` or `setMode('menu')`.【F:src/app.js†L793-L797】
+  - Edge cases handled or missed: Ignores unknown keys; only two options supported.【F:src/app.js†L791-L797】
+  - Performance: Constant-time.【F:src/app.js†L791-L797】
+  - Units / spaces: Works with `'snow'` and `'back'` keys only.【F:src/app.js†L793-L796】
+  - Determinism: Deterministic for a given selection state.【F:src/app.js†L791-L797】
+  - Keep / change / delete: Keep; centralizes side effects for the sparse settings menu.【F:src/app.js†L291-L311】【F:src/app.js†L791-L937】
+  - Confidence / assumptions: High confidence; assumes `settingsMenuKeys` mirrors the rendered options order.【F:src/app.js†L291-L311】【F:src/app.js†L791-L797】
+
 - `requestLeaderboard`
+  - Purpose: Lazily loads remote leaderboard data, merges it with local entries, and updates loading state for the menu.【F:src/app.js†L800-L828】
+  - Inputs: None; acts on `state.leaderboard` internals.【F:src/app.js†L800-L828】
+  - Outputs: Returns `undefined`; populates `state.leaderboard.entries`, flags, and highlight metadata asynchronously.【F:src/app.js†L804-L828】
+  - Side effects: Sets loading/error flags, triggers UI refreshes, fetches CSV data, parses entries, sorts them, and logs failures.【F:src/app.js†L804-L828】
+  - Shared state touched and where it’s used: Mutates `state.leaderboard` fields that feed leaderboard rendering; invoked during initialization and when the leaderboard screen opens.【F:src/app.js†L264-L288】【F:src/app.js†L749-L828】【F:src/app.js†L1127-L1138】
+  - Dependencies: Calls `updateMenuLayer`, `fetch`, `parseLeaderboardCsv`, and `sortLeaderboardEntries` (plus Promise chaining).【F:src/app.js†L804-L828】
+  - Edge cases handled or missed: Skips fetch if already loading or entries exist; handles HTTP errors and missing/empty CSV, but doesn’t retry or debounce rapid toggling.【F:src/app.js†L800-L828】
+  - Performance: Network-bound; otherwise linear in the number of CSV rows for parsing and sorting (delegated).【F:src/app.js†L804-L828】
+  - Units / spaces: Treats scores as numeric points and timestamps as CSV strings; no special spatial units.【F:src/app.js†L813-L828】
+  - Determinism: Deterministic for identical CSV input; external fetch results introduce variability.【F:src/app.js†L804-L828】
+  - Keep / change / delete: Keep; encapsulates leaderboard loading concerns and guards against redundant fetches.【F:src/app.js†L800-L828】
+  - Confidence / assumptions: High confidence; assumes CSV schema contains `name`, `points`, and `date` headers or defaults can be applied.【F:src/app.js†L831-L854】
+
 - `parseLeaderboardCsv`
+  - Purpose: Converts CSV leaderboard text into normalized entry objects sorted by score (then name) with ranks assigned.【F:src/app.js†L831-L864】
+  - Inputs: `text` — raw CSV string; accepts empty/whitespace and gracefully handles missing data.【F:src/app.js†L831-L849】
+  - Outputs: Returns an array of leaderboard entries with computed ranks.【F:src/app.js†L842-L864】
+  - Side effects: None beyond local computations.【F:src/app.js†L831-L864】
+  - Shared state touched and where it’s used: Pure helper invoked during leaderboard fetch to populate `state.leaderboard.entries`.【F:src/app.js†L813-L864】
+  - Dependencies: Uses `createLeaderboardEntry` and `recomputeLeaderboardRanks` to build and annotate entries.【F:src/app.js†L850-L864】
+  - Edge cases handled or missed: Ignores blank lines, tolerates missing headers by falling back to positional columns, clamps non-numeric scores to zero, but assumes comma separators and no quoted values.【F:src/app.js†L831-L864】
+  - Performance: O(n log n) due to sorting after a single pass over rows.【F:src/app.js†L843-L863】
+  - Units / spaces: Treats scores as numeric points and ranks as integers; no spatial units.【F:src/app.js†L842-L864】
+  - Determinism: Deterministic for a given CSV input; stable tie-breaking via `localeCompare` on names.【F:src/app.js†L857-L863】
+  - Keep / change / delete: Keep; isolates CSV parsing logic from network handling.【F:src/app.js†L813-L864】
+  - Confidence / assumptions: High confidence; assumes CSV is simple (no embedded commas/quotes).【F:src/app.js†L833-L858】
+
 - `handleMenuNavigation`
+  - Purpose: Adjusts the main-menu selection index in response to navigation input.【F:src/app.js†L867-L869】
+  - Inputs: `delta` — signed step applied to the menu index.【F:src/app.js†L867-L869】
+  - Outputs: Returns `undefined`; delegates to `changeMainMenuSelection`.【F:src/app.js†L867-L869】
+  - Side effects: Indirectly changes `state.mainMenuIndex` via the helper.【F:src/app.js†L867-L869】
+  - Shared state touched and where it’s used: Ultimately mutates the menu index consumed by rendering; triggered from arrow-key handling.【F:src/app.js†L867-L889】
+  - Dependencies: Calls `changeMainMenuSelection`.【F:src/app.js†L867-L869】
+  - Edge cases handled or missed: Relies on helper for wraparound/clamping; no direct guards here.【F:src/app.js†L867-L869】
+  - Performance: Constant-time.【F:src/app.js†L867-L869】
+  - Units / spaces: Treats `delta` as integer step count.【F:src/app.js†L867-L869】
+  - Determinism: Deterministic given the same starting state and delta.【F:src/app.js†L867-L869】
+  - Keep / change / delete: Keep; preserves separation between navigation intent and index mutation logic.【F:src/app.js†L867-L889】
+  - Confidence / assumptions: High confidence; assumes `changeMainMenuSelection` enforces bounds.【F:src/app.js†L867-L869】
+
 - `handlePauseNavigation`
+  - Purpose: Moves the pause-menu cursor according to user input.【F:src/app.js†L871-L873】
+  - Inputs: `delta` — signed index offset.【F:src/app.js†L871-L873】
+  - Outputs: Returns `undefined`; defers to `changePauseMenuSelection`.【F:src/app.js†L871-L873】
+  - Side effects: Adjusts `state.pauseMenuIndex` via the helper.【F:src/app.js†L871-L873】
+  - Shared state touched and where it’s used: Indirectly updates pause selection consumed by rendering and activation handlers.【F:src/app.js†L871-L986】
+  - Dependencies: Calls `changePauseMenuSelection`.【F:src/app.js†L871-L873】
+  - Edge cases handled or missed: Leaves wrap/limit behavior to the helper.【F:src/app.js†L871-L873】
+  - Performance: Constant-time.【F:src/app.js†L871-L873】
+  - Units / spaces: Delta step count only.【F:src/app.js†L871-L873】
+  - Determinism: Deterministic per starting index and delta.【F:src/app.js†L871-L873】
+  - Keep / change / delete: Keep; mirrors other menu navigation helpers for consistency.【F:src/app.js†L871-L986】
+  - Confidence / assumptions: High confidence; assumes helper enforces limits.【F:src/app.js†L871-L873】
+
 - `handleSettingsNavigation`
+  - Purpose: Changes the highlighted option within the settings menu.【F:src/app.js†L875-L877】
+  - Inputs: `delta` — signed navigation increment.【F:src/app.js†L875-L877】
+  - Outputs: Returns `undefined`; passes control to `changeSettingsSelection`.【F:src/app.js†L875-L877】
+  - Side effects: Indirectly mutates `state.settingsMenuIndex`.【F:src/app.js†L875-L877】
+  - Shared state touched and where it’s used: Affects settings menu rendering and activation; invoked from arrow-key handling.【F:src/app.js†L875-L934】
+  - Dependencies: Calls `changeSettingsSelection`.【F:src/app.js†L875-L877】
+  - Edge cases handled or missed: Delegates wrapping/bounds to helper.【F:src/app.js†L875-L877】
+  - Performance: Constant-time.【F:src/app.js†L875-L877】
+  - Units / spaces: Integer step count only.【F:src/app.js†L875-L877】
+  - Determinism: Deterministic for same inputs.【F:src/app.js†L875-L877】
+  - Keep / change / delete: Keep; maintains symmetry with other navigation helpers.【F:src/app.js†L875-L934】
+  - Confidence / assumptions: High confidence; assumes helper covers bounds.【F:src/app.js†L875-L877】
+
 - `handleMenuKeyDown`
+  - Purpose: Handles keyboard input on the main menu, supporting navigation and selection.【F:src/app.js†L879-L895】
+  - Inputs: `e` — keyboard event; expects `code` property for arrow/space/enter keys.【F:src/app.js†L879-L895】
+  - Outputs: Returns `true` when an input is consumed; otherwise `false`.【F:src/app.js†L879-L895】
+  - Side effects: Updates menu selection, triggers activation, and prevents default browser behavior for handled keys.【F:src/app.js†L881-L894】
+  - Shared state touched and where it’s used: Mutates selection via navigation helper; invoked from the global keydown dispatcher when in menu mode.【F:src/app.js†L879-L895】【F:src/app.js†L1075-L1089】
+  - Dependencies: Calls `handleMenuNavigation` and `activateMainMenuSelection`.【F:src/app.js†L881-L892】
+  - Edge cases handled or missed: Blocks arrow keys even if they don’t change selection; ignores other keys without side effects.【F:src/app.js†L879-L895】
+  - Performance: Constant-time.【F:src/app.js†L879-L895】
+  - Units / spaces: Works with keyboard `code` strings only.【F:src/app.js†L879-L895】
+  - Determinism: Deterministic for a given event and menu state.【F:src/app.js†L879-L895】
+  - Keep / change / delete: Keep; encapsulates menu key handling separate from global dispatch.【F:src/app.js†L879-L895】【F:src/app.js†L1075-L1089】
+  - Confidence / assumptions: High confidence; assumes `preventDefault` is sufficient to stop browser scrolling.【F:src/app.js†L881-L894】
+
 - `handleLeaderboardKeyDown`
+  - Purpose: Processes inputs on the leaderboard screen, allowing dismissal and disabling navigation keys.【F:src/app.js†L898-L909】
+  - Inputs: `e` — keyboard event focused on `code` for space/enter/escape/arrows.【F:src/app.js†L898-L907】
+  - Outputs: Returns `true` when handled; otherwise `false`.【F:src/app.js†L898-L909】
+  - Side effects: Returns to the main menu on confirmation keys and prevents default browser behavior for all targeted keys.【F:src/app.js†L898-L907】
+  - Shared state touched and where it’s used: Delegates to `setMode('menu')`; invoked from the global keydown router in leaderboard mode.【F:src/app.js†L898-L907】【F:src/app.js†L1078-L1089】
+  - Dependencies: Calls `setMode`.【F:src/app.js†L900-L907】
+  - Edge cases handled or missed: Consumes arrow keys even though they have no effect; offers no paging or scrolling.【F:src/app.js†L904-L907】
+  - Performance: Constant-time.【F:src/app.js†L898-L907】
+  - Units / spaces: Keyboard codes only.【F:src/app.js†L898-L907】
+  - Determinism: Deterministic for same event and state.【F:src/app.js†L898-L909】
+  - Keep / change / delete: Keep; minimal but sufficient event handling for the static leaderboard view.【F:src/app.js†L898-L907】【F:src/app.js†L1078-L1089】
+  - Confidence / assumptions: High confidence; assumes leaving the screen should always return to the main menu.【F:src/app.js†L900-L907】
+
 - `handleSettingsKeyDown`
+  - Purpose: Handles keyboard interaction on the settings menu, covering navigation, toggles, and exit.【F:src/app.js†L911-L940】
+  - Inputs: `e` — keyboard event leveraging arrow, space, enter, and escape codes.【F:src/app.js†L911-L939】
+  - Outputs: Returns `true` when the event is handled; otherwise `false`.【F:src/app.js†L911-L940】
+  - Side effects: Adjusts selection, toggles snow setting, activates entries, and prevents default browser behavior.【F:src/app.js†L913-L938】
+  - Shared state touched and where it’s used: Reads/writes settings indices and toggles; invoked from global keydown when in settings mode.【F:src/app.js†L911-L938】【F:src/app.js†L1078-L1089】
+  - Dependencies: Calls `handleSettingsNavigation`, `toggleSnowSetting`, `activateSettingsSelection`, and `setMode`.【F:src/app.js†L913-L937】
+  - Edge cases handled or missed: Consumes left/right even when not on a toggleable option; doesn’t support analog adjustments or additional options.【F:src/app.js†L923-L928】
+  - Performance: Constant-time.【F:src/app.js†L911-L938】
+  - Units / spaces: Works purely with keyboard codes and mode strings.【F:src/app.js†L911-L937】
+  - Determinism: Deterministic for identical events and state.【F:src/app.js†L911-L940】
+  - Keep / change / delete: Keep; concentrates all settings key handling logic for clarity.【F:src/app.js†L911-L938】【F:src/app.js†L1078-L1089】
+  - Confidence / assumptions: High confidence; assumes only the snow toggle responds to left/right inputs.【F:src/app.js†L923-L928】
+
 - `handleVehicleSelectKeyDown`
+  - Purpose: Manages keyboard input on the vehicle selection screen, including cycling options and confirming choices.【F:src/app.js†L943-L968】
+  - Inputs: `e` — keyboard event for arrow, space, enter, and escape codes.【F:src/app.js†L943-L967】
+  - Outputs: Returns `true` when the key is handled; otherwise `false`.【F:src/app.js†L943-L968】
+  - Side effects: Changes selected vehicle, triggers activation, and prevents default behavior for navigation keys.【F:src/app.js†L945-L966】
+  - Shared state touched and where it’s used: Mutates selection indices and may kick off race start; invoked by the global keydown router when in vehicle-select mode.【F:src/app.js†L943-L966】【F:src/app.js†L1076-L1089】
+  - Dependencies: Calls `changeVehicleSelection`, `activateVehicleSelection`, and `setMode`.【F:src/app.js†L945-L960】
+  - Edge cases handled or missed: Blocks vertical arrows despite no vertical menu; relies on helper for bounds; no mouse/gamepad handling here.【F:src/app.js†L964-L966】
+  - Performance: Constant-time.【F:src/app.js†L943-L966】
+  - Units / spaces: Works with keyboard codes and option indices.【F:src/app.js†L943-L966】
+  - Determinism: Deterministic for the same input and selection state.【F:src/app.js†L943-L968】
+  - Keep / change / delete: Keep; contains all keyboard interactions for vehicle selection.【F:src/app.js†L943-L966】【F:src/app.js†L1076-L1089】
+  - Confidence / assumptions: High confidence; assumes vehicle list is non-empty and helpers wrap safely.【F:src/app.js†L325-L342】【F:src/app.js†L943-L966】
+
 - `handlePauseKeyDown`
+  - Purpose: Responds to keyboard input while the pause menu is visible, covering navigation, confirmation, and quick resume.【F:src/app.js†L971-L993】
+  - Inputs: `e` — keyboard event for arrow, space, enter, and escape codes.【F:src/app.js†L971-L991】
+  - Outputs: Returns `true` when the event is consumed; otherwise `false`.【F:src/app.js†L971-L993】
+  - Side effects: Moves the pause selection, activates items, resumes play via escape, and prevents browser defaults.【F:src/app.js†L973-L990】
+  - Shared state touched and where it’s used: Mutates pause selection via helper and interacts with resume/quit flows; dispatched from the global keydown handler while paused.【F:src/app.js†L971-L990】【F:src/app.js†L1084-L1089】
+  - Dependencies: Calls `handlePauseNavigation`, `activatePauseMenuSelection`, and `resumeRace`.【F:src/app.js†L973-L989】
+  - Edge cases handled or missed: Escape always resumes even if already on resume; no direct support for extra menu options.【F:src/app.js†L987-L990】
+  - Performance: Constant-time.【F:src/app.js†L971-L990】
+  - Units / spaces: Keyboard codes and option indices only.【F:src/app.js†L971-L990】
+  - Determinism: Deterministic for the same event/state.【F:src/app.js†L971-L993】
+  - Keep / change / delete: Keep; required to make the pause overlay interactive.【F:src/app.js†L971-L990】【F:src/app.js†L1084-L1089】
+  - Confidence / assumptions: High confidence; assumes pause options remain resume/quit and escape should always resume.【F:src/app.js†L314-L322】【F:src/app.js†L987-L990】
+
 - `handleRaceCompleteKeyDown`
+  - Purpose: Drives the race-complete input flow, handling name entry, advancing the celebration, and exiting to attract mode.【F:src/app.js†L995-L1034】
+  - Inputs: `e` — keyboard event using escape, space, enter, and arrow codes.【F:src/app.js†L995-L1033】
+  - Outputs: Returns `true` when handled; otherwise `false`.【F:src/app.js†L995-L1034】
+  - Side effects: Routes to attract mode, edits the active name letter, locks characters, or advances the post-race sequence; prevents default behavior on handled keys.【F:src/app.js†L998-L1032】
+  - Shared state touched and where it’s used: Reads and mutates `state.raceComplete`; dispatched from the global keydown router in race-complete mode.【F:src/app.js†L995-L1032】【F:src/app.js†L1086-L1089】
+  - Dependencies: Calls `goToAttract`, `adjustCurrentNameLetter`, `lockCurrentNameLetter`, and `advanceRaceCompleteSequence`.【F:src/app.js†L998-L1032】
+  - Edge cases handled or missed: Allows escape to abort even before saving; only supports three-letter cycling with arrows; no validation for duplicate letters.【F:src/app.js†L1002-L1032】
+  - Performance: Constant-time operations per key press.【F:src/app.js†L995-L1032】
+  - Units / spaces: Works with keyboard codes and name-letter indices.【F:src/app.js†L995-L1032】
+  - Determinism: Deterministic for same state and inputs.【F:src/app.js†L995-L1034】
+  - Keep / change / delete: Keep; consolidates the multi-phase race completion controls.【F:src/app.js†L995-L1032】【F:src/app.js†L1086-L1089】
+  - Confidence / assumptions: High confidence; assumes race-complete state machine uses `active`/`phase` as documented.【F:src/app.js†L995-L1032】
+
 - `handleAttractKeyDown`
+  - Purpose: Lets any key press during attract mode return players to the main menu.【F:src/app.js†L1036-L1040】
+  - Inputs: `e` — keyboard event; any key is treated the same.【F:src/app.js†L1036-L1039】
+  - Outputs: Always returns `true` after handling.【F:src/app.js†L1036-L1040】
+  - Side effects: Switches the app mode to `'menu'` and prevents browser defaults.【F:src/app.js†L1036-L1039】
+  - Shared state touched and where it’s used: Updates mode for rendering; invoked from the global keydown dispatcher in attract mode.【F:src/app.js†L1036-L1039】【F:src/app.js†L1088-L1089】
+  - Dependencies: Calls `setMode`.【F:src/app.js†L1036-L1039】
+  - Edge cases handled or missed: No differentiation by key; ignores potential video playback state aside from mode change.【F:src/app.js†L1036-L1039】
+  - Performance: Constant-time.【F:src/app.js†L1036-L1039】
+  - Units / spaces: Mode string only.【F:src/app.js†L1036-L1039】
+  - Determinism: Deterministic for any event.【F:src/app.js†L1036-L1040】
+  - Keep / change / delete: Keep; ensures quick exit from attract loop on input.【F:src/app.js†L1036-L1039】【F:src/app.js†L1088-L1089】
+  - Confidence / assumptions: High confidence; assumes any attract-mode key should re-enter the menu.【F:src/app.js†L1036-L1039】
+
 - `handleKeyDown`
+  - Purpose: Acts as the global keyboard dispatcher, handling debug toggles, pause shortcut, gameplay forwarding, and routing to mode-specific handlers.【F:src/app.js†L1042-L1095】
+  - Inputs: `e` — keyboard event for all gameplay and menu interactions.【F:src/app.js†L1042-L1094】
+  - Outputs: Returns `undefined`; may stop propagation by preventing default on handled keys.【F:src/app.js†L1042-L1094】
+  - Side effects: Toggles debug mode, manages pause state, marks user interaction timestamps, delegates to gameplay handlers, and prevents default behavior for navigation keys when unhandled.【F:src/app.js†L1043-L1094】
+  - Shared state touched and where it’s used: Mutates debug setting, mode, and interaction timestamp; registered with DOM via bootstrap to process all keydown events.【F:src/app.js†L1042-L1094】【F:src/bootstrap.js†L67-L75】
+  - Dependencies: Calls `toggleDebugSetting`, `markInteraction`, `setMode`, `resetGameplayInputs`, `resumeRace`, various mode-specific handlers, and `Gameplay.keydownHandler`.【F:src/app.js†L1043-L1094】
+  - Edge cases handled or missed: Treats `KeyP` specially during gameplay/pause but ignores it elsewhere; prevents arrow/space defaults even when no handler consumed the key.【F:src/app.js†L1043-L1094】
+  - Performance: Constant-time dispatch with minimal branching; executed on every keydown.【F:src/app.js†L1042-L1094】
+  - Units / spaces: Uses milliseconds indirectly via `markInteraction` (updates timestamp) and relies on keyboard `code` strings.【F:src/app.js†L1042-L1094】
+  - Determinism: Deterministic for a given state and key event.【F:src/app.js†L1042-L1095】
+  - Keep / change / delete: Keep; required as the top-level event handler bound by bootstrap.【F:src/app.js†L1042-L1094】【F:src/bootstrap.js†L67-L75】
+  - Confidence / assumptions: High confidence; assumes gameplay exposes compatible `keydownHandler`.【F:src/app.js†L1070-L1094】
+
 - `handleKeyUp`
+  - Purpose: Forwards keyup events to gameplay while suppressing the pause shortcut release.【F:src/app.js†L1097-L1104】
+  - Inputs: `e` — keyboard event; only processed in `'playing'` mode.【F:src/app.js†L1097-L1103】
+  - Outputs: Returns `undefined`.【F:src/app.js†L1097-L1104】
+  - Side effects: Calls into `Gameplay.keyupHandler` for active gameplay keys.【F:src/app.js†L1097-L1103】
+  - Shared state touched and where it’s used: Depends on `state.mode`; registered globally by bootstrap alongside `handleKeyDown`.【F:src/app.js†L1097-L1103】【F:src/bootstrap.js†L70-L75】
+  - Dependencies: Calls `Gameplay.keyupHandler`.【F:src/app.js†L1097-L1103】
+  - Edge cases handled or missed: Ignores `KeyP` release to avoid unpausing; other modes swallow keyup entirely, so menu interactions rely solely on keydown.【F:src/app.js†L1097-L1103】
+  - Performance: Constant-time.【F:src/app.js†L1097-L1103】
+  - Units / spaces: Keyboard codes only.【F:src/app.js†L1097-L1103】
+  - Determinism: Deterministic for the same mode and event.【F:src/app.js†L1097-L1104】
+  - Keep / change / delete: Keep; necessary for gameplay control parity with the bootstrap fallback.【F:src/app.js†L1097-L1103】【F:src/bootstrap.js†L70-L75】
+  - Confidence / assumptions: High confidence; assumes gameplay consumes keyup events appropriately.【F:src/app.js†L1097-L1103】
+
 - `step`
+  - Purpose: Runs the per-frame update loop, delegating to gameplay, race-complete animations, vehicle previews, and idle-attract timeout logic.【F:src/app.js†L1106-L1125】
+  - Inputs: `dt` — frame delta time in seconds (as provided by `Renderer.frame`).【F:src/app.js†L1106-L1119】【F:src/bootstrap.js†L77-L83】
+  - Outputs: Returns `undefined`; orchestrates side effects each frame.【F:src/app.js†L1106-L1125】
+  - Side effects: Calls gameplay stepping, race-complete updater, vehicle preview animation, and transitions to attract mode when idle.【F:src/app.js†L1106-L1122】
+  - Shared state touched and where it’s used: Reads/updates `state.mode`, `state.raceComplete`, and `state.lastInteractionAt`; invoked every frame via bootstrap’s render loop.【F:src/app.js†L1106-L1122】【F:src/bootstrap.js†L77-L83】
+  - Dependencies: Calls `Gameplay.step`, `updateRaceComplete`, `updateVehiclePreviewAnimation`, `now`, and `goToAttract`.【F:src/app.js†L1106-L1122】
+  - Edge cases handled or missed: Suppresses idle timeout while the player is actively finalizing race results; does not clamp `dt` spikes.【F:src/app.js†L1110-L1122】
+  - Performance: Linear in work delegated to gameplay and animation helpers; executed once per frame.【F:src/app.js†L1106-L1122】
+  - Units / spaces: Uses seconds for `dt` and milliseconds for idle timeout comparisons via `now()`.【F:src/app.js†L1106-L1121】
+  - Determinism: Deterministic given the same state, elapsed time, and helper determinism (except any randomness inside delegates).【F:src/app.js†L1106-L1122】
+  - Keep / change / delete: Keep; it is the application’s frame driver registered with the renderer.【F:src/app.js†L1106-L1122】【F:src/bootstrap.js†L77-L83】
+  - Confidence / assumptions: High confidence; assumes helpers handle their own timing nuances (e.g., `updateRaceComplete`).【F:src/app.js†L1106-L1122】
+
 - `init`
+  - Purpose: Performs one-time application bootstrap: wiring DOM references, resetting state, applying selections, and loading the leaderboard.【F:src/app.js†L1127-L1138】
+  - Inputs: None.【F:src/app.js†L1127-L1138】
+  - Outputs: Returns `undefined`; establishes initial app state.【F:src/app.js†L1127-L1138】
+  - Side effects: Ensures DOM nodes exist, resets menu indices and race-complete state, applies saved vehicle/debug settings, sets mode to menu, and triggers leaderboard loading.【F:src/app.js†L1127-L1138】
+  - Shared state touched and where it’s used: Initializes fields read throughout the app; invoked from bootstrap after assets are wired.【F:src/app.js†L1127-L1138】【F:src/bootstrap.js†L57-L63】
+  - Dependencies: Calls `ensureDom`, `resetRaceCompleteState`, `applyVehicleSelection`, `applyDebugModeSetting`, `setMode`, and `requestLeaderboard`.【F:src/app.js†L1127-L1138】
+  - Edge cases handled or missed: Throws if required DOM elements are absent; assumes asset/manifests already loaded before invocation.【F:src/app.js†L237-L249】【F:src/app.js†L1127-L1138】
+  - Performance: One-time setup with constant work aside from leaderboard fetch kicked off afterward.【F:src/app.js†L1127-L1138】
+  - Units / spaces: Initializes timestamps in milliseconds via `now()`; other values are indices and booleans.【F:src/app.js†L1129-L1137】
+  - Determinism: Deterministic given the same persisted state and helper behavior.【F:src/app.js†L1127-L1138】
+  - Keep / change / delete: Keep; canonical entry point for app startup.【F:src/app.js†L1127-L1138】【F:src/bootstrap.js†L57-L63】
+  - Confidence / assumptions: High confidence; assumes helper functions succeed (vehicle selection, debug application).【F:src/app.js†L1127-L1138】
+
 - `isSnowEnabled`
+  - Purpose: Exposes whether snow effects should be active based on app settings.【F:src/app.js†L1140-L1142】
+  - Inputs: None.【F:src/app.js†L1140-L1142】
+  - Outputs: Returns a boolean indicating the snow toggle state.【F:src/app.js†L1140-L1142】
+  - Side effects: None; pure getter.【F:src/app.js†L1140-L1142】
+  - Shared state touched and where it’s used: Reads `state.settings.snowEnabled`; queried by the renderer when deciding whether to spawn snow particles.【F:src/app.js†L1140-L1142】【F:src/render.js†L416-L426】
+  - Dependencies: None beyond accessing `state`.【F:src/app.js†L1140-L1142】
+  - Edge cases handled or missed: Coerces to boolean; no persistence handling here.【F:src/app.js†L1140-L1142】
+  - Performance: Constant-time.【F:src/app.js†L1140-L1142】
+  - Units / spaces: Boolean flag only.【F:src/app.js†L1140-L1142】
+  - Determinism: Deterministic for a given state.【F:src/app.js†L1140-L1142】
+  - Keep / change / delete: Keep; provides stable contract for render systems checking snow feature availability.【F:src/app.js†L1140-L1142】【F:src/render.js†L416-L426】
+  - Confidence / assumptions: High confidence; assumes settings state is kept in sync with UI toggles.【F:src/app.js†L793-L797】【F:src/app.js†L1140-L1142】
+
 - `isDebugEnabled`
+  - Purpose: Reports whether debug overlays should be visible based on settings.【F:src/app.js†L1144-L1146】
+  - Inputs: None.【F:src/app.js†L1144-L1146】
+  - Outputs: Returns a boolean reflecting the debug toggle.【F:src/app.js†L1144-L1146】
+  - Side effects: None; pure getter.【F:src/app.js†L1144-L1146】
+  - Shared state touched and where it’s used: Reads `state.settings.debugEnabled`; renderer queries it to decide whether to show overlays.【F:src/app.js†L1144-L1146】【F:src/render.js†L554-L577】
+  - Dependencies: None beyond state access.【F:src/app.js†L1144-L1146】
+  - Edge cases handled or missed: Coerces to boolean; assumes state exists.【F:src/app.js†L1144-L1146】
+  - Performance: Constant-time.【F:src/app.js†L1144-L1146】
+  - Units / spaces: Boolean flag only.【F:src/app.js†L1144-L1146】
+  - Determinism: Deterministic for a given state.【F:src/app.js†L1144-L1146】
+  - Keep / change / delete: Keep; necessary for render overlay toggling without exposing entire state object.【F:src/app.js†L1144-L1146】【F:src/render.js†L554-L577】
+  - Confidence / assumptions: High confidence; assumes debug setting is maintained by menu/debug shortcut flows.【F:src/app.js†L699-L709】【F:src/app.js†L1043-L1057】【F:src/app.js†L1144-L1146】
 
 ### 3.2 UI Screen Templates (`src/ui/screens.js`)
 - `ensureEscapeHtml`
+  - Purpose: Supplies a safe HTML-escaping helper, defaulting to a simple string conversion when none is provided.【F:src/ui/screens.js†L4-L6】
+  - Inputs: `helpers` — optional object that may contain an `escapeHtml` function; any other shape falls back to a default converter.【F:src/ui/screens.js†L4-L6】
+  - Outputs: Returns an escape function used by screen templates to sanitize text.【F:src/ui/screens.js†L4-L6】
+  - Side effects: None; pure helper.【F:src/ui/screens.js†L4-L6】
+  - Shared state touched and where it’s used: Independent function leveraged by every screen factory when preparing strings.【F:src/ui/screens.js†L8-L296】
+  - Dependencies: None beyond optional helper injection.【F:src/ui/screens.js†L4-L6】
+  - Edge cases handled or missed: Falls back gracefully when helpers are null/undefined; does not escape HTML beyond simple string coercion if no helper provided.【F:src/ui/screens.js†L4-L6】
+  - Performance: Constant-time; returned function performance depends on provided helper.【F:src/ui/screens.js†L4-L6】
+  - Units / spaces: Works with text strings only.【F:src/ui/screens.js†L4-L6】
+  - Determinism: Deterministic for a given helper input.【F:src/ui/screens.js†L4-L6】
+  - Keep / change / delete: Keep; centralizes escape helper fallback for all templates.【F:src/ui/screens.js†L4-L6】【F:src/ui/screens.js†L8-L296】
+  - Confidence / assumptions: High confidence; assumes callers provide well-behaved escape functions when needed.【F:src/ui/screens.js†L4-L6】
+
 - `mainMenuScreen`
+  - Purpose: Renders the main menu HTML structure using provided titles and options, highlighting the selected entry.【F:src/ui/screens.js†L8-L37】
+  - Inputs: `ctx` (`title`, `subtitle`, `options`, `selectedIndex`) and optional `helpers` (escape function).【F:src/ui/screens.js†L8-L26】
+  - Outputs: Returns an HTML string for the main menu, including list items and hints.【F:src/ui/screens.js†L16-L36】
+  - Side effects: None; pure template generator.【F:src/ui/screens.js†L8-L36】
+  - Shared state touched and where it’s used: Consumed by `renderMainMenu()` to populate the menu layer in menu mode.【F:src/ui/screens.js†L8-L36】【F:src/app.js†L251-L260】【F:src/app.js†L391-L405】
+  - Dependencies: Uses `ensureEscapeHtml` for sanitization.【F:src/ui/screens.js†L10-L24】
+  - Edge cases handled or missed: Defaults missing strings to empty values and tolerates absent options, resulting in an empty list; does not localize hints.【F:src/ui/screens.js†L16-L35】
+  - Performance: Iterates once over options to build list items.【F:src/ui/screens.js†L16-L27】
+  - Units / spaces: Pure HTML markup; uses `is-selected` CSS class to denote selection.【F:src/ui/screens.js†L20-L25】
+  - Determinism: Deterministic for the same context data.【F:src/ui/screens.js†L8-L36】
+  - Keep / change / delete: Keep; core template used whenever the main menu is shown.【F:src/ui/screens.js†L8-L36】【F:src/app.js†L251-L260】
+  - Confidence / assumptions: High confidence; assumes options array items contain `key`/`label` strings.【F:src/ui/screens.js†L16-L25】
+
 - `pauseMenuScreen`
+  - Purpose: Generates HTML for the pause menu, displaying available pause actions and the current selection.【F:src/ui/screens.js†L39-L63】
+  - Inputs: `ctx` (`options`, `selectedIndex`) plus optional `helpers` with escape function.【F:src/ui/screens.js†L39-L53】
+  - Outputs: Returns an HTML string with a title, option list, and control hint.【F:src/ui/screens.js†L43-L61】
+  - Side effects: None; pure template.【F:src/ui/screens.js†L39-L61】
+  - Shared state touched and where it’s used: Rendered by `renderPauseMenu()` when the app enters pause mode.【F:src/ui/screens.js†L39-L61】【F:src/app.js†L314-L322】【F:src/app.js†L391-L409】
+  - Dependencies: Uses `ensureEscapeHtml`.【F:src/ui/screens.js†L41-L52】
+  - Edge cases handled or missed: Gracefully handles empty options list (renders nothing inside `<ul>`); hint text is hard-coded.【F:src/ui/screens.js†L43-L61】
+  - Performance: Linear over provided options.【F:src/ui/screens.js†L43-L54】
+  - Units / spaces: HTML markup only with `is-selected` class toggles.【F:src/ui/screens.js†L47-L52】
+  - Determinism: Deterministic for identical inputs.【F:src/ui/screens.js†L39-L63】
+  - Keep / change / delete: Keep; required to render the pause overlay.【F:src/ui/screens.js†L39-L61】【F:src/app.js†L314-L322】
+  - Confidence / assumptions: High confidence; assumes options include `key` and `label` values.【F:src/ui/screens.js†L43-L52】
+
 - `vehicleSelectScreen`
+  - Purpose: Builds the vehicle selection UI markup, including preview metadata for animations and contextual labels.【F:src/ui/screens.js†L65-L175】
+  - Inputs: `ctx` fields (`title`, `vehicleLabel`, `vehicleDescription`, `optionIndex`, `optionCount`, `previewSrc`, `previewAtlas`) and optional `helpers` (`escapeHtml`, `resolveAssetUrl`).【F:src/ui/screens.js†L65-L112】
+  - Outputs: Returns an HTML string with vehicle details, preview container, navigation hints, and counter text.【F:src/ui/screens.js†L99-L175】
+  - Side effects: None; pure templating.【F:src/ui/screens.js†L65-L175】
+  - Shared state touched and where it’s used: Consumed by `renderVehicleSelect()` to display selection UI when picking a car.【F:src/ui/screens.js†L65-L175】【F:src/app.js†L325-L342】【F:src/app.js†L391-L411】
+  - Dependencies: Relies on `ensureEscapeHtml` and optional asset resolver helper for preview URLs.【F:src/ui/screens.js†L75-L118】
+  - Edge cases handled or missed: Safely handles missing preview data, clamps option index/count, and only marks previews as animated when atlas metadata is complete; does not validate atlas integrity beyond numeric checks.【F:src/ui/screens.js†L80-L175】
+  - Performance: Constant-time string assembly with a few arithmetic operations; no loops beyond small attribute list.【F:src/ui/screens.js†L98-L165】
+  - Units / spaces: Uses counts for option indices, frame duration in seconds, and CSS custom properties for columns/rows; coordinates remain in CSS space.【F:src/ui/screens.js†L90-L160】
+  - Determinism: Deterministic for the same context data.【F:src/ui/screens.js†L65-L175】
+  - Keep / change / delete: Keep; encapsulates complex preview markup separate from logic.【F:src/ui/screens.js†L65-L175】【F:src/app.js†L325-L342】
+  - Confidence / assumptions: High confidence; assumes atlas metadata follows expected structure when provided.【F:src/ui/screens.js†L81-L110】
 - `settingsMenuScreen`
 - `leaderboardScreen`
 - `attractScreen`
