@@ -213,6 +213,19 @@
   - Keep / change / delete: Keep; lightweight helper that could be folded into leaderboard lookup code if refactored.
   - Confidence / assumptions: High confidence, assuming entries retain their id values.
 - `addLeaderboardEntry`
+- setMode
+  - Purpose: Switches the app between race, menu, attract, and other screens so the right panel is shown and menu focus resets.
+  - Inputs: nextMode text label for the target screen; expects known modes such as menu, playing, paused, leaderboard, settings, vehicleSelect, raceComplete, attract; empty or same-as-current values are ignored.
+  - Outputs: None returned; function ends after updating shared state and refreshing the menu panel.
+  - Side effects: Updates state.mode, zeroes menu indexes when starting play, records the latest interaction time for non-play screens, clears race-complete data when leaving that view, and triggers a fresh menu render.
+  - Shared state touched and where it’s used: state.mode plus menu index fields, state.lastInteractionAt (via markInteraction), state.raceComplete (via reset) and menu DOM references; callers at src/app.js:589, 683, 725, 746, 750, 755, 759, 763, 796, 900, 936, 960, 1037, 1054, 1136.
+  - Dependencies: markInteraction to refresh the idle timer, resetRaceCompleteState for cleanup, updateMenuLayer to rebuild the visible menu.
+  - Edge cases: Ignores falsy mode requests and duplicate mode switches; does not validate unknown mode strings or guard against raceComplete being null.
+  - Performance: Constant-time state tweaks plus one menu redraw; only runs when some other action changes screens, not every frame.
+  - Units/spaces: Idle timer uses milliseconds when markInteraction runs; all other updates are unitless toggles or zeroed counters.
+  - Determinism: Given the same starting state and nextMode, the resulting state changes are predictable; repeated calls with the current mode exit immediately.
+  - Keep / change / delete: Keep; central gateway for screen changes, simplest alternative would be splitting into separate per-mode helpers and duplicating logic.
+  - Confidence / assumptions: High confidence; assumes updateMenuLayer keeps menus in sync and that callers pass the supported mode names.
   - **Purpose**: Records a just-finished run on the high-score board by packaging the player initials, time, and today’s date, then reorders the list so the new result appears in place immediately.
   - **Inputs**: `name` (player-entered initials; trimmed, uppercased, limited to three characters, defaults to `---`); `scoreMs` (finish time in milliseconds; non-finite values fall back to 0).
   - **Outputs**: Returns the newly minted entry object containing a unique `id` symbol, normalized `name`, numeric `score`, formatted `displayValue`, ISO date stamp, and updated `rank` once sorted.
