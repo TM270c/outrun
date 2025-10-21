@@ -74,10 +74,75 @@
   - **Confidence / assumptions**: High confidence; assumes no other module mutates `state.raceComplete` directly.
   - **Notes**: Reviewer noted there were "no notes" and the helper already looks adequate; I concur and suggest only revisiting if future menu reset work reveals redundant copies or missed shared behavior.
 - `now`
+  - **Purpose**: Helper that grabs the current timestamp so menu flow can compare idle time without repeating the built-in Date.now call.
+  - **Inputs**: None.
+  - **Outputs**: Number of milliseconds since January 1, 1970 returned from Date.now.
+  - **Side effects**: None; it only reads the system clock.
+  - **Shared state & call sites**: Updates and reads state.lastInteractionAt in src/app.js:93, 1119, 1132 when tracking menu idleness.
+  - **Dependencies**: JavaScript built-in Date.now.
+  - **Edge cases**: Does not guard against someone changing the computer clock or supplying mock timers.
+  - **Performance**: Single native call; negligible cost even when polled for idle checks.
+  - **Units / spaces**: Milliseconds of real-world time.
+  - **Determinism**: Returns whatever the system clock reports, so calls made moments apart differ.
+  - **Keep / change / delete**: Change—either inline Date.now, or keep the helper but rename it getTimeNow and allow injecting a test clock to cut indirection.
+  - **Confidence / assumptions**: High confidence; assumes there are no hidden callers outside this file.
+  - **Notes**: You felt the helper was fine and suggested renaming it to getTimeNow; I still recommend inlining Date.now or accepting an injected clock so tests stay predictable.
 - `markInteraction`
+  - Purpose: Refreshes the menu idle timer whenever menus or settings detect user activity so attract mode does not trigger unexpectedly.
+  - Inputs: None.
+  - Outputs: None; the helper only updates the saved timestamp.
+  - Side effects: Sets state.lastInteractionAt to the current clock reading.
+  - Shared state & call sites: Touches state.lastInteractionAt; invoked in src/app.js:229, 648, 1046, 1067 before mode swaps, race-complete phase changes, and non-race key handling.
+  - Dependencies: Calls now(), which wraps the browser clock.
+  - Edge cases: No extra handling; assumes the shared state exists and does not guard against clock drift.
+  - Performance: Constant-time assignment; runs whenever menu interactions happen.
+  - Units / spaces: Timestamp stored in milliseconds since epoch.
+  - Determinism: No; each call captures the live clock so repeated calls differ.
+  - Keep / change / delete: Keep; central helper prevents repeating the timestamp write.
+  - Confidence / assumptions: High confidence; assumes Date.now is available and state was initialized.
+  - **Notes**: Previous helpers here all shape the attract-mode idle timer; reviewer noted we could inline to `Date.now()` or rename `now()` to `getTimeNow`, yet centralizing this clock write still makes the idle-timer maintenance easy if we tweak the attract flow.
 - `escapeHtml`
+  - Purpose: Converts any incoming menu label or score text into safe HTML so UI templates cannot inject tags or break layout.
+  - Inputs: `text` (any value; coerced to string; no length guard but intended for short UI snippets).
+  - Outputs: Escaped string with `&`, `<`, `>`, `"`, `'` replaced by HTML entities.
+  - Side effects: None; leaves globals, files, and timers untouched.
+  - Shared state & use: None touched; passed to screen renderers at `src/app.js:260,287,310,321,341,365`, consumed throughout `src/ui/screens.js:5-193`.
+  - Dependencies: Built-in `String` conversion plus chained `replace` calls.
+  - Edge cases: Handles `null`/`undefined` by returning `'null'`/`'undefined'`; does not trim, truncate, or detect already-escaped text.
+  - Performance: Linear per character; only runs when menus build HTML so cost is minimal.
+  - Units / spaces: Plain text; no time or coordinate units involved.
+  - Determinism: Same input yields same escaped output; running it twice without changes gives the same string.
+  - Keep / change / delete: Keep; simplest alternative is to rely on DOM text nodes via `textContent` instead of manual escaping.
+  - Confidence / assumptions: High confidence; assumes menu strings stay reasonably short and mostly plain-language characters.
+  - Notes: Reviewer confirmed this helper simply keeps player score initials constrained to safe characters like "ABC" so the menu never sees risky markup, and I agree the current implementation is sound while noting we could later simplify by routing menu strings through shared DOM text-node helpers if we consolidate UI rendering.
 - `resolveAssetUrlSafe`
+  - **Purpose**: Wraps the world's asset resolver so menu templates can turn relative preview filenames into usable URLs without crashing if the resolver is missing.
+  - **Inputs**: `path` string; accepts falsy (`''`, `null`, `undefined`) and any other value, though only non-empty strings resolve meaningfully.
+  - **Outputs**: Returns the resolved string from `World.resolveAssetUrl(path)` or the original `path`; falls back to `''` when the input is falsy.
+  - **Side effects**: None—no writes to state, storage, or logs; only calls the global resolver when available.
+  - **Shared state & call sites**: Reads global `World` (`src/app.js:105-114`); passed to `AppScreens.vehicleSelect` as `resolveAssetUrl` helper (`src/app.js:331-341`).
+  - **Dependencies**: `World.resolveAssetUrl` when defined; otherwise none.
+  - **Edge cases**: Handles missing/falsey paths, missing resolver, and exceptions thrown by the resolver; does not validate URL format or strip whitespace.
+  - **Performance**: Constant time; called when building vehicle select screen renders.
+  - **Units / spaces**: Operates on raw URL/path strings; no coordinate spaces.
+  - **Determinism**: Deterministic for the same `World.resolveAssetUrl` implementation and input; returning input unchanged if resolver state changes between calls.
+  - **Keep / change / delete**: Keep; simplest tweak would be to inline a null-safe resolver but helper keeps template call clean.
+  - **Confidence / assumptions**: High confidence; assumes `World` global remains stable and resolver returns a string.
+  - **Notes**: Possible reductions include inlining the null-check if we ever centralize asset helpers or renaming to `safeResolveAssetUrl` so its guard role is clearer. Reviewer summary: “Uses `escapeHtml` so filenames render despite odd characters?” Clarification: this helper never touches HTML escaping and instead just delegates to `World.resolveAssetUrl`, so unusual characters flow through unchanged unless the resolver rewrites them. Future update could link it with a path sanitizer if we discover malformed inputs.
 - `normalizePreviewAtlas`
+  - Purpose: Convert optional preview sprite sheet settings into a safe atlas description for the vehicle preview.
+  - Inputs: `raw` object with `columns`, `rows`, `frameCount`, `frameRate`, `frameDuration`; expects positive numbers or empty.
+  - Outputs: Object with positive `columns`, `rows`, `frameCount`, `frameDuration` seconds, or `null` when data is unusable.
+  - Side effects: None; only reads the default frame duration constant.
+  - Shared state & call sites: Used by `renderVehicleSelect` in `src/app.js:339`; does not mutate shared state.
+  - Dependencies: Basic math helpers (`Number`, `Math`) and `DEFAULT_VEHICLE_PREVIEW_FRAME_DURATION`.
+  - Edge cases: Fills missing counts from other fields, derives duration from frame rate, returns `null` on non-positive or absent data.
+  - Performance: Constant-time arithmetic when building the menu model; no loops beyond a handful of checks.
+  - Units / spaces: Frame duration measured in seconds; counts represent frame totals; independent of render frame rate.
+  - Determinism: Yes; same input produces the same atlas and no persistent changes.
+  - Keep / change / delete: Keep; consolidates validation that would otherwise live inside `renderVehicleSelect`.
+  - Confidence / assumptions: High confidence; assumes preview atlas configs stay small and numeric.
+  - Notes: Reviewer summarized this as the helper that lets `renderVehicleSelect` slice the preview atlas, then asked whether it should merge with the atlas animation handler used by player vehicles and animated billboards; keep it separate for now because the preview path needs unique defaults, null returns, and timing fallbacks, but queue a follow-up to lift the shared frame math if those pipelines ever align.
 - `formatTimeMs`
 - `createLeaderboardEntry`
   - Purpose: Builds a leaderboard row with cleaned initials, numeric time, formatted label, saved date, and empty rank.
@@ -94,6 +159,19 @@
   - Confidence / assumptions: High confidence; assumes the board expects three-letter uppercase initials and millisecond scores.
   - Notes: Reviewer asked, “What actually updates the entry in the .csv file?”—right now nothing writes back, because entries only live in memory while `fetch('data/leaderboard.csv')` seeds the list; if persistence ever arrives we could fold this helper into a loader/saver module or attach a dedicated save routine, but until then the clearest update is to document that gap.
 - `recomputeLeaderboardRanks`
+  - **Purpose**: Walks the current leaderboard list and stamps each non-empty entry with its 1-based place so the menu can show accurate ranks after sorting or CSV import.
+  - **Inputs**: `entries` array (defaults to `state.leaderboard.entries`); expects objects shaped like `createLeaderboardEntry`; ignores falsy slots.
+  - **Outputs**: None returned; updates each entry's `rank` property in place.
+  - **Side effects**: Mutates the provided entries; when called with the default, writes directly into shared leaderboard state.
+  - **Shared state & call sites**: Touches `state.leaderboard.entries`; invoked after sorting in `src/app.js:203` and after CSV parsing in `src/app.js:863`.
+  - **Dependencies**: No subordinate calls.
+  - **Edge cases**: Skips holes/nulls but still leaves prior rank on those slots; does not adjust for tied scores beyond list order.
+  - **Performance**: Linear pass over the array whenever leaderboard data changes; trivial cost compared with sorting/loading frequency.
+  - **Units / spaces**: Ranks are simple 1-based integers.
+  - **Determinism**: Deterministic for a fixed input order; repeating without changes is idempotent.
+  - **Keep / change / delete**: Keep; could fold into `sortLeaderboardEntries` but shared reuse by CSV import makes the helper worthwhile.
+  - **Confidence / assumptions**: High confidence; assumes callers already sorted entries and that sparse arrays are rare.
+  - **Notes**: Reviewer summary: "looks good, no notes, likely no need to fold"; I concur and would only revisit consolidation if future refactors merge leaderboard sorting and ranking into a single pass, so keep monitoring but no action required now.
 - `sortLeaderboardEntries`
 - `findLeaderboardEntryIndexById`
 - `addLeaderboardEntry`
