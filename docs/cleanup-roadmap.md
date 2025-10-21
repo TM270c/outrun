@@ -89,6 +89,19 @@
   - **Notes**: You felt the helper was fine and suggested renaming it to getTimeNow; I still recommend inlining Date.now or accepting an injected clock so tests stay predictable.
 - `markInteraction`
 - `escapeHtml`
+  - Purpose: Converts any incoming menu label or score text into safe HTML so UI templates cannot inject tags or break layout.
+  - Inputs: `text` (any value; coerced to string; no length guard but intended for short UI snippets).
+  - Outputs: Escaped string with `&`, `<`, `>`, `"`, `'` replaced by HTML entities.
+  - Side effects: None; leaves globals, files, and timers untouched.
+  - Shared state & use: None touched; passed to screen renderers at `src/app.js:260,287,310,321,341,365`, consumed throughout `src/ui/screens.js:5-193`.
+  - Dependencies: Built-in `String` conversion plus chained `replace` calls.
+  - Edge cases: Handles `null`/`undefined` by returning `'null'`/`'undefined'`; does not trim, truncate, or detect already-escaped text.
+  - Performance: Linear per character; only runs when menus build HTML so cost is minimal.
+  - Units / spaces: Plain text; no time or coordinate units involved.
+  - Determinism: Same input yields same escaped output; running it twice without changes gives the same string.
+  - Keep / change / delete: Keep; simplest alternative is to rely on DOM text nodes via `textContent` instead of manual escaping.
+  - Confidence / assumptions: High confidence; assumes menu strings stay reasonably short and mostly plain-language characters.
+  - Notes: Reviewer confirmed this helper simply keeps player score initials constrained to safe characters like "ABC" so the menu never sees risky markup, and I agree the current implementation is sound while noting we could later simplify by routing menu strings through shared DOM text-node helpers if we consolidate UI rendering.
 - `resolveAssetUrlSafe`
 - `normalizePreviewAtlas`
 - `formatTimeMs`
