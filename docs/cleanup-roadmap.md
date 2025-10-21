@@ -88,6 +88,19 @@
   - **Confidence / assumptions**: High confidence; assumes there are no hidden callers outside this file.
   - **Notes**: You felt the helper was fine and suggested renaming it to getTimeNow; I still recommend inlining Date.now or accepting an injected clock so tests stay predictable.
 - `markInteraction`
+  - Purpose: Refreshes the menu idle timer whenever menus or settings detect user activity so attract mode does not trigger unexpectedly.
+  - Inputs: None.
+  - Outputs: None; the helper only updates the saved timestamp.
+  - Side effects: Sets state.lastInteractionAt to the current clock reading.
+  - Shared state & call sites: Touches state.lastInteractionAt; invoked in src/app.js:229, 648, 1046, 1067 before mode swaps, race-complete phase changes, and non-race key handling.
+  - Dependencies: Calls now(), which wraps the browser clock.
+  - Edge cases: No extra handling; assumes the shared state exists and does not guard against clock drift.
+  - Performance: Constant-time assignment; runs whenever menu interactions happen.
+  - Units / spaces: Timestamp stored in milliseconds since epoch.
+  - Determinism: No; each call captures the live clock so repeated calls differ.
+  - Keep / change / delete: Keep; central helper prevents repeating the timestamp write.
+  - Confidence / assumptions: High confidence; assumes Date.now is available and state was initialized.
+  - **Notes**: Previous helpers here all shape the attract-mode idle timer; reviewer noted we could inline to `Date.now()` or rename `now()` to `getTimeNow`, yet centralizing this clock write still makes the idle-timer maintenance easy if we tweak the attract flow.
 - `escapeHtml`
   - Purpose: Converts any incoming menu label or score text into safe HTML so UI templates cannot inject tags or break layout.
   - Inputs: `text` (any value; coerced to string; no length guard but intended for short UI snippets).
