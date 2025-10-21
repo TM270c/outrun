@@ -213,11 +213,84 @@
   - Keep / change / delete: Keep; lightweight helper that could be folded into leaderboard lookup code if refactored.
   - Confidence / assumptions: High confidence, assuming entries retain their id values.
 - `addLeaderboardEntry`
+- setMode
+  - Purpose: Switches the app between race, menu, attract, and other screens so the right panel is shown and menu focus resets.
+  - Inputs: nextMode text label for the target screen; expects known modes such as menu, playing, paused, leaderboard, settings, vehicleSelect, raceComplete, attract; empty or same-as-current values are ignored.
+  - Outputs: None returned; function ends after updating shared state and refreshing the menu panel.
+  - Side effects: Updates state.mode, zeroes menu indexes when starting play, records the latest interaction time for non-play screens, clears race-complete data when leaving that view, and triggers a fresh menu render.
+  - Shared state touched and where it’s used: state.mode plus menu index fields, state.lastInteractionAt (via markInteraction), state.raceComplete (via reset) and menu DOM references; callers at src/app.js:589, 683, 725, 746, 750, 755, 759, 763, 796, 900, 936, 960, 1037, 1054, 1136.
+  - Dependencies: markInteraction to refresh the idle timer, resetRaceCompleteState for cleanup, updateMenuLayer to rebuild the visible menu.
+  - Edge cases: Ignores falsy mode requests and duplicate mode switches; does not validate unknown mode strings or guard against raceComplete being null.
+  - Performance: Constant-time state tweaks plus one menu redraw; only runs when some other action changes screens, not every frame.
+  - Units/spaces: Idle timer uses milliseconds when markInteraction runs; all other updates are unitless toggles or zeroed counters.
+  - Determinism: Given the same starting state and nextMode, the resulting state changes are predictable; repeated calls with the current mode exit immediately.
+  - Keep / change / delete: Keep; central gateway for screen changes, simplest alternative would be splitting into separate per-mode helpers and duplicating logic.
+  - Confidence / assumptions: High confidence; assumes updateMenuLayer keeps menus in sync and that callers pass the supported mode names.
+  - **Purpose**: Records a just-finished run on the high-score board by packaging the player initials, time, and today’s date, then reorders the list so the new result appears in place immediately.
+  - **Inputs**: `name` (player-entered initials; trimmed, uppercased, limited to three characters, defaults to `---`); `scoreMs` (finish time in milliseconds; non-finite values fall back to 0).
+  - **Outputs**: Returns the newly minted entry object containing a unique `id` symbol, normalized `name`, numeric `score`, formatted `displayValue`, ISO date stamp, and updated `rank` once sorted.
+  - **Side effects**: Appends to `state.leaderboard.entries` and `.localEntries`, re-sorts the leaderboard (which mutates ranks), stamps the current date, and points `state.leaderboard.highlightId` at the new entry for UI emphasis.
+  - **Shared state & call sites**: Touches `state.leaderboard.entries`, `.localEntries`, and `.highlightId` defined in `src/app.js:55-57`; invoked from `src/app.js:638` when a race completion is finalized.
+  - **Dependencies**: Calls `createLeaderboardEntry` for normalization/formatting, `sortLeaderboardEntries` to reorder ranks, and uses `new Date().toISOString()` for the daily stamp.
+  - **Edge cases**: Handles blank names and invalid times via defaults; does not prevent duplicate submissions, oversized leaderboards, or special cases like DNFs/ties beyond alphabetical ordering.
+  - **Performance**: Triggers an array push plus an `Array.sort` (O(n log n)); runs only upon recording a new local result, not every frame.
+  - **Units / spaces**: Works with times measured in milliseconds and stores dates as `YYYY-MM-DD` strings; positions correspond to leaderboard rank order.
+  - **Determinism**: Non-deterministic because it stamps the current date and creates a fresh `Symbol` id; calling twice with the same input produces distinct entries.
+  - **Keep / change / delete**: Keep; consider renaming to `recordLocalLeaderboardEntry` to clarify that it mutates local state.
+  - **Confidence / assumptions**: High confidence; assumes `state.leaderboard` exists with initialized `entries` and `localEntries` arrays and that sorting stays consistent.
 - `setMode`
 - `ensureDom`
+  - Purpose: Verifies the menu layer elements exist on the page and saves quick references so later menu updates do not crash.
+  - Inputs: Document (current web page; must contain an element with id appMenuLayer); state.dom.menuLayer and state.dom.menuPanel (may be empty on first run).
+  - Outputs: Returns nothing; fills state.dom.menuLayer and state.dom.menuPanel with the found elements.
+  - Side effects: Throws errors if elements are missing; writes the cached elements into shared state.
+  - Shared state touched and where it’s used: Updates state.dom.menuLayer/menuPanel defined at src/app.js:237-248; invoked at src/app.js:392 and src/app.js:1128 before menu rendering and app init.
+  - Dependencies: Uses the browser’s built-in element lookup helpers.
+  - Edge cases handled or missed: Stops early when elements already saved; throws if elements are absent; does not handle the elements being replaced later.
+  - Performance: Two element searches the first time it runs; afterwards the early return avoids extra work.
+  - Units / spaces: Works with web page elements only; no numeric units involved.
+  - Determinism: Given the same page structure it will always cache the same nodes; reruns do not change anything once stored.
+  - Keep / change / delete: Keep; simple guard that could be merged into menu setup if caching is refactored.
+  - Confidence / assumptions: High confidence; assumes the menu markup is present before init runs.
 - `renderMainMenu`
+  - Purpose: Builds the main menu markup by delegating to the shared AppScreens template with the game title, tagline, and current option highlight so the menu panel can be redrawn in one call.【F:src/app.js†L251-L261】
+  - Inputs: Reads AppScreens.mainMenu (UI renderer; must be truthy), mainMenuOptions (static list of "Start Race", "Leaderboard", "Settings" entries), and state.mainMenuIndex (current highlight; expected 0–options.length-1).【F:src/app.js†L8-L12】【F:src/app.js†L251-L259】
+  - Outputs: Returns the HTML/string produced by AppScreens.mainMenu, which receives title, subtitle, options, and selectedIndex fields.【F:src/app.js†L251-L261】
+  - Side effects: None; pure read of state and globals, no DOM writes or state mutation.【F:src/app.js†L251-L261】
+  - Shared state & call sites: Reads state.mainMenuIndex initialized in state object and is invoked from updateMenuLayer when state.mode === 'menu'.【F:src/app.js†L42-L65】【F:src/app.js†L401-L404】
+  - Dependencies: Calls AppScreens.mainMenu and reuses escapeHtml helper passed as renderer utilities.【F:src/app.js†L251-L261】
+  - Edge cases: Returns an empty string when AppScreens.mainMenu is absent, but does not clamp out-of-range selectedIndex or null options.【F:src/app.js†L251-L259】
+  - Performance: Constant-time work allocating one object; only runs when updateMenuLayer refreshes the menu (mode changes or interactions).【F:src/app.js†L251-L261】【F:src/app.js†L391-L418】
+  - Units / spaces: Works with array indices for menu options; no timing or spatial units involved.【F:src/app.js†L251-L259】
+  - Determinism: Given the same state and AppScreens.mainMenu implementation it returns the same markup; no randomness or timers.【F:src/app.js†L251-L261】
+  - Keep / change / delete: Keep; thin wrapper keeps updateMenuLayer tidy and could be merged there only if menus are restructured.【F:src/app.js†L251-L261】【F:src/app.js†L401-L404】
+  - Confidence / assumptions: High confidence; assumes AppScreens.mainMenu synchronously returns a renderable string.【F:src/app.js†L251-L261】
 - `renderLeaderboard`
+  - **Purpose**: Builds the leaderboard screen markup so players can see the top race times and any highlighted recent run.
+  - **Inputs**: No arguments; reads `state.leaderboard.loading`, `error`, `entries`, and `highlightId` (highlight id may be null).
+  - **Outputs**: Returns an HTML string via `AppScreens.leaderboard`, feeding it an array of up to ten `{ rank, name, score, isHighlight }` rows.
+  - **Side effects**: None; it only derives data for rendering.
+  - **Shared state & call sites**: Reads the leaderboard slice of `state`; called by `updateMenuLayer` when `state.mode === 'leaderboard'` (`src/app.js:404`).
+  - **Dependencies**: Delegates to `AppScreens.leaderboard` and passes the local `escapeHtml` helper for safe text output.
+  - **Edge cases**: Falls back to an empty string if the template is missing, keeps blank placeholder rows for null entries, but still ignores DNFs, ties beyond ordering, or runs past the top ten.
+  - **Performance**: Copies and maps at most ten entries per render; only invoked when the menu swaps into leaderboard mode.
+  - **Units / spaces**: Displays `entry.displayValue` strings already formatted in milliseconds and flags highlights with booleans.
+  - **Determinism**: Yes—given the same leaderboard state it produces the same HTML.
+  - **Keep / change / delete**: Keep; simplest tweak would be to share the top-ten limit as a named constant if reuse expands.
+  - **Confidence / assumptions**: High confidence; assumes upstream code keeps `displayValue` current and entries sorted.
 - `renderSettings`
+  - Purpose: Builds the settings menu text so players see the snow toggle and the back option.
+  - Inputs: None directly; reads snowEnabled (expected boolean) and settingsMenuIndex (expected 0–1) from shared state when called.
+  - Outputs: Menu text returned by AppScreens.settingsMenu, or an empty string if that screen builder is missing.
+  - Side effects: None; it only reads shared values.
+  - Shared state touched and where it’s used: Reads state.settings.snowEnabled and state.settingsMenuIndex; invoked by updateMenuLayer at src/app.js:406.
+  - Dependencies: Uses AppScreens.settingsMenu and the local escapeHtml function to format labels.
+  - Edge cases handled or missed: Skips safely when AppScreens.settingsMenu is absent; does not guard against the settings object being missing or new menu options being added elsewhere.
+  - Performance: Constant-time creation of two menu entries; runs only when the menu layer refreshes.
+  - Units / spaces: No numeric units; all values are plain menu labels.
+  - Determinism: Same state values return the same markup; repeated calls do not change any data.
+  - Keep / change / delete: Keep; separation keeps each menu renderer focused, simplest alternative would be merging into a generic renderMenu function.
+  - Confidence / assumptions: High confidence; assumes the state always includes the snow flag and menu index.
 - `renderPauseMenu`
   - Purpose: Builds the pause overlay markup so the player sees the resume and quit choices whenever play is halted.
   - Inputs: `AppScreens.pauseMenu` template function must exist; `pauseMenuOptions` list of two menu entries (`resume`, `quit`); `state.pauseMenuIndex` zero-based position expected between 0 and options length minus one.
@@ -232,6 +305,19 @@
   - Keep / change / delete: Keep; already minimal wrapper that could merge into a broader screen renderer during a larger refactor.
   - Confidence / assumptions: High confidence, assuming the global screen renderer keeps returning deterministic markup.
 - `renderVehicleSelect`
+  - `renderVehicleSelect`
+    - Purpose: Builds the vehicle selection screen model so the menu shows the current car choice with its name, description, and preview art.
+    - Inputs: Reads state.vehicleSelectIndex (any integer, wrapped to the option list) and vehicleOptions entries (array that may be empty).
+    - Outputs: HTML string from AppScreens.vehicleSelect with fields title, vehicleLabel, vehicleDescription, optionIndex, optionCount, previewSrc, previewAtlas.
+    - Side effects: None; only reads data and calls the renderer.
+    - Shared state & call sites: Reads state.vehicleSelectIndex; invoked by updateMenuLayer when mode equals "vehicleSelect" at src/app.js:410.
+    - Dependencies: AppScreens.vehicleSelect, clampIndex, normalizePreviewAtlas, resolveAssetUrlSafe, escapeHtml.
+    - Edge cases: Returns an empty string if the template is missing, wraps negative or oversized indexes, falls back to the first option or blanks when the list is empty, but does not handle DNF/DQ flags or malformed preview data beyond nulling it out.
+    - Performance: Constant work per call; runs when the menu layer rerenders after mode or selection changes.
+    - Units / spaces: optionIndex is zero-based, optionCount is the total options, previewAtlas frame duration is measured in seconds for the sprite.
+    - Determinism: Same state and options yield the same HTML and no persistent changes.
+    - Keep / change / delete: Keep; simplest alternative is inlining the AppScreens call inside updateMenuLayer.
+    - Confidence / assumptions: High confidence; assumes AppScreens.vehicleSelect returns a string and the vehicle option list stays small.
 - `renderAttract`
 - `renderRaceComplete`
 - `startAttractPlayback`
