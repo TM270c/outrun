@@ -79,6 +79,19 @@
 - `resolveAssetUrlSafe`
 - `normalizePreviewAtlas`
 - `formatTimeMs`
+  - **Purpose**: Converts a raw millisecond count into a friendly label for menus and scoreboards so players see human-readable times.
+  - **Inputs**: `value` (number in milliseconds; accepts any finite number, clamps negatives to zero, ignores non-finite values).
+  - **Outputs**: String like `'12,345 ms'` or `'--'` when the input is not a usable number.
+  - **Side effects**: None; computes and returns a string without mutating data or logging.
+  - **Shared state & call sites**: Used for leaderboard entries at `src/app.js:182` and race-complete label at `src/app.js:353`.
+  - **Dependencies**: Built-ins `Number.isFinite`, `Math.round`, `Math.max`, `toLocaleString`.
+  - **Edge cases**: Handles non-finite values by returning `'--'` and clamps negatives to zero; does not distinguish DNF/DQ or preserve fractional milliseconds.
+  - **Performance**: Constant-time number formatting when leaderboard rows build or race results render.
+  - **Units / spaces**: Treats input as milliseconds and formats a locale-aware millisecond string.
+  - **Determinism**: Pure for a fixed locale—same input yields the same formatted string; running again has no extra effects.
+  - **Keep / change / delete**: Keep; smallest alternative would be inlining the formatting string where used.
+  - **Confidence / assumptions**: High confidence; assumes default locale formatting is acceptable for all displays.
+  - **Notes**: Reviewer praised the explanation and restated that the helper simply turns raw milliseconds into something readable while asking if we duplicate this logic elsewhere, and my follow-up confirmed the formatter appears only in `src/app.js` today. Should another menu or HUD pathway need the same presentation, we can lift this helper into a shared time-formatting module so we do not drift on style.
 - `createLeaderboardEntry`
 - `recomputeLeaderboardRanks`
 - `sortLeaderboardEntries`
@@ -487,3 +500,4 @@
 - Cache expensive calculations (segment projections, easing curves, texture lookups) so we do them once per update.
 - Limit DOM work by batching menu updates and making sure network requests (like leaderboards) run asynchronously.
 - Watch for code that creates lots of short-lived objects and switch to in-place updates where possible.
+
