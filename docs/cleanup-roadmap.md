@@ -144,6 +144,19 @@
   - Confidence / assumptions: High confidence; assumes preview atlas configs stay small and numeric.
   - Notes: Reviewer summarized this as the helper that lets `renderVehicleSelect` slice the preview atlas, then asked whether it should merge with the atlas animation handler used by player vehicles and animated billboards; keep it separate for now because the preview path needs unique defaults, null returns, and timing fallbacks, but queue a follow-up to lift the shared frame math if those pipelines ever align.
 - `formatTimeMs`
+  - **Purpose**: Converts a raw millisecond count into a friendly label for menus and scoreboards so players see human-readable times.
+  - **Inputs**: `value` (number in milliseconds; accepts any finite number, clamps negatives to zero, ignores non-finite values).
+  - **Outputs**: String like `'12,345 ms'` or `'--'` when the input is not a usable number.
+  - **Side effects**: None; computes and returns a string without mutating data or logging.
+  - **Shared state & call sites**: Used for leaderboard entries at `src/app.js:182` and race-complete label at `src/app.js:353`.
+  - **Dependencies**: Built-ins `Number.isFinite`, `Math.round`, `Math.max`, `toLocaleString`.
+  - **Edge cases**: Handles non-finite values by returning `'--'` and clamps negatives to zero; does not distinguish DNF/DQ or preserve fractional milliseconds.
+  - **Performance**: Constant-time number formatting when leaderboard rows build or race results render.
+  - **Units / spaces**: Treats input as milliseconds and formats a locale-aware millisecond string.
+  - **Determinism**: Pure for a fixed locale—same input yields the same formatted string; running again has no extra effects.
+  - **Keep / change / delete**: Keep; smallest alternative would be inlining the formatting string where used.
+  - **Confidence / assumptions**: High confidence; assumes default locale formatting is acceptable for all displays.
+  - **Notes**: Reviewer praised the explanation and restated that the helper simply turns raw milliseconds into something readable while asking if we duplicate this logic elsewhere, and my follow-up confirmed the formatter appears only in `src/app.js` today. Should another menu or HUD pathway need the same presentation, we can lift this helper into a shared time-formatting module so we do not drift on style.
 - `createLeaderboardEntry`
   - Purpose: Builds a leaderboard row with cleaned initials, numeric time, formatted label, saved date, and empty rank.
   - Inputs: Name text trimmed to three uppercase letters, scoreMs finish time in milliseconds with non-numbers treated as 0, optional date string defaulting to blank.
