@@ -116,6 +116,19 @@
   - Confidence / assumptions: High confidence; assumes menu strings stay reasonably short and mostly plain-language characters.
   - Notes: Reviewer confirmed this helper simply keeps player score initials constrained to safe characters like "ABC" so the menu never sees risky markup, and I agree the current implementation is sound while noting we could later simplify by routing menu strings through shared DOM text-node helpers if we consolidate UI rendering.
 - `resolveAssetUrlSafe`
+  - **Purpose**: Wraps the world's asset resolver so menu templates can turn relative preview filenames into usable URLs without crashing if the resolver is missing.
+  - **Inputs**: `path` string; accepts falsy (`''`, `null`, `undefined`) and any other value, though only non-empty strings resolve meaningfully.
+  - **Outputs**: Returns the resolved string from `World.resolveAssetUrl(path)` or the original `path`; falls back to `''` when the input is falsy.
+  - **Side effects**: None—no writes to state, storage, or logs; only calls the global resolver when available.
+  - **Shared state & call sites**: Reads global `World` (`src/app.js:105-114`); passed to `AppScreens.vehicleSelect` as `resolveAssetUrl` helper (`src/app.js:331-341`).
+  - **Dependencies**: `World.resolveAssetUrl` when defined; otherwise none.
+  - **Edge cases**: Handles missing/falsey paths, missing resolver, and exceptions thrown by the resolver; does not validate URL format or strip whitespace.
+  - **Performance**: Constant time; called when building vehicle select screen renders.
+  - **Units / spaces**: Operates on raw URL/path strings; no coordinate spaces.
+  - **Determinism**: Deterministic for the same `World.resolveAssetUrl` implementation and input; returning input unchanged if resolver state changes between calls.
+  - **Keep / change / delete**: Keep; simplest tweak would be to inline a null-safe resolver but helper keeps template call clean.
+  - **Confidence / assumptions**: High confidence; assumes `World` global remains stable and resolver returns a string.
+  - **Notes**: Possible reductions include inlining the null-check if we ever centralize asset helpers or renaming to `safeResolveAssetUrl` so its guard role is clearer. Reviewer summary: “Uses `escapeHtml` so filenames render despite odd characters?” Clarification: this helper never touches HTML escaping and instead just delegates to `World.resolveAssetUrl`, so unusual characters flow through unchanged unless the resolver rewrites them. Future update could link it with a path sanitizer if we discover malformed inputs.
 - `normalizePreviewAtlas`
 - `formatTimeMs`
 - `createLeaderboardEntry`
