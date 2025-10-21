@@ -173,6 +173,19 @@
   - **Confidence / assumptions**: High confidence; assumes callers already sorted entries and that sparse arrays are rare.
   - **Notes**: Reviewer summary: "looks good, no notes, likely no need to fold"; I concur and would only revisit consolidation if future refactors merge leaderboard sorting and ranking into a single pass, so keep monitoring but no action required now.
 - `sortLeaderboardEntries`
+  - **Purpose**: Keeps the leaderboard ordered so faster times float to the top, currently breaking ties alphabetically for display.
+  - **Inputs**: None explicitly; reads `state.leaderboard.entries` which should contain objects with `score` numbers and `name` strings.
+  - **Outputs**: None; entries end up sorted and re-ranked in place.
+  - **Side effects**: Mutates `state.leaderboard.entries`, updates each entry’s `rank`, and drives highlight behavior after sorting.
+  - **Shared state & call sites**: Touches `state.leaderboard.entries`/`rank`; invoked from `src/app.js:215` after adding a local score and `src/app.js:815` after loading remote scores.
+  - **Dependencies**: Uses Array sort plus `recomputeLeaderboardRanks` to refresh rank numbers.
+  - **Edge cases**: Skips over missing entries, pushes null/undefined records to the end, and resolves equal scores with a name comparison despite not honoring play date order; does not special-case DNFs or impossible scores.
+  - **Performance**: Native Array sort over the current entries list; only runs on leaderboard updates, not every frame.
+  - **Units / spaces**: Compares `score` values measured in milliseconds.
+  - **Determinism**: Yes—same entry data yields the same order and ranks.
+  - **Keep / change / delete**: Keep; could only be inlined alongside the rank refresh at each call site.
+  - **Confidence / assumptions**: High confidence; assumes entries always provide numeric `score` and uppercase `name`.
+  - **Notes**: Reviewer: "Alphabetical ordering on equal scores feels wrong; should favor newer runs so the recent score rises above." Response: Capture a precise play timestamp on each entry and update the comparator to sort by score then newest-first, keeping name as a final fallback so expectations and ranking stay aligned.
 - `findLeaderboardEntryIndexById`
 - `addLeaderboardEntry`
 - `setMode`
