@@ -318,35 +318,421 @@
   - Keep / change / delete: Keep; simplest alternative is inlining the AppScreens call insideupdateMenuLayer.
   - Confidence / assumptions: High confidence; assumes AppScreens.vehicleSelect returns astring and the vehicle option list stays small.
 - `renderAttract`
+  - Purpose: Builds the attract-mode panel so the menu layer can show a looping promo video when the player idles.【F:src/app.js†L345-L347】【F:src/app.js†L391-L432】
+  - Inputs: No parameters; depends on `AppScreens.attract` existing in the global template bundle.【F:src/app.js†L345-L347】
+  - Outputs: Returns the markup from `AppScreens.attract`, populated with `{ videoSrc: 'video/attract-loop.mp4' }`.【F:src/app.js†L345-L347】
+  - Side effects: None; simply forwards data to the template and leaves DOM/state untouched.【F:src/app.js†L345-L347】
+  - Shared state touched and where it’s used: Touches no shared state; invoked by `updateMenuLayer` whenever `state.mode` switches to `'attract'`.【F:src/app.js†L391-L432】
+  - Dependencies: Calls `AppScreens.attract` and relies on `updateMenuLayer` for DOM insertion.【F:src/app.js†L345-L347】【F:src/app.js†L391-L432】
+  - Edge cases handled or missed: Falls back to an empty string if the template is missing; does not verify that the referenced video asset loads successfully.【F:src/app.js†L345-L347】
+  - Performance: Constant-time string construction; runs only during attract-mode renders.【F:src/app.js†L345-L347】【F:src/app.js†L391-L432】
+  - Units / spaces: Works solely with a relative media path; no numeric units.【F:src/app.js†L345-L347】
+  - Determinism: Given the same template, returns the same markup and causes no persistent changes.【F:src/app.js†L345-L347】
+  - Keep / change / delete: Keep; small wrapper keeps attract rendering logic isolated from `updateMenuLayer`.【F:src/app.js†L345-L347】【F:src/app.js†L391-L432】
+  - Confidence / assumptions: High confidence; assumes the template synchronously returns HTML that `updateMenuLayer` will inject.【F:src/app.js†L345-L347】【F:src/app.js†L391-L432】
+
 - `renderRaceComplete`
+  - Purpose: Produces the race-complete overlay showing run stats, initials entry state, and reveal phases after a finish.【F:src/app.js†L350-L367】
+  - Inputs: No parameters; reads `state.raceComplete` (active flag, phase, letters, confirmations, index, rank) and formats `timeMs` via `formatTimeMs` (non-finite values show as `--`).【F:src/app.js†L42-L65】【F:src/app.js†L166-L170】【F:src/app.js†L350-L364】
+  - Outputs: Returns the `AppScreens.raceComplete` markup with `{ active, phase, timeLabel, letters, confirmed, currentIndex, playerRank }`.【F:src/app.js†L350-L367】
+  - Side effects: None; performs pure reads and delegates to the template.【F:src/app.js†L350-L367】
+  - Shared state touched and where it’s used: Reads the race-complete slice and is called by `updateMenuLayer` when the mode is `'raceComplete'`.【F:src/app.js†L42-L65】【F:src/app.js†L350-L367】【F:src/app.js†L391-L414】
+  - Dependencies: Uses `AppScreens.raceComplete`, the local `escapeHtml` helper, and `formatTimeMs` for display formatting.【F:src/app.js†L166-L170】【F:src/app.js†L350-L367】
+  - Edge cases handled or missed: Gracefully handles invalid times through `formatTimeMs`, but assumes `letters`/`confirmed` arrays remain aligned and populated elsewhere.【F:src/app.js†L166-L170】【F:src/app.js†L350-L364】
+  - Performance: Constant-time object assembly; invoked only when redrawing the race-complete UI.【F:src/app.js†L350-L367】【F:src/app.js†L391-L414】
+  - Units / spaces: Displays milliseconds as formatted strings; no spatial units.【F:src/app.js†L166-L170】【F:src/app.js†L350-L364】
+  - Determinism: Same state yields identical markup and no side effects.【F:src/app.js†L350-L367】
+  - Keep / change / delete: Keep; isolates template wiring from the menu update loop.【F:src/app.js†L350-L367】【F:src/app.js†L391-L414】
+  - Confidence / assumptions: High confidence; assumes upstream code maintains `state.raceComplete` consistency.【F:src/app.js†L42-L65】【F:src/app.js†L350-L367】
+
 - `startAttractPlayback`
+  - Purpose: Configures and starts the attract-mode `<video>` element whenever the attract screen loads.【F:src/app.js†L369-L377】
+  - Inputs: `video` — DOM video element; ignored when falsy.【F:src/app.js†L369-L377】
+  - Outputs: No return; kicks off asynchronous playback on the element.【F:src/app.js†L369-L377】
+  - Side effects: Sets `loop`, `muted`, and `playsInline` on the video, then calls `play()` while suppressing autoplay promise rejections.【F:src/app.js†L369-L377】
+  - Shared state touched and where it’s used: Does not touch `state`; `updateMenuLayer` passes in the queried element when mode switches to attract.【F:src/app.js†L391-L432】
+  - Dependencies: Relies on browser media APIs and the surrounding DOM lookup in `updateMenuLayer`.【F:src/app.js†L369-L377】【F:src/app.js†L391-L427】
+  - Edge cases handled or missed: Safely no-ops without an element and mutes by default, but cannot force playback when browsers require interaction despite muting.【F:src/app.js†L369-L377】
+  - Performance: Constant-time attribute writes; runs only during attract setup.【F:src/app.js†L369-L377】【F:src/app.js†L391-L427】
+  - Units / spaces: Works with media playback state; no numeric units.【F:src/app.js†L369-L377】
+  - Determinism: Given the same element it always applies the same configuration, though actual playback depends on browser policy.【F:src/app.js†L369-L377】
+  - Keep / change / delete: Keep; keeps media setup separate from DOM querying logic.【F:src/app.js†L369-L377】【F:src/app.js†L391-L427】
+  - Confidence / assumptions: High confidence; assumes callers pass an `HTMLVideoElement` and muted autoplay is permitted.【F:src/app.js†L369-L377】
+
 - `stopAttractPlayback`
+  - Purpose: Pauses and rewinds the cached attract video when exiting attract mode so it restarts cleanly next time.【F:src/app.js†L380-L388】
+  - Inputs: None; reads `state.dom.attractVideo` for the stored element reference.【F:src/app.js†L42-L65】【F:src/app.js†L380-L388】
+  - Outputs: No return value.【F:src/app.js†L380-L388】
+  - Side effects: Calls `pause()` inside a `try/catch` and resets `currentTime` to `0`, tolerating DOM exceptions from detached media elements.【F:src/app.js†L380-L388】
+  - Shared state touched and where it’s used: Reads and relies on `state.dom.attractVideo`; `updateMenuLayer` invokes it on every non-attract redraw before clearing the cached reference.【F:src/app.js†L42-L65】【F:src/app.js†L391-L432】
+  - Dependencies: Requires the DOM reference tracked by `updateMenuLayer`; no other helpers.【F:src/app.js†L380-L388】【F:src/app.js†L391-L432】
+  - Edge cases handled or missed: Gracefully handles missing elements and ignores pause errors; does not await asynchronous pause completion (not needed for UI).【F:src/app.js†L380-L388】
+  - Performance: Constant-time cleanup; executed only when leaving attract mode.【F:src/app.js†L380-L388】【F:src/app.js†L391-L432】
+  - Units / spaces: Media time in seconds when rewinding to 0; no spatial units.【F:src/app.js†L380-L388】
+  - Determinism: Always resets playback state when an element exists; repeated calls keep the video at the start frame.【F:src/app.js†L380-L388】
+  - Keep / change / delete: Keep; complements `startAttractPlayback` to avoid stale playback state.【F:src/app.js†L380-L388】【F:src/app.js†L391-L432】
+  - Confidence / assumptions: High confidence; assumes only one attract video is tracked via `state.dom`.【F:src/app.js†L42-L65】【F:src/app.js†L380-L388】
+
 - `updateMenuLayer`
+  - Purpose: Rebuilds the menu overlay—toggling visibility, rendering the screen for the current mode, and wiring preview/attract media after every UI state change.【F:src/app.js†L391-L432】
+  - Inputs: No parameters; reads `state.mode` and cached DOM references (`state.dom.menuLayer`, `state.dom.menuPanel`), calling `ensureDom` to populate them lazily.【F:src/app.js†L220-L249】【F:src/app.js†L391-L432】
+  - Outputs: No return; writes HTML into `menuPanel.innerHTML` and updates CSS classes/data attributes on the menu wrapper.【F:src/app.js†L391-L432】
+  - Side effects: Mutates DOM classes, datasets, and `state.dom.attractVideo`, and triggers preview/attract helpers to manage media playback.【F:src/app.js†L391-L432】
+  - Shared state touched and where it’s used: Reads/writes `state.dom` and depends on `state.mode`; invoked after every mode or selection mutation (`setMode`, `change*Selection`, `changeVehicleSelection`, race-complete letter handlers, `setRaceCompletePhase`, `toggleSnowSetting`, `toggleDebugSetting`, and leaderboard fetch updates).【F:src/app.js†L42-L65】【F:src/app.js†L220-L235】【F:src/app.js†L527-L709】【F:src/app.js†L604-L649】【F:src/app.js†L686-L709】【F:src/app.js†L800-L828】
+  - Dependencies: Calls `ensureDom`, screen renderers (`renderMainMenu`, `renderLeaderboard`, `renderSettings`, `renderPauseMenu`, `renderVehicleSelect`, `renderAttract`, `renderRaceComplete`), `setupVehiclePreviewAnimation`, `startAttractPlayback`, and `stopAttractPlayback`.【F:src/app.js†L220-L432】
+  - Edge cases handled or missed: Throws if required DOM nodes are missing via `ensureDom`; relies on each renderer to guard absent templates; always resets `innerHTML` (no diffing).【F:src/app.js†L220-L432】
+  - Performance: Performs full DOM replacement per call and media queries; triggered on discrete events rather than every frame, so costs stay manageable.【F:src/app.js†L220-L432】【F:src/app.js†L800-L828】
+  - Units / spaces: Operates entirely in DOM space; no numeric world units.【F:src/app.js†L391-L432】
+  - Determinism: With the same state and templates it produces identical markup and side effects.【F:src/app.js†L220-L432】
+  - Keep / change / delete: Keep; central coordination point for menu rendering that could only be split after modularizing UI layers.【F:src/app.js†L220-L432】
+  - Confidence / assumptions: High confidence; assumes `ensureDom` succeeds and renderers remain synchronous.【F:src/app.js†L220-L432】
+
 - `applyVehiclePreviewFrame`
+  - Purpose: Computes atlas UV offsets for the vehicle preview sprite and updates the element’s background position for the current frame.【F:src/app.js†L434-L443】
+  - Inputs: `preview` descriptor containing `{ element, columns, rows, frameCount, frameIndex }`; no-ops on falsy objects or missing elements.【F:src/app.js†L434-L443】
+  - Outputs: No return; writes `backgroundPosition` on the element.【F:src/app.js†L434-L443】
+  - Side effects: Mutates the preview element’s inline styles to display the selected atlas cell.【F:src/app.js†L434-L443】
+  - Shared state touched and where it’s used: Does not touch `state`; called by preview setup and per-frame advance routines that manage `state.dom.vehiclePreview`.【F:src/app.js†L492-L518】
+  - Dependencies: Works with the descriptor produced by `setupVehiclePreviewAnimation` and simple arithmetic only.【F:src/app.js†L434-L493】
+  - Edge cases handled or missed: Wraps indices safely, handles single-frame sprites by setting 0% offsets, but assumes the element has a mutable `style`.【F:src/app.js†L434-L443】
+  - Performance: Constant-time math; invoked once on setup and whenever the animation advances.【F:src/app.js†L434-L518】
+  - Units / spaces: Expresses UVs as CSS percentages across atlas columns/rows.【F:src/app.js†L434-L443】
+  - Determinism: Same descriptor and frame index produce the same CSS coordinates.【F:src/app.js†L434-L443】
+  - Keep / change / delete: Keep; keeps atlas math separate from higher-level animation logic.【F:src/app.js†L434-L518】
+  - Confidence / assumptions: High confidence; assumes DOM mutations succeed while the element is connected.【F:src/app.js†L434-L443】
+
 - `setupVehiclePreviewAnimation`
+  - Purpose: Locates the vehicle preview element, normalizes atlas metadata, and seeds animation state in `state.dom.vehiclePreview` after rendering the vehicle select screen.【F:src/app.js†L446-L493】
+  - Inputs: No parameters; reads `state.mode`, `state.dom.menuPanel`, and element data attributes (`data-columns`, `data-rows`, `data-frame-count`, `data-frame-duration`).【F:src/app.js†L42-L65】【F:src/app.js†L446-L472】
+  - Outputs: Stores a descriptor `{ element, columns, rows, frameCount, frameDuration, frameIndex, accumulator }` in `state.dom.vehiclePreview`, or clears it when preview data is missing.【F:src/app.js†L42-L65】【F:src/app.js†L446-L493】
+  - Side effects: Adjusts preview element CSS (`backgroundSize`, `backgroundRepeat`, `backgroundPosition`) and updates shared DOM state.【F:src/app.js†L42-L65】【F:src/app.js†L446-L493】
+  - Shared state touched and where it’s used: Writes `state.dom.vehiclePreview`; `updateMenuLayer` invokes it after injecting vehicle select markup.【F:src/app.js†L42-L65】【F:src/app.js†L420-L493】
+  - Dependencies: Uses dataset parsing, the global default `DEFAULT_VEHICLE_PREVIEW_FRAME_DURATION`, and `applyVehiclePreviewFrame` to paint the first frame.【F:src/app.js†L40-L493】
+  - Edge cases handled or missed: Handles missing panel, absent preview element, invalid numbers, and static sprites by clearing state and resetting background; assumes background images are available externally.【F:src/app.js†L446-L493】
+  - Performance: Runs query selectors and simple math per menu refresh; only triggered when the vehicle select UI is rendered.【F:src/app.js†L446-L493】
+  - Units / spaces: Columns/rows describe atlas grid counts; frame duration measured in seconds (defaults to 1/24).【F:src/app.js†L40-L493】
+  - Determinism: Same DOM attributes yield identical descriptors and CSS adjustments.【F:src/app.js†L446-L493】
+  - Keep / change / delete: Keep; encapsulates DOM parsing and state seeding separate from animation ticking.【F:src/app.js†L420-L493】
+  - Confidence / assumptions: High confidence; assumes preview markup supplies the documented data attributes when present.【F:src/app.js†L446-L493】
+
 - `updateVehiclePreviewAnimation`
+  - Purpose: Advances the vehicle preview sprite animation over time while the vehicle select screen is active.【F:src/app.js†L496-L518】
+  - Inputs: `dt` — elapsed seconds from the renderer loop (renderer clamps to ≤0.25 s).【F:src/render.js†L2103-L2127】【F:src/app.js†L496-L518】
+  - Outputs: No return; updates the descriptor’s `frameIndex`/`accumulator` and refreshes the element via `applyVehiclePreviewFrame`.【F:src/app.js†L496-L518】
+  - Side effects: Mutates `state.dom.vehiclePreview` and its element styles; clears the descriptor when the element disappears or the mode changes.【F:src/app.js†L42-L65】【F:src/app.js†L496-L518】
+  - Shared state touched and where it’s used: Reads and writes `state.dom.vehiclePreview`; called each frame by `step`, with early exits outside vehicle select.【F:src/app.js†L42-L65】【F:src/app.js†L496-L518】【F:src/app.js†L1106-L1124】
+  - Dependencies: Requires the descriptor built by `setupVehiclePreviewAnimation`, the default duration constant, and `applyVehiclePreviewFrame`.【F:src/app.js†L40-L518】
+  - Edge cases handled or missed: Handles missing preview, disconnected elements, and non-positive frame durations; assumes atlas metadata remains valid while active.【F:src/app.js†L496-L518】
+  - Performance: Constant-time math per frame; active only during vehicle selection so workload is minimal.【F:src/app.js†L496-L518】【F:src/app.js†L1106-L1124】
+  - Units / spaces: `dt` and frame durations in seconds; frame indices wrap modulo the sprite count.【F:src/render.js†L2103-L2127】【F:src/app.js†L496-L518】
+  - Determinism: Deterministic progression for a given descriptor and `dt` sequence.【F:src/app.js†L496-L518】
+  - Keep / change / delete: Keep; separates animation ticking from DOM setup for clarity and potential reuse.【F:src/app.js†L496-L518】【F:src/app.js†L420-L518】
+  - Confidence / assumptions: High confidence; assumes `dt` originates from the renderer loop and the descriptor stays in sync with the DOM element.【F:src/render.js†L2103-L2127】【F:src/app.js†L496-L518】
+
 - `clampIndex`
+  - Purpose: Wraps an index into the valid `0…total-1` range so menu selections cycle correctly in both directions.【F:src/app.js†L521-L525】
+  - Inputs: `index` (integer, may be negative/out of range) and `total` (expected positive integer; returns 0 when `total <= 0`).【F:src/app.js†L521-L525】
+  - Outputs: Returns the wrapped index computed via modular arithmetic.【F:src/app.js†L521-L525】
+  - Side effects: None; pure calculation.【F:src/app.js†L521-L525】
+  - Shared state touched and where it’s used: Touches no state; reused by renderers and selection helpers for vehicle, settings, pause, and main menus.【F:src/app.js†L328-L599】
+  - Dependencies: Pure helper; no external modules.【F:src/app.js†L521-L525】
+  - Edge cases handled or missed: Returns 0 when `total <= 0`; assumes callers pass numeric totals (true for current usage).【F:src/app.js†L521-L548】
+  - Performance: Constant-time arithmetic.【F:src/app.js†L521-L525】
+  - Units / spaces: Operates on abstract index counts; no spatial units.【F:src/app.js†L521-L525】
+  - Determinism: Deterministic for any given inputs.【F:src/app.js†L521-L525】
+  - Keep / change / delete: Keep; centralizes wrap logic shared across menu flows.【F:src/app.js†L328-L599】
+  - Confidence / assumptions: High confidence; assumes menus provide non-zero totals when active.【F:src/app.js†L521-L599】
 - `changeMainMenuSelection`
+  - Purpose: Moves the highlighted option in the main menu and redraws the panel accordingly.【F:src/app.js†L527-L531】
+  - Inputs: `delta` — signed step (typically ±1) provided by navigation handlers.【F:src/app.js†L527-L531】【F:src/app.js†L867-L889】
+  - Outputs: No return; updates `state.mainMenuIndex` and triggers a render.【F:src/app.js†L527-L531】
+  - Side effects: Mutates `state.mainMenuIndex` and calls `updateMenuLayer`.【F:src/app.js†L42-L65】【F:src/app.js†L527-L531】
+  - Shared state touched and where it’s used: Writes the menu index; invoked by `handleMenuNavigation`, which is wired to keyboard events in `handleMenuKeyDown`.【F:src/app.js†L42-L65】【F:src/app.js†L867-L895】
+  - Dependencies: Uses `mainMenuOptions.length`, `clampIndex`, and `updateMenuLayer`.【F:src/app.js†L8-L12】【F:src/app.js†L521-L531】
+  - Edge cases handled or missed: Wraps around automatically; does not guard against an empty options list (currently static and non-empty).【F:src/app.js†L8-L12】【F:src/app.js†L527-L531】
+  - Performance: Constant-time; runs on each menu navigation key press.【F:src/app.js†L527-L531】【F:src/app.js†L867-L889】
+  - Units / spaces: Integer indices only.【F:src/app.js†L527-L531】
+  - Determinism: Same starting index and delta yield the same wrapped result.【F:src/app.js†L527-L531】
+  - Keep / change / delete: Keep; encapsulates navigation updates separate from event handling.【F:src/app.js†L527-L531】【F:src/app.js†L867-L895】
+  - Confidence / assumptions: High confidence; assumes keyboard handlers provide ±1 deltas and the options array remains stable.【F:src/app.js†L8-L12】【F:src/app.js†L867-L895】
+
 - `changePauseMenuSelection`
+  - Purpose: Rotates the pause menu highlight between “Resume” and “Quit to Menu.”【F:src/app.js†L533-L537】
+  - Inputs: `delta` — signed step from pause navigation handlers.【F:src/app.js†L533-L537】【F:src/app.js†L871-L993】
+  - Outputs: No return.【F:src/app.js†L533-L537】
+  - Side effects: Updates `state.pauseMenuIndex` and calls `updateMenuLayer`.【F:src/app.js†L42-L65】【F:src/app.js†L533-L537】
+  - Shared state touched and where it’s used: Writes the pause index; invoked via `handlePauseNavigation` from `handlePauseKeyDown`.【F:src/app.js†L42-L65】【F:src/app.js†L871-L993】
+  - Dependencies: Relies on `pauseMenuOptions`, `clampIndex`, and `updateMenuLayer`.【F:src/app.js†L14-L17】【F:src/app.js†L521-L537】
+  - Edge cases handled or missed: Wraps across the two static entries; does not expect an empty list.【F:src/app.js†L14-L17】【F:src/app.js†L533-L537】
+  - Performance: Constant-time per navigation input.【F:src/app.js†L533-L537】
+  - Units / spaces: Integer indices.【F:src/app.js†L533-L537】
+  - Determinism: Deterministic wrap behavior.【F:src/app.js†L533-L537】
+  - Keep / change / delete: Keep; mirrors other selection helpers for consistency.【F:src/app.js†L533-L537】【F:src/app.js†L871-L993】
+  - Confidence / assumptions: High confidence; assumes pause menu remains two options deep.【F:src/app.js†L14-L17】【F:src/app.js†L871-L993】
+
 - `changeSettingsSelection`
+  - Purpose: Toggles the highlighted entry within the settings menu (snow toggle vs. back).【F:src/app.js†L539-L543】
+  - Inputs: `delta` — signed navigation step from settings handlers.【F:src/app.js†L539-L543】【F:src/app.js†L875-L936】
+  - Outputs: No return.【F:src/app.js†L539-L543】
+  - Side effects: Mutates `state.settingsMenuIndex` and refreshes the menu.【F:src/app.js†L42-L65】【F:src/app.js†L539-L543】
+  - Shared state touched and where it’s used: Writes the settings index; called by `handleSettingsNavigation` and indirectly by `handleSettingsKeyDown`.【F:src/app.js†L42-L65】【F:src/app.js†L875-L936】
+  - Dependencies: Uses `settingsMenuKeys`, `clampIndex`, and `updateMenuLayer`.【F:src/app.js†L38-L38】【F:src/app.js†L521-L543】
+  - Edge cases handled or missed: Wraps between the two defined entries; if more keys were added it would still wrap but labels must stay synchronized manually.【F:src/app.js†L38-L38】【F:src/app.js†L539-L543】
+  - Performance: Constant-time per key press.【F:src/app.js†L539-L543】
+  - Units / spaces: Integer indices.【F:src/app.js†L539-L543】
+  - Determinism: Deterministic wrap logic.【F:src/app.js†L539-L543】
+  - Keep / change / delete: Keep; aligns with other menu helpers.【F:src/app.js†L539-L543】【F:src/app.js†L875-L936】
+  - Confidence / assumptions: High confidence; assumes settings menu keys stay in sync with template options.【F:src/app.js†L38-L38】【F:src/app.js†L539-L543】
+
 - `changeVehicleSelection`
+  - Purpose: Steps the selected vehicle highlight and rerenders the selection screen.【F:src/app.js†L545-L549】
+  - Inputs: `delta` — signed step from left/right vehicle navigation.【F:src/app.js†L545-L549】【F:src/app.js†L943-L957】
+  - Outputs: No return.【F:src/app.js†L545-L549】
+  - Side effects: Updates `state.vehicleSelectIndex` (when vehicles exist) and calls `updateMenuLayer`.【F:src/app.js†L42-L65】【F:src/app.js†L545-L549】
+  - Shared state touched and where it’s used: Writes the vehicle selection index; invoked by `handleVehicleSelectKeyDown` on arrow keys.【F:src/app.js†L42-L65】【F:src/app.js†L943-L969】
+  - Dependencies: Uses `vehicleOptions.length`, `clampIndex`, and `updateMenuLayer`, returning early when no vehicles are available.【F:src/app.js†L19-L36】【F:src/app.js†L521-L549】
+  - Edge cases handled or missed: No-ops when the list is empty; does not skip null entries beyond what `clampIndex` provides.【F:src/app.js†L19-L36】【F:src/app.js†L545-L549】
+  - Performance: Constant-time; triggered on navigation input only.【F:src/app.js†L545-L549】【F:src/app.js†L943-L957】
+  - Units / spaces: Integer indices into the vehicle array.【F:src/app.js†L545-L549】
+  - Determinism: Same delta and list state lead to the same wrapped result.【F:src/app.js†L545-L549】
+  - Keep / change / delete: Keep; small helper keeps the key handler focused on input flow.【F:src/app.js†L545-L549】【F:src/app.js†L943-L969】
+  - Confidence / assumptions: High confidence; assumes the vehicle list stays short and static during selection.【F:src/app.js†L19-L36】【F:src/app.js†L545-L549】
+
 - `getVehicleOptionByKey`
+  - Purpose: Looks up a vehicle configuration by its key so selection logic can retrieve the full option payload.【F:src/app.js†L552-L555】
+  - Inputs: `key` — string identifier; returns `null` for falsy keys.【F:src/app.js†L552-L555】
+  - Outputs: Matching vehicle option object or `null`.【F:src/app.js†L552-L555】
+  - Side effects: None; pure search over `vehicleOptions`.【F:src/app.js†L552-L555】
+  - Shared state touched and where it’s used: Reads the module-level `vehicleOptions`; consumed by `applyVehicleSelection`.【F:src/app.js†L19-L36】【F:src/app.js†L557-L575】
+  - Dependencies: None beyond the array in scope.【F:src/app.js†L552-L555】
+  - Edge cases handled or missed: Ignores falsy keys and tolerates `null` entries; linear scan could become expensive if the options list grows significantly (currently tiny).【F:src/app.js†L19-L36】【F:src/app.js†L552-L555】
+  - Performance: O(n) over the vehicle list; presently negligible with two entries.【F:src/app.js†L19-L36】【F:src/app.js†L552-L555】
+  - Units / spaces: Works with string identifiers; no spatial units.【F:src/app.js†L552-L555】
+  - Determinism: Returns the first matching entry consistently.【F:src/app.js†L552-L555】
+  - Keep / change / delete: Keep; adequate for the small dataset (could shift to a keyed map if vehicles expand).【F:src/app.js†L19-L36】【F:src/app.js†L552-L555】
+  - Confidence / assumptions: High confidence; assumes keys remain unique.【F:src/app.js†L19-L36】【F:src/app.js†L552-L555】
+
 - `applyVehicleSelection`
+  - Purpose: Persists the player’s vehicle choice and swaps the gameplay texture to match that selection.【F:src/app.js†L557-L575】
+  - Inputs: `vehicleKey` — target option key; falls back to the first option if lookup fails.【F:src/app.js†L557-L575】
+  - Outputs: No return.【F:src/app.js†L557-L575】
+  - Side effects: Updates `state.selectedVehicleKey`, syncs `state.vehicleSelectIndex`, and sets `World.assets.textures.playerVehicle` to the chosen atlas or fallback texture.【F:src/app.js†L19-L65】【F:src/app.js†L557-L575】
+  - Shared state touched and where it’s used: Mutates selection state and rendering textures; invoked from `startRace` and from `init` to align defaults.【F:src/app.js†L19-L65】【F:src/app.js†L723-L734】【F:src/app.js†L1134-L1138】
+  - Dependencies: Uses `getVehicleOptionByKey`, `clampIndex`, and the `World.assets.textures` map to update the active sprite sheet.【F:src/app.js†L552-L575】
+  - Edge cases handled or missed: Falls back to the first option if lookup fails and only reassigns textures when an atlas or fallback is available; logs nothing if both are missing.【F:src/app.js†L557-L575】
+  - Performance: Linear search to find the option plus constant assignments; called infrequently on selection or startup.【F:src/app.js†L557-L575】【F:src/app.js†L723-L734】
+  - Units / spaces: Works with texture keys and array indices; no spatial units.【F:src/app.js†L557-L575】
+  - Determinism: Same key and texture set lead to the same state mutations.【F:src/app.js†L557-L575】
+  - Keep / change / delete: Keep; centralizes selection + texture wiring logic reused by race start and bootstrapping.【F:src/app.js†L557-L575】【F:src/app.js†L723-L734】【F:src/app.js†L1134-L1138】
+  - Confidence / assumptions: High confidence; assumes textures have been loaded into `World.assets` before invocation.【F:src/app.js†L557-L575】
+
 - `showVehicleSelect`
+  - Purpose: Enters the vehicle selection screen or starts a race immediately when no vehicles are defined.【F:src/app.js†L577-L589】
+  - Inputs: None; reads `vehicleOptions`, `state.selectedVehicleKey`, and `state.vehicleSelectIndex`.【F:src/app.js†L19-L65】【F:src/app.js†L577-L589】
+  - Outputs: No return.【F:src/app.js†L577-L589】
+  - Side effects: Calls `startRace()` if no vehicles exist; otherwise updates `state.vehicleSelectIndex` and switches mode to `'vehicleSelect'`.【F:src/app.js†L220-L235】【F:src/app.js†L577-L589】
+  - Shared state touched and where it’s used: Mutates selection index and mode; triggered from `activateMainMenuSelection` when the “Start Race” menu option is confirmed.【F:src/app.js†L42-L65】【F:src/app.js†L769-L778】
+  - Dependencies: Uses `vehicleOptions.findIndex`, `clampIndex`, `startRace`, and `setMode`.【F:src/app.js†L220-L589】
+  - Edge cases handled or missed: Auto-starts when the list is empty and clamps indices even if previous state was out of range; does not guard against duplicate vehicle keys.【F:src/app.js†L577-L589】
+  - Performance: Constant-time operations over the tiny options array; runs on menu activation only.【F:src/app.js†L577-L589】【F:src/app.js†L769-L778】
+  - Units / spaces: Integer indices and mode strings.【F:src/app.js†L577-L589】
+  - Determinism: Same state triggers the same start or mode switch.【F:src/app.js†L577-L589】
+  - Keep / change / delete: Keep; encapsulates race-start entry logic separate from the menu activation handler.【F:src/app.js†L577-L589】【F:src/app.js†L769-L778】
+  - Confidence / assumptions: High confidence; assumes `startRace` can safely run before asynchronous gameplay setup finishes.【F:src/app.js†L577-L734】
+
 - `activateVehicleSelection`
+  - Purpose: Confirms the highlighted vehicle and begins the race with that selection (or defaults when no vehicles exist).【F:src/app.js†L592-L602】
+  - Inputs: None; reads `vehicleOptions` and `state.vehicleSelectIndex`.【F:src/app.js†L19-L65】【F:src/app.js†L592-L602】
+  - Outputs: No return.【F:src/app.js†L592-L602】
+  - Side effects: Calls `startRace` with the selected vehicle key, or falls back to `startRace()` when the list is empty.【F:src/app.js†L592-L602】
+  - Shared state touched and where it’s used: Reads selection state; invoked by `handleVehicleSelectKeyDown` when confirm keys are pressed.【F:src/app.js†L42-L65】【F:src/app.js†L943-L957】
+  - Dependencies: Uses `clampIndex`, the vehicle options array, and `startRace`.【F:src/app.js†L521-L602】
+  - Edge cases handled or missed: Skips action if the clamped option is falsy; relies on `startRace` to handle downstream failures.【F:src/app.js†L592-L602】
+  - Performance: Constant-time selection; executed only on confirmation input.【F:src/app.js†L592-L602】【F:src/app.js†L943-L957】
+  - Units / spaces: Integer indices and vehicle keys.【F:src/app.js†L592-L602】
+  - Determinism: Same highlighted vehicle yields the same start call.【F:src/app.js†L592-L602】
+  - Keep / change / delete: Keep; keeps keyboard handler concise and delegates to shared race-start logic.【F:src/app.js†L592-L602】【F:src/app.js†L943-L957】
+  - Confidence / assumptions: High confidence; assumes `startRace` handles asynchronous scene reset and game start robustly.【F:src/app.js†L592-L734】
 - `adjustCurrentNameLetter`
+  - Purpose: Rotates the currently editable leaderboard initial upward or downward during name entry.【F:src/app.js†L604-L617】
+  - Inputs: `delta` — signed step (±1) applied to the alphabet index.【F:src/app.js†L604-L617】【F:src/app.js†L1010-L1019】
+  - Outputs: No return.【F:src/app.js†L604-L617】
+  - Side effects: Updates `state.raceComplete.letters` and `playerName`, then rerenders the menu when in the entry phase.【F:src/app.js†L42-L65】【F:src/app.js†L604-L617】
+  - Shared state touched and where it’s used: Mutates the race-complete slice; invoked from `handleRaceCompleteKeyDown` on up/down input during the entry phase.【F:src/app.js†L42-L65】【F:src/app.js†L995-L1019】
+  - Dependencies: Uses `NAME_ALPHABET` for character lookup and `updateMenuLayer` to refresh the UI.【F:src/app.js†L67-L67】【F:src/app.js†L604-L617】
+  - Edge cases handled or missed: Ensures race-complete is active, in entry phase, index in range, and letter not already confirmed; wraps alphabet changes via modulo but cannot edit variable-length names (fixed three letters).【F:src/app.js†L604-L617】
+  - Performance: Constant-time string manipulation per key press.【F:src/app.js†L604-L617】【F:src/app.js†L995-L1019】
+  - Units / spaces: Alphabet positions 0–25 only.【F:src/app.js†L604-L617】
+  - Determinism: Same delta and state yield identical letter updates.【F:src/app.js†L604-L617】
+  - Keep / change / delete: Keep; isolates letter rotation logic from event handlers.【F:src/app.js†L604-L617】【F:src/app.js†L995-L1019】
+  - Confidence / assumptions: High confidence; assumes `NAME_ALPHABET` stays uppercase A–Z and letters array length matches the entry length.【F:src/app.js†L67-L67】【F:src/app.js†L604-L617】
+
 - `lockCurrentNameLetter`
+  - Purpose: Confirms the active initial and either advances editing to the next slot or finalizes the leaderboard entry.【F:src/app.js†L620-L633】
+  - Inputs: None; reads `state.raceComplete.currentIndex` and arrays.【F:src/app.js†L620-L633】
+  - Outputs: No return.【F:src/app.js†L620-L633】
+  - Side effects: Marks the letter as confirmed, updates `playerName`, moves focus to the next letter, and triggers a UI refresh; calls `finalizeRaceCompleteEntry` when the last slot is confirmed.【F:src/app.js†L620-L633】
+  - Shared state touched and where it’s used: Mutates the race-complete slice; invoked by `handleRaceCompleteKeyDown` when the player presses the confirm key during entry.【F:src/app.js†L42-L65】【F:src/app.js†L995-L1033】
+  - Dependencies: Uses `finalizeRaceCompleteEntry` and `updateMenuLayer`.【F:src/app.js†L620-L633】
+  - Edge cases handled or missed: Validates active entry phase and bounds; does not reset confirmed letters if the player cancels (handled by broader flow).【F:src/app.js†L620-L633】
+  - Performance: Constant-time array updates; runs once per confirmation input.【F:src/app.js†L620-L633】【F:src/app.js†L995-L1033】
+  - Units / spaces: Works with indices into the three-letter array.【F:src/app.js†L620-L633】
+  - Determinism: Deterministic for a given state and index.【F:src/app.js†L620-L633】
+  - Keep / change / delete: Keep; encapsulates entry confirmation logic away from key handling.【F:src/app.js†L620-L633】【F:src/app.js†L995-L1033】
+  - Confidence / assumptions: High confidence; assumes exactly three-letter initials and that `finalizeRaceCompleteEntry` handles persistence.【F:src/app.js†L620-L642】
+
 - `finalizeRaceCompleteEntry`
+  - Purpose: Commits the entered initials and time to the leaderboard, records the new entry id/rank, and advances the reveal sequence.【F:src/app.js†L635-L642】
+  - Inputs: None; reads `state.raceComplete` and calls `addLeaderboardEntry`.【F:src/app.js†L211-L217】【F:src/app.js†L635-L642】
+  - Outputs: No return.【F:src/app.js†L635-L642】
+  - Side effects: Updates `playerName`, stores `entryId`/`playerRank`, and switches phase to `'revealPlayer'`.【F:src/app.js†L635-L642】
+  - Shared state touched and where it’s used: Mutates the race-complete slice; called only by `lockCurrentNameLetter` when the last letter is confirmed.【F:src/app.js†L631-L642】
+  - Dependencies: Uses `addLeaderboardEntry` (which appends and sorts the leaderboard) and `setRaceCompletePhase`.【F:src/app.js†L211-L217】【F:src/app.js†L635-L649】
+  - Edge cases handled or missed: Rebuilds the player name from letters before saving; assumes the leaderboard addition succeeds and returns an entry with `id` and `rank`.【F:src/app.js†L635-L642】
+  - Performance: Constant work plus leaderboard insertion handled inside `addLeaderboardEntry`; runs once per race completion.【F:src/app.js†L211-L217】【F:src/app.js†L635-L642】
+  - Units / spaces: Works with milliseconds for the score (`rc.timeMs`).【F:src/app.js†L635-L642】
+  - Determinism: Same letters and time create the same leaderboard entry (aside from unique symbol ids).【F:src/app.js†L211-L217】【F:src/app.js†L635-L642】
+  - Keep / change / delete: Keep; cleanly separates persistence from input handling.【F:src/app.js†L631-L642】
+  - Confidence / assumptions: High confidence; assumes leaderboard arrays remain mutable and accessible.【F:src/app.js†L211-L217】【F:src/app.js†L635-L642】
+
 - `setRaceCompletePhase`
+  - Purpose: Updates the race-complete state machine, resetting the phase timer and refreshing the UI for the next reveal step.【F:src/app.js†L644-L649】
+  - Inputs: `phase` — string identifier (`'entry'`, `'revealPlayer'`, `'revealTop'`, `'complete'`, etc.).【F:src/app.js†L644-L649】
+  - Outputs: No return.【F:src/app.js†L644-L649】
+  - Side effects: Mutates `state.raceComplete.phase` and `timer`, marks the app as recently interacted, and calls `updateMenuLayer`.【F:src/app.js†L42-L65】【F:src/app.js†L92-L94】【F:src/app.js†L644-L649】
+  - Shared state touched and where it’s used: Adjusts the race-complete slice; invoked from `finalizeRaceCompleteEntry`, `advanceRaceCompleteSequence`, and `updateRaceComplete`.【F:src/app.js†L635-L677】
+  - Dependencies: Uses `markInteraction` and `updateMenuLayer`.【F:src/app.js†L92-L94】【F:src/app.js†L644-L649】
+  - Edge cases handled or missed: Does not validate the incoming phase; assumes callers provide a valid string and that resetting the timer to 0 is enough for transitions.【F:src/app.js†L644-L649】
+  - Performance: Constant-time; invoked a few times per race completion.【F:src/app.js†L644-L649】
+  - Units / spaces: Timer measured in seconds accumulated elsewhere.【F:src/app.js†L644-L677】
+  - Determinism: Deterministic assignment for a given phase input.【F:src/app.js†L644-L649】
+  - Keep / change / delete: Keep; single point of truth for phase transitions and timer resets.【F:src/app.js†L644-L649】
+  - Confidence / assumptions: High confidence; assumes repeated calls stay inexpensive and `updateMenuLayer` handles the redraw cost.【F:src/app.js†L644-L649】
+
 - `advanceRaceCompleteSequence`
+  - Purpose: Steps the post-race reveal sequence forward or exits to attract mode when complete.【F:src/app.js†L652-L658】
+  - Inputs: None; reads `state.raceComplete.phase`.【F:src/app.js†L652-L658】
+  - Outputs: No return.【F:src/app.js†L652-L658】
+  - Side effects: Calls `setRaceCompletePhase` for transitions or `goToAttract` once the `'complete'` phase is reached.【F:src/app.js†L652-L658】
+  - Shared state touched and where it’s used: Indirectly mutates phase via `setRaceCompletePhase`; triggered by `handleRaceCompleteKeyDown` when the player confirms after entries are locked.【F:src/app.js†L652-L658】【F:src/app.js†L995-L1033】
+  - Dependencies: Uses `setRaceCompletePhase` and `goToAttract`.【F:src/app.js†L644-L684】
+  - Edge cases handled or missed: Handles the known sequence (`revealPlayer` → `revealTop` → `complete`); other phases are ignored and produce no change.【F:src/app.js†L652-L658】
+  - Performance: Constant-time branching.【F:src/app.js†L652-L658】
+  - Units / spaces: Operates on string states only.【F:src/app.js†L652-L658】
+  - Determinism: Deterministic transitions for a given current phase.【F:src/app.js†L652-L658】
+  - Keep / change / delete: Keep; keeps phase logic out of the key handler.【F:src/app.js†L652-L658】【F:src/app.js†L995-L1033】
+  - Confidence / assumptions: High confidence; assumes only the documented phases reach this helper.【F:src/app.js†L652-L658】
+
 - `updateRaceComplete`
+  - Purpose: Runs the timed progression for post-race reveals, advancing phases after fixed delays and eventually returning to attract mode.【F:src/app.js†L663-L677】
+  - Inputs: `dt` — seconds since the previous step (renderer loop clamps to ≤0.25 s).【F:src/render.js†L2103-L2127】【F:src/app.js†L663-L677】
+  - Outputs: No return.【F:src/app.js†L663-L677】
+  - Side effects: Increments `state.raceComplete.timer`, triggers `setRaceCompletePhase` when thresholds (3 s, 2.5 s) pass, or calls `goToAttract` when the sequence ends.【F:src/app.js†L663-L684】
+  - Shared state touched and where it’s used: Mutates the race-complete timer/phase; called each frame by `step` while mode is `'raceComplete'`.【F:src/app.js†L42-L65】【F:src/app.js†L663-L677】【F:src/app.js†L1106-L1124】
+  - Dependencies: Relies on `setRaceCompletePhase` and `goToAttract`.【F:src/app.js†L663-L684】
+  - Edge cases handled or missed: Guards against inactive states and only runs for reveal/complete phases; timer continues accumulating until phase changes reset it.【F:src/app.js†L663-L677】
+  - Performance: Constant work per frame; active only during the short post-race sequence.【F:src/app.js†L663-L677】【F:src/app.js†L1106-L1124】
+  - Units / spaces: Time measured in seconds; no spatial units.【F:src/app.js†L663-L677】
+  - Determinism: Deterministic progression given consistent `dt` inputs.【F:src/app.js†L663-L677】
+  - Keep / change / delete: Keep; encapsulates timer thresholds separate from the render loop.【F:src/app.js†L663-L677】【F:src/app.js†L1106-L1124】
+  - Confidence / assumptions: High confidence; assumes `dt` originates from the renderer loop and phases start with `timer = 0`.【F:src/render.js†L2103-L2127】【F:src/app.js†L644-L677】
+
 - `goToAttract`
+  - Purpose: Switches the application into attract mode so the idle video can play.【F:src/app.js†L682-L684】
+  - Inputs: None.【F:src/app.js†L682-L684】
+  - Outputs: No return.【F:src/app.js†L682-L684】
+  - Side effects: Calls `setMode('attract')`, which updates `state.mode` and triggers a menu redraw.【F:src/app.js†L220-L235】【F:src/app.js†L682-L684】
+  - Shared state touched and where it’s used: Indirectly mutates mode state; invoked from race-complete flow, idle timeout logic, and attract key handler to centralize the transition.【F:src/app.js†L659-L1121】
+  - Dependencies: Uses `setMode`; no other helpers.【F:src/app.js†L220-L235】【F:src/app.js†L682-L684】
+  - Edge cases handled or missed: Relies on `setMode` to ignore redundant transitions and reset race-complete state as needed.【F:src/app.js†L220-L235】【F:src/app.js†L682-L684】
+  - Performance: Constant-time mode switch.【F:src/app.js†L682-L684】
+  - Units / spaces: Operates on mode strings only.【F:src/app.js†L682-L684】
+  - Determinism: Deterministic state change given the same prior mode.【F:src/app.js†L682-L684】
+  - Keep / change / delete: Keep; clarifies intent at call sites and centralizes the attract transition.【F:src/app.js†L659-L1121】
+  - Confidence / assumptions: High confidence; assumes `setMode` handles any cleanup required when leaving other modes.【F:src/app.js†L220-L235】【F:src/app.js†L682-L684】
 - `toggleSnowSetting`
+  - Purpose: Flips the snow visual-effect toggle and refreshes the settings menu display.【F:src/app.js†L686-L689】
+  - Inputs: None; reads `state.settings.snowEnabled`.【F:src/app.js†L42-L65】【F:src/app.js†L686-L689】
+  - Outputs: No return.【F:src/app.js†L686-L689】
+  - Side effects: Inverts the boolean flag and calls `updateMenuLayer` so the menu reflects the new value.【F:src/app.js†L686-L689】
+  - Shared state touched and where it’s used: Mutates the settings slice; invoked by the settings menu activation handler and arrow key handler when the snow option is focused.【F:src/app.js†L791-L936】
+  - Dependencies: Relies on `updateMenuLayer`; gameplay systems read the flag through `App.isSnowEnabled()`.【F:src/app.js†L686-L689】【F:src/app.js†L1140-L1146】
+  - Edge cases handled or missed: Simply toggles the flag; persistence across sessions is not implemented.【F:src/app.js†L686-L689】
+  - Performance: Constant-time flip executed on menu interaction only.【F:src/app.js†L686-L689】【F:src/app.js†L791-L936】
+  - Units / spaces: Boolean flag only.【F:src/app.js†L686-L689】
+  - Determinism: Deterministic toggle for each invocation.【F:src/app.js†L686-L689】
+  - Keep / change / delete: Keep; minimal helper keeps UI logic tidy.【F:src/app.js†L686-L689】【F:src/app.js†L791-L936】
+  - Confidence / assumptions: High confidence; assumes snow-enabled state is consumed elsewhere as a simple boolean.【F:src/app.js†L686-L689】【F:src/app.js†L1140-L1146】
+
 - `applyDebugModeSetting`
+  - Purpose: Pushes the debug-mode toggle from settings into the shared `Config.debug.mode` flag used by rendering diagnostics.【F:src/app.js†L691-L699】
+  - Inputs: None; reads `state.settings.debugEnabled` and the global `Config.debug` object.【F:src/app.js†L2-L5】【F:src/app.js†L42-L65】【F:src/app.js†L691-L699】
+  - Outputs: No return.【F:src/app.js†L691-L699】
+  - Side effects: Mutates `Config.debug.mode`, catching and logging any assignment failures.【F:src/app.js†L691-L699】
+  - Shared state touched and where it’s used: Reads settings state and writes to `Config.debug`, which other modules consult for debug rendering behavior.【F:src/app.js†L2-L5】【F:src/app.js†L691-L699】
+  - Dependencies: Depends on the global `Config` object and console logging for error reporting.【F:src/app.js†L2-L5】【F:src/app.js†L691-L699】
+  - Edge cases handled or missed: Verifies `Config.debug` is an object before writing and swallows exceptions; does not persist the flag beyond runtime.【F:src/app.js†L691-L699】
+  - Performance: Constant-time property assignment; called when debug toggles change or during init.【F:src/app.js†L691-L699】【F:src/app.js†L704-L705】【F:src/app.js†L1134-L1138】
+  - Units / spaces: Uses string modes `'fill'` or `'off'`.【F:src/app.js†L691-L699】
+  - Determinism: Same boolean setting yields the same mode string.【F:src/app.js†L691-L699】
+  - Keep / change / delete: Keep; isolates Config wiring from UI logic.【F:src/app.js†L691-L699】【F:src/app.js†L704-L705】
+  - Confidence / assumptions: High confidence; assumes `Config.debug` exists and other systems read `Config.debug.mode`.【F:src/app.js†L2-L5】【F:src/app.js†L691-L699】
+
 - `setDebugEnabled`
+  - Purpose: Updates the settings boolean for debug visuals and applies it to `Config.debug.mode`.【F:src/app.js†L702-L705】
+  - Inputs: `enabled` — truthy to enable debug mode, falsy to disable.【F:src/app.js†L702-L705】
+  - Outputs: No return.【F:src/app.js†L702-L705】
+  - Side effects: Sets `state.settings.debugEnabled` and calls `applyDebugModeSetting`.【F:src/app.js†L42-L65】【F:src/app.js†L702-L705】
+  - Shared state touched and where it’s used: Mutates the settings slice; consumed by `toggleDebugSetting` and initialization code to keep UI and Config in sync.【F:src/app.js†L702-L709】【F:src/app.js†L1134-L1138】
+  - Dependencies: Calls `applyDebugModeSetting`.【F:src/app.js†L702-L705】
+  - Edge cases handled or missed: Coerces the input to boolean; no persistence beyond memory.【F:src/app.js†L702-L705】
+  - Performance: Constant-time.【F:src/app.js†L702-L705】
+  - Units / spaces: Boolean flag only.【F:src/app.js†L702-L705】
+  - Determinism: Deterministic assignment for given input.【F:src/app.js†L702-L705】
+  - Keep / change / delete: Keep; single point for updating the debug flag and side effects.【F:src/app.js†L702-L705】
+  - Confidence / assumptions: High confidence; assumes `applyDebugModeSetting` handles Config integration safely.【F:src/app.js†L691-L705】
+
 - `toggleDebugSetting`
+  - Purpose: Inverts the debug-mode setting and refreshes the settings menu to reflect the new state.【F:src/app.js†L707-L709】
+  - Inputs: None; reads `state.settings.debugEnabled`.【F:src/app.js†L42-L65】【F:src/app.js†L707-L709】
+  - Outputs: No return.【F:src/app.js†L707-L709】
+  - Side effects: Calls `setDebugEnabled` with the negated flag and triggers `updateMenuLayer`.【F:src/app.js†L707-L709】
+  - Shared state touched and where it’s used: Mutates settings indirectly; invoked via keyboard shortcut `KeyB` and the settings menu when the debug option exists (currently only keyboard shortcut).【F:src/app.js†L707-L709】【F:src/app.js†L1042-L1050】
+  - Dependencies: Uses `setDebugEnabled` and `updateMenuLayer`.【F:src/app.js†L702-L709】
+  - Edge cases handled or missed: None beyond boolean flip; debug option is hidden from the settings menu UI today, so only the shortcut toggles it.【F:src/app.js†L707-L709】【F:src/app.js†L1042-L1050】
+  - Performance: Constant-time.【F:src/app.js†L707-L709】
+  - Units / spaces: Boolean flag only.【F:src/app.js†L707-L709】
+  - Determinism: Deterministic toggle.【F:src/app.js†L707-L709】
+  - Keep / change / delete: Keep; provides a dedicated helper for both shortcut and potential UI toggle reuse.【F:src/app.js†L707-L709】【F:src/app.js†L1042-L1050】
+  - Confidence / assumptions: High confidence; assumes the shortcut should always update the menu when not playing.【F:src/app.js†L707-L709】【F:src/app.js†L1042-L1050】
+
 - `resetGameplayInputs`
+  - Purpose: Clears gameplay input flags so no movement keys remain stuck when switching modes or finishing a race.【F:src/app.js†L712-L719】
+  - Inputs: None; uses `Gameplay.state.input` when available.【F:src/app.js†L2-L5】【F:src/app.js†L712-L719】
+  - Outputs: No return.【F:src/app.js†L712-L719】
+  - Side effects: Sets `left`, `right`, `up`, `down`, and `hop` flags to `false` if the gameplay input object exists.【F:src/app.js†L712-L719】
+  - Shared state touched and where it’s used: Mutates the gameplay module’s input state; called before starting a race, when pausing/quitting, and upon race finish to avoid lingering input.【F:src/app.js†L712-L765】【F:src/app.js†L1052-L1057】
+  - Dependencies: Requires the global `Gameplay` object to expose `state.input`.【F:src/app.js†L2-L5】【F:src/app.js†L712-L719】
+  - Edge cases handled or missed: Gracefully no-ops when gameplay state/input is missing; does not clear analog values beyond the tracked booleans.【F:src/app.js†L712-L719】
+  - Performance: Constant-time assignments; called on mode transitions rather than per frame.【F:src/app.js†L712-L765】
+  - Units / spaces: Boolean input flags only.【F:src/app.js†L712-L719】
+  - Determinism: Repeated calls set the same fields to `false`.【F:src/app.js†L712-L719】
+  - Keep / change / delete: Keep; centralizes input reset logic used across multiple flows.【F:src/app.js†L712-L765】【F:src/app.js†L1052-L1057】
+  - Confidence / assumptions: High confidence; assumes gameplay module exposes mutable input flags.【F:src/app.js†L2-L5】【F:src/app.js†L712-L719】
+
 - `startRace`
+  - Purpose: Applies the chosen vehicle, resets race-complete state, and hands control to gameplay to begin a new race session.【F:src/app.js†L722-L734】
+  - Inputs: `vehicleKey` — optional vehicle identifier (defaults to `state.selectedVehicleKey`).【F:src/app.js†L722-L734】
+  - Outputs: No return; kicks off asynchronous gameplay setup.【F:src/app.js†L722-L734】
+  - Side effects: Calls `applyVehicleSelection`, resets the race-complete state, switches mode to `'playing'`, clears gameplay inputs, and invokes `Gameplay.resetScene` followed by `Gameplay.startRaceSession({ laps: 1 })`, logging errors on failure.【F:src/app.js†L84-L734】
+  - Shared state touched and where it’s used: Mutates selection, race-complete, and mode state; used by vehicle selection confirmation and fallback flows to start gameplay.【F:src/app.js†L557-L734】【F:src/app.js†L577-L602】
+  - Dependencies: Relies on `applyVehicleSelection`, `resetRaceCompleteState`, `setMode`, `resetGameplayInputs`, and optional gameplay hooks (`resetScene`, `startRaceSession`).【F:src/app.js†L84-L734】
+  - Edge cases handled or missed: Works even when `Gameplay.resetScene` is absent (Promise resolves undefined); logs errors if scene reset fails; assumes one-lap races for now.【F:src/app.js†L722-L734】
+  - Performance: Bounded by gameplay scene reset/start; this function mostly orchestrates calls and runs only when starting a race.【F:src/app.js†L722-L734】
+  - Units / spaces: Uses lap count (integer) for race session; no other units.【F:src/app.js†L722-L734】
+  - Determinism: Deterministic sequencing given the same state, though gameplay reset/start may involve asynchronous behavior.【F:src/app.js†L722-L734】
+  - Keep / change / delete: Keep; central orchestration point for launching races.【F:src/app.js†L722-L734】
+  - Confidence / assumptions: High confidence; assumes gameplay module fulfills `resetScene` and `startRaceSession` contracts and handles their own errors after logging.【F:src/app.js†L722-L734】
 - `handleRaceFinish`
 - `showLeaderboard`
 - `showSettings`
