@@ -253,6 +253,18 @@
   - Keep / change / delete: Keep; simple guard that could be merged into menu setup if caching is refactored.
   - Confidence / assumptions: High confidence; assumes the menu markup is present before init runs.
 - `renderMainMenu`
+  - Purpose: Builds the main menu markup by delegating to the shared AppScreens template with the game title, tagline, and current option highlight so the menu panel can be redrawn in one call.【F:src/app.js†L251-L261】
+  - Inputs: Reads AppScreens.mainMenu (UI renderer; must be truthy), mainMenuOptions (static list of "Start Race", "Leaderboard", "Settings" entries), and state.mainMenuIndex (current highlight; expected 0–options.length-1).【F:src/app.js†L8-L12】【F:src/app.js†L251-L259】
+  - Outputs: Returns the HTML/string produced by AppScreens.mainMenu, which receives title, subtitle, options, and selectedIndex fields.【F:src/app.js†L251-L261】
+  - Side effects: None; pure read of state and globals, no DOM writes or state mutation.【F:src/app.js†L251-L261】
+  - Shared state & call sites: Reads state.mainMenuIndex initialized in state object and is invoked from updateMenuLayer when state.mode === 'menu'.【F:src/app.js†L42-L65】【F:src/app.js†L401-L404】
+  - Dependencies: Calls AppScreens.mainMenu and reuses escapeHtml helper passed as renderer utilities.【F:src/app.js†L251-L261】
+  - Edge cases: Returns an empty string when AppScreens.mainMenu is absent, but does not clamp out-of-range selectedIndex or null options.【F:src/app.js†L251-L259】
+  - Performance: Constant-time work allocating one object; only runs when updateMenuLayer refreshes the menu (mode changes or interactions).【F:src/app.js†L251-L261】【F:src/app.js†L391-L418】
+  - Units / spaces: Works with array indices for menu options; no timing or spatial units involved.【F:src/app.js†L251-L259】
+  - Determinism: Given the same state and AppScreens.mainMenu implementation it returns the same markup; no randomness or timers.【F:src/app.js†L251-L261】
+  - Keep / change / delete: Keep; thin wrapper keeps updateMenuLayer tidy and could be merged there only if menus are restructured.【F:src/app.js†L251-L261】【F:src/app.js†L401-L404】
+  - Confidence / assumptions: High confidence; assumes AppScreens.mainMenu synchronously returns a renderable string.【F:src/app.js†L251-L261】
 - `renderLeaderboard`
   - **Purpose**: Builds the leaderboard screen markup so players can see the top race times and any highlighted recent run.
   - **Inputs**: No arguments; reads `state.leaderboard.loading`, `error`, `entries`, and `highlightId` (highlight id may be null).
