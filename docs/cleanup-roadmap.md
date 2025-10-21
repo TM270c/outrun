@@ -279,6 +279,18 @@
   - **Keep / change / delete**: Keep; simplest tweak would be to share the top-ten limit as a named constant if reuse expands.
   - **Confidence / assumptions**: High confidence; assumes upstream code keeps `displayValue` current and entries sorted.
 - `renderSettings`
+  - Purpose: Builds the settings menu text so players see the snow toggle and the back option.
+  - Inputs: None directly; reads snowEnabled (expected boolean) and settingsMenuIndex (expected 0–1) from shared state when called.
+  - Outputs: Menu text returned by AppScreens.settingsMenu, or an empty string if that screen builder is missing.
+  - Side effects: None; it only reads shared values.
+  - Shared state touched and where it’s used: Reads state.settings.snowEnabled and state.settingsMenuIndex; invoked by updateMenuLayer at src/app.js:406.
+  - Dependencies: Uses AppScreens.settingsMenu and the local escapeHtml function to format labels.
+  - Edge cases handled or missed: Skips safely when AppScreens.settingsMenu is absent; does not guard against the settings object being missing or new menu options being added elsewhere.
+  - Performance: Constant-time creation of two menu entries; runs only when the menu layer refreshes.
+  - Units / spaces: No numeric units; all values are plain menu labels.
+  - Determinism: Same state values return the same markup; repeated calls do not change any data.
+  - Keep / change / delete: Keep; separation keeps each menu renderer focused, simplest alternative would be merging into a generic renderMenu function.
+  - Confidence / assumptions: High confidence; assumes the state always includes the snow flag and menu index.
 - `renderPauseMenu`
 - `renderVehicleSelect`
 - `renderAttract`
