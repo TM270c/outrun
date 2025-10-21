@@ -41,7 +41,7 @@ const track = {
 // Camera placement and smoothing while following the player.
 const camera = {
   fovDeg: 140,
-  height: 700,
+  height: 800,
   backSegments: 3,
   heightEase: 0.1,
 };
