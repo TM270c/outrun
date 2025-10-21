@@ -304,20 +304,19 @@
   - Determinism: Same inputs and state produce the same markup; repeated calls do not alter data.
   - Keep / change / delete: Keep; already minimal wrapper that could merge into a broader screen renderer during a larger refactor.
   - Confidence / assumptions: High confidence, assuming the global screen renderer keeps returning deterministic markup.
-- `renderVehicleSelect`
-  - `renderVehicleSelect`
-    - Purpose: Builds the vehicle selection screen model so the menu shows the current car choice with its name, description, and preview art.
-    - Inputs: Reads state.vehicleSelectIndex (any integer, wrapped to the option list) and vehicleOptions entries (array that may be empty).
-    - Outputs: HTML string from AppScreens.vehicleSelect with fields title, vehicleLabel, vehicleDescription, optionIndex, optionCount, previewSrc, previewAtlas.
-    - Side effects: None; only reads data and calls the renderer.
-    - Shared state & call sites: Reads state.vehicleSelectIndex; invoked by updateMenuLayer when mode equals "vehicleSelect" at src/app.js:410.
-    - Dependencies: AppScreens.vehicleSelect, clampIndex, normalizePreviewAtlas, resolveAssetUrlSafe, escapeHtml.
-    - Edge cases: Returns an empty string if the template is missing, wraps negative or oversized indexes, falls back to the first option or blanks when the list is empty, but does not handle DNF/DQ flags or malformed preview data beyond nulling it out.
-    - Performance: Constant work per call; runs when the menu layer rerenders after mode or selection changes.
-    - Units / spaces: optionIndex is zero-based, optionCount is the total options, previewAtlas frame duration is measured in seconds for the sprite.
-    - Determinism: Same state and options yield the same HTML and no persistent changes.
-    - Keep / change / delete: Keep; simplest alternative is inlining the AppScreens call inside updateMenuLayer.
-    - Confidence / assumptions: High confidence; assumes AppScreens.vehicleSelect returns a string and the vehicle option list stays small.
+-`renderVehicleSelect`
+  - Purpose: Builds the vehicle selection screen model so the menu shows the current carchoice with its name, description, and preview art.
+  - Inputs: Reads state.vehicleSelectIndex (any integer, wrapped to the option list) andvehicleOptions entries (array that may be empty).
+  - Outputs: HTML string from AppScreens.vehicleSelect with fields title, vehicleLabel,vehicleDescription, optionIndex, optionCount, previewSrc, previewAtlas.
+  - Side effects: None; only reads data and calls the renderer.
+  - Shared state & call sites: Reads state.vehicleSelectIndex; invoked by updateMenuLayerwhen mode equals "vehicleSelect" at src/app.js:410.
+  - Dependencies: AppScreens.vehicleSelect, clampIndex, normalizePreviewAtlas,resolveAssetUrlSafe, escapeHtml.
+  - Edge cases: Returns an empty string if the template is missing, wraps negative oroversized indexes, falls back to the first option or blanks when the list is empty, butdoes not handle DNF/DQ flags or malformed preview data beyond nulling it out.
+  - Performance: Constant work per call; runs when the menu layer rerenders after mode orselection changes.
+  - Units / spaces: optionIndex is zero-based, optionCount is the total options, previewAtlasframe duration is measured in seconds for the sprite.
+  - Determinism: Same state and options yield the same HTML and no persistent changes.
+  - Keep / change / delete: Keep; simplest alternative is inlining the AppScreens call insideupdateMenuLayer.
+  - Confidence / assumptions: High confidence; assumes AppScreens.vehicleSelect returns astring and the vehicle option list stays small.
 - `renderAttract`
 - `renderRaceComplete`
 - `startAttractPlayback`
