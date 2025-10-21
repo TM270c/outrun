@@ -240,6 +240,18 @@
   - **Confidence / assumptions**: High confidence; assumes `state.leaderboard` exists with initialized `entries` and `localEntries` arrays and that sorting stays consistent.
 - `setMode`
 - `ensureDom`
+  - Purpose: Verifies the menu layer elements exist on the page and saves quick references so later menu updates do not crash.
+  - Inputs: Document (current web page; must contain an element with id appMenuLayer); state.dom.menuLayer and state.dom.menuPanel (may be empty on first run).
+  - Outputs: Returns nothing; fills state.dom.menuLayer and state.dom.menuPanel with the found elements.
+  - Side effects: Throws errors if elements are missing; writes the cached elements into shared state.
+  - Shared state touched and where it’s used: Updates state.dom.menuLayer/menuPanel defined at src/app.js:237-248; invoked at src/app.js:392 and src/app.js:1128 before menu rendering and app init.
+  - Dependencies: Uses the browser’s built-in element lookup helpers.
+  - Edge cases handled or missed: Stops early when elements already saved; throws if elements are absent; does not handle the elements being replaced later.
+  - Performance: Two element searches the first time it runs; afterwards the early return avoids extra work.
+  - Units / spaces: Works with web page elements only; no numeric units involved.
+  - Determinism: Given the same page structure it will always cache the same nodes; reruns do not change anything once stored.
+  - Keep / change / delete: Keep; simple guard that could be merged into menu setup if caching is refactored.
+  - Confidence / assumptions: High confidence; assumes the menu markup is present before init runs.
 - `renderMainMenu`
 - `renderLeaderboard`
 - `renderSettings`
