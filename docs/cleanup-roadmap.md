@@ -81,6 +81,19 @@
 - `formatTimeMs`
 - `createLeaderboardEntry`
 - `recomputeLeaderboardRanks`
+  - **Purpose**: Walks the current leaderboard list and stamps each non-empty entry with its 1-based place so the menu can show accurate ranks after sorting or CSV import.
+  - **Inputs**: `entries` array (defaults to `state.leaderboard.entries`); expects objects shaped like `createLeaderboardEntry`; ignores falsy slots.
+  - **Outputs**: None returned; updates each entry's `rank` property in place.
+  - **Side effects**: Mutates the provided entries; when called with the default, writes directly into shared leaderboard state.
+  - **Shared state & call sites**: Touches `state.leaderboard.entries`; invoked after sorting in `src/app.js:203` and after CSV parsing in `src/app.js:863`.
+  - **Dependencies**: No subordinate calls.
+  - **Edge cases**: Skips holes/nulls but still leaves prior rank on those slots; does not adjust for tied scores beyond list order.
+  - **Performance**: Linear pass over the array whenever leaderboard data changes; trivial cost compared with sorting/loading frequency.
+  - **Units / spaces**: Ranks are simple 1-based integers.
+  - **Determinism**: Deterministic for a fixed input order; repeating without changes is idempotent.
+  - **Keep / change / delete**: Keep; could fold into `sortLeaderboardEntries` but shared reuse by CSV import makes the helper worthwhile.
+  - **Confidence / assumptions**: High confidence; assumes callers already sorted entries and that sparse arrays are rare.
+  - **Notes**: Reviewer summary: "looks good, no notes, likely no need to fold"; I concur and would only revisit consolidation if future refactors merge leaderboard sorting and ranking into a single pass, so keep monitoring but no action required now.
 - `sortLeaderboardEntries`
 - `findLeaderboardEntryIndexById`
 - `addLeaderboardEntry`
