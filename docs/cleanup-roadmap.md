@@ -200,6 +200,18 @@
   - **Confidence / assumptions**: High confidence; assumes entries always provide numeric `score` and uppercase `name`.
   - **Notes**: Reviewer: "Alphabetical ordering on equal scores feels wrong; should favor newer runs so the recent score rises above." Response: Capture a precise play timestamp on each entry and update the comparator to sort by score then newest-first, keeping name as a final fallback so expectations and ranking stay aligned.
 - `findLeaderboardEntryIndexById`
+  - Purpose: Finds where a saved leaderboard entry sits in the current list so menus can highlight the right racer.
+  - Inputs: id (stored entry identifier, usually created when adding to the leaderboard; must be provided).
+  - Outputs: Returns the zero-based position in the leaderboard list, or -1 when the id is missing or not found.
+  - Side effects: None; only reads shared data.
+  - Shared state & call sites: Reads state.leaderboard.entries array sorted in src/app.js:199-205 and appended in src/app.js:212-215; defined in src/app.js:206-210.
+  - Dependencies: Uses the built-in findIndex helper on arrays; no other modules.
+  - Edge cases: Skips falsy ids and empty slots but does not detect duplicate ids or symbols that no longer exist.
+  - Performance: Linear scan of the current entries list; called only when highlight lookup is needed.
+  - Units / spaces: Works in array positions; no time or spatial units.
+  - Determinism: Same id and state yield the same index; repeated calls do not change data.
+  - Keep / change / delete: Keep; lightweight helper that could be folded into leaderboard lookup code if refactored.
+  - Confidence / assumptions: High confidence, assuming entries retain their id values.
 - `addLeaderboardEntry`
 - `setMode`
 - `ensureDom`
