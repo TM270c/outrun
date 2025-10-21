@@ -500,4 +500,6 @@
 - Cache expensive calculations (segment projections, easing curves, texture lookups) so we do them once per update.
 - Limit DOM work by batching menu updates and making sure network requests (like leaderboards) run asynchronously.
 - Watch for code that creates lots of short-lived objects and switch to in-place updates where possible.
-- Future change: add a persistence step that writes new leaderboard scores back into `data/leaderboard.csv` so race results stay tracked after reloads.
+
+### 4.4 Future Changes
+- Add a persistence step that writes new leaderboard scores back into `data/leaderboard.csv` so every finished race stays tracked after reloads.
