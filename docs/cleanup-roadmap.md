@@ -46,6 +46,19 @@
 
 ### 3.1 Application & Menu Flow (`src/app.js`)
 - `createInitialRaceCompleteState`
+  - **Purpose**: Factory for a blank race-complete screen state so menus can start fresh when a race ends or restarts.
+  - **Inputs**: None.
+  - **Outputs**: Object with `active`, `timeMs`, `letters`, `confirmed`, `currentIndex`, `phase`, `timer`, `entryId`, `playerName`, `playerRank`.
+  - **Side effects**: None (pure data builder).
+  - **Shared state & call sites**: Assigned to `state.raceComplete` in `src/app.js:58`, `85`, `739`.
+  - **Dependencies**: No calls.
+  - **Edge cases**: Provides safe defaults (zero time, placeholder name); does not validate external inputs.
+  - **Performance**: Constant-time object creation when menus reset or a race finishes.
+  - **Units / spaces**: `timeMs` in milliseconds.
+  - **Determinism**: Yes—always returns identical data.
+  - **Keep / change / delete**: Keep; simplest alternative is inlining the literal where used.
+  - **Confidence / assumptions**: High confidence; assumes `letters` of `'AAA'` is intended default.
+  - **Notes**: Possible reductions: none spotted; placement in `src/app.js` matches usage via `resetRaceCompleteState`; consider renaming to shorter `inputNameState` for clarity.
 - `resetRaceCompleteState`
 - `now`
 - `markInteraction`
