@@ -2483,31 +2483,343 @@
 
 ### 3.7 Rendering & Camera Systems (`src/render.js`)
 - `areTexturesEnabled`
+  - Purpose: Switches rendering between textured and debug-solid output depending on the global debug configuration so tests and wireframe modes can override the usual art pipeline.【F:src/render.js†L8-L67】
+  - Inputs: None; reads `Config.debug.mode` and `Config.debug.textures` flags where `mode` is expected to be `'off'` during normal play and `textures` can force-disable artwork.【F:src/render.js†L8-L67】
+  - Outputs: Boolean indicating whether textures should be sampled (`true`) or replaced with debug colors (`false`).【F:src/render.js†L61-L67】
+  - Side effects: None; pure read from config.【F:src/render.js†L61-L67】
+  - Shared state touched and where it’s used: Reads the shared `debug` config object; consulted by `computePlayerSpriteSamples` and each major draw routine before choosing textured vs. solid rendering (`src/render.js:202-205`, `748-930`, `1551-1678`).【F:src/render.js†L202-L205】【F:src/render.js†L748-L930】【F:src/render.js†L1551-L1678】
+  - Dependencies: None beyond configuration constants.【F:src/render.js†L8-L67】
+  - Edge cases handled or missed: Treats any debug mode other than `'off'` or an explicit `debug.textures === false` as a hard disable for textures; does not expose per-feature toggles.【F:src/render.js†L61-L67】
+  - Performance: Constant-time check used in multiple per-frame paths but trivial in cost.【F:src/render.js†L61-L67】
+  - Units / spaces: Boolean flag only.【F:src/render.js†L61-L67】
+  - Determinism: Deterministic for a fixed debug configuration.【F:src/render.js†L61-L67】
+  - Keep / change / delete: Keep; concise helper centralizes the debug toggle—alternative would be repeating the condition in every caller.【F:src/render.js†L202-L205】【F:src/render.js†L748-L930】
+  - Confidence / assumptions: High confidence; assumes the config globals are initialized before rendering begins.【F:src/render.js†L8-L67】
 - `randomColorFor`
+  - Purpose: Provides deterministic fallback RGBA colors per identifier so debug rendering remains readable when textures are disabled.【F:src/render.js†L84-L140】
+  - Inputs: `key` (string or falsy) naming the element; falsy keys map to `'default'`. Any string is accepted.【F:src/render.js†L135-L138】
+  - Outputs: Cached four-component color array with components in `[0,1]`.【F:src/render.js†L133-L139】
+  - Side effects: Lazily seeds and populates a `Map` cache keyed by identifier; subsequent calls reuse stored arrays.【F:src/render.js†L84-L139】
+  - Shared state touched and where it’s used: Uses a closure-local cache; invoked by numerous draw helpers to tint roads, cliffs, rails, billboards, boost zones, and the player shadow when textures are unavailable (`src/render.js:752-1766`).【F:src/render.js†L752-L1766】
+  - Dependencies: Calls the inner `makeColor` helper, which itself draws random numbers from `mulberry32` and clamps HSV components.【F:src/render.js†L84-L139】【F:src/render.js†L473-L500】
+  - Edge cases handled or missed: Handles unknown keys by generating a fresh color; no eviction policy so cache grows with unique keys.【F:src/render.js†L135-L139】
+  - Performance: Constant-time lookup/generation with light math; only exercised when debug solid colors are needed.【F:src/render.js†L84-L139】
+  - Units / spaces: Colors expressed in normalized RGBA.【F:src/render.js†L133-L139】
+  - Determinism: Deterministic for a given key thanks to the seeded PRNG and cached results.【F:src/render.js†L84-L139】
+  - Keep / change / delete: Keep; avoids duplicating seeded random color logic—alternative would be a static palette table.【F:src/render.js†L84-L139】
+  - Confidence / assumptions: High confidence; assumes `mulberry32` remains stable for reproducible hues.【F:src/render.js†L473-L500】
 - `makeColor`
+  - Purpose: Internal helper within `randomColorFor` that converts seeded random HSV samples into a normalized RGBA array for debug fills.【F:src/render.js†L87-L134】
+  - Inputs: None directly; pulls random values from the closure-scoped PRNG and clamps them into valid hue/saturation/value ranges.【F:src/render.js†L87-L133】
+  - Outputs: Array `[r,g,b,1]` representing the generated debug color.【F:src/render.js†L133-L134】
+  - Side effects: None beyond returning a new array; mutation occurs when `randomColorFor` stores the result.【F:src/render.js†L87-L139】
+  - Shared state touched and where it’s used: Only called from `randomColorFor`; no external call sites.【F:src/render.js†L84-L139】
+  - Dependencies: Uses `clamp` and the closure PRNG `rng` seeded via `mulberry32`.【F:src/render.js†L87-L101】【F:src/render.js†L473-L500】
+  - Edge cases handled or missed: Wraps hue into six sectors and defaults alpha to `1`; does not attempt gamma correction or pastel palettes.【F:src/render.js†L87-L134】
+  - Performance: Constant arithmetic executed once per uncached key.【F:src/render.js†L87-L134】
+  - Units / spaces: Outputs linear RGBA components in `[0,1]`.【F:src/render.js†L133-L134】
+  - Determinism: Deterministic because it consumes a deterministic RNG sequence.【F:src/render.js†L87-L134】
+  - Keep / change / delete: Keep; scoped helper keeps HSV→RGB math localized—alternative is to inline the conversion inside `randomColorFor`.【F:src/render.js†L84-L139】
+  - Confidence / assumptions: High confidence; assumes seeded RNG coverage is adequate for visually distinct hues.【F:src/render.js†L87-L134】
 - `applyDeadzone`
+  - Purpose: Normalizes analog-style inputs by removing a configurable deadzone so minor noise does not influence sprite steering or tilt.【F:src/render.js†L142-L151】
+  - Inputs: `value` (float typically in `[-1,1]`) and optional `deadzone` (0–0.99). Non-finite inputs are tolerated but clamped.【F:src/render.js†L142-L150】
+  - Outputs: Adjusted, clamped value within `[-1,1]` after deadzone removal.【F:src/render.js†L146-L150】
+  - Side effects: None.【F:src/render.js†L142-L151】
+  - Shared state touched and where it’s used: Pure helper used when deriving player sprite steering and height blends in `computePlayerSpriteSamples` (`src/render.js:241-253`).【F:src/render.js†L241-L253】
+  - Dependencies: Depends on `clamp` for bounding values.【F:src/render.js†L150-L150】
+  - Edge cases handled or missed: Caps deadzone to `<1`, avoids division by zero, and returns zero when the adjusted range collapses.【F:src/render.js†L143-L149】
+  - Performance: Constant-time arithmetic invoked each frame for the player sprite only.【F:src/render.js†L142-L151】【F:src/render.js†L241-L253】
+  - Units / spaces: Dimensionless normalized input values.【F:src/render.js†L142-L151】
+  - Determinism: Deterministic for given inputs.【F:src/render.js†L142-L151】
+  - Keep / change / delete: Keep; shared helper prevents repeating clamping math—alternative would be inline logic per call site.【F:src/render.js†L241-L253】
+  - Confidence / assumptions: High confidence; assumes callers pass reasonable normalized inputs.【F:src/render.js†L241-L253】
 - `smoothTowards`
+  - Purpose: Applies critically damped smoothing toward a target using an exponential decay constant so sprite pose changes ease instead of snapping.【F:src/render.js†L153-L159】
+  - Inputs: `current`, `target` (numbers), `dt` (seconds, >0), `timeConstant` (seconds, >0). Non-positive or non-finite values cause immediate target snaps.【F:src/render.js†L153-L158】
+  - Outputs: New smoothed value between `current` and `target`.【F:src/render.js†L156-L158】
+  - Side effects: None.【F:src/render.js†L153-L159】
+  - Shared state touched and where it’s used: Used by `computePlayerSpriteSamples` to ease the player sprite’s steer and height blend factors over time (`src/render.js:260-271`).【F:src/render.js†L260-L271】
+  - Dependencies: Uses `Math.exp` and `clamp` for stability.【F:src/render.js†L156-L158】
+  - Edge cases handled or missed: Early-outs when the time constant or `dt` are invalid; doesn’t guard against extremely large `dt` beyond exponential behavior.【F:src/render.js†L153-L158】
+  - Performance: Constant-time math executed twice per frame for the player sprite.【F:src/render.js†L153-L158】【F:src/render.js†L260-L271】
+  - Units / spaces: Inputs and outputs share the caller’s unit (normalized pose values). Time constant and `dt` measured in seconds.【F:src/render.js†L153-L158】
+  - Determinism: Deterministic for given inputs.【F:src/render.js†L153-L159】
+  - Keep / change / delete: Keep; compact smoothing helper avoids repeated exponential logic.【F:src/render.js†L260-L271】
+  - Confidence / assumptions: High confidence; assumes frame `dt` remains small for accurate smoothing.【F:src/render.js†L260-L271】
 - `atlasUvFromRowCol`
+  - Purpose: Converts atlas grid coordinates into normalized UV corners so sprites sample the correct tile during rendering.【F:src/render.js†L161-L170】
+  - Inputs: `row`, `col`, `columns`, `rows` (integers ≥1). Non-integer inputs are floored and clamped.【F:src/render.js†L161-L169】
+  - Outputs: Object containing four UV pairs (`u1`…`v4`) defining the tile quadrilateral.【F:src/render.js†L166-L170】
+  - Side effects: None.【F:src/render.js†L161-L170】
+  - Shared state touched and where it’s used: Used by player sprite sampling and cliff rendering to derive per-frame UVs (`src/render.js:187-188`, `1717-1719`).【F:src/render.js†L187-L188】【F:src/render.js†L1717-L1719】
+  - Dependencies: Requires `clamp` helper from `MathUtil`.【F:src/render.js†L164-L169】
+  - Edge cases handled or missed: Ensures at least one column/row; does not handle atlases with padding or rotation.【F:src/render.js†L161-L170】
+  - Performance: Constant-time arithmetic; invoked for each sampled tile.【F:src/render.js†L161-L170】
+  - Units / spaces: Outputs normalized UV coordinates in `[0,1]`.【F:src/render.js†L166-L170】
+  - Determinism: Deterministic for given indices.【F:src/render.js†L161-L170】
+  - Keep / change / delete: Keep; reusable helper avoids copy/pasted UV math.【F:src/render.js†L161-L170】
+  - Confidence / assumptions: High confidence; assumes atlases form uniform grids.【F:src/render.js†L161-L170】
 - `computePlayerAtlasSamples`
+  - Purpose: Maps smoothed steering and height values onto discrete atlas tiles for the player sprite, currently returning a single weighted sample.【F:src/render.js†L173-L188】
+  - Inputs: `steerValue`, `heightValue` (normalized -1..1), `columns`, `rows` (integers ≥1).【F:src/render.js†L173-L188】
+  - Outputs: Array of sample descriptors `{ col, row, weight, uv }` for use by sprite blending (currently length 1).【F:src/render.js†L183-L188】
+  - Side effects: None.【F:src/render.js†L173-L189】
+  - Shared state touched and where it’s used: Called by `computePlayerSpriteSamples` to translate pose into atlas coordinates (`src/render.js:279`).【F:src/render.js†L279-L288】
+  - Dependencies: Uses `atlasUvFromRowCol` for UV math.【F:src/render.js†L187-L188】
+  - Edge cases handled or missed: Clamps values into range and supports degenerate 1×1 atlases; does not yet support multi-sample blending beyond single tile.【F:src/render.js†L173-L188】
+  - Performance: Constant-time; invoked once per frame for the player sprite.【F:src/render.js†L173-L189】
+  - Units / spaces: Works in normalized pose space and returns UV coordinates.【F:src/render.js†L173-L188】
+  - Determinism: Deterministic for identical inputs.【F:src/render.js†L173-L188】
+  - Keep / change / delete: Keep; structured return enables future multi-tile blending without refactoring.【F:src/render.js†L173-L189】
+  - Confidence / assumptions: High confidence; assumes atlas metadata is accurate.【F:src/render.js†L173-L188】
 - `computePlayerSpriteSamples`
+  - Purpose: Produces the animated player sprite description (texture, pose blend values, UV samples) based on physics, input, and terrain so the renderer can draw the bike/car avatar.【F:src/render.js†L191-L289】
+  - Inputs: `frame` (current frame payload with `phys` data) and `meta` (sprite metadata providing `tex` and atlas info).【F:src/render.js†L191-L215】
+  - Outputs: Object `{ texture, columns, rows, steer, height, samples }` or `null` when textures or metadata are unavailable.【F:src/render.js†L207-L288】
+  - Side effects: Updates `playerSpriteBlendState` (steer, height, timestamps) to smooth across frames.【F:src/render.js†L193-L275】
+  - Shared state touched and where it’s used: Reads global `state` for physics, inputs, and drift state; called during player enqueue when building the draw list (`src/render.js:1353-1365`).【F:src/render.js†L191-L288】【F:src/render.js†L1353-L1365】
+  - Dependencies: Uses `areTexturesEnabled`, `applyDeadzone`, `smoothTowards`, `segmentAtS`, `groundProfileAt`, and `computePlayerAtlasSamples`.【F:src/render.js†L202-L279】
+  - Edge cases handled or missed: Bails out when textures disabled, metadata missing, texture loader returns null, or slope data unavailable; clamps steering for non-drift states; doesn’t attempt fallback sprites when textures missing.【F:src/render.js†L197-L278】
+  - Performance: Runs once per frame with modest math and a few helper calls; dominant cost is reading world data.【F:src/render.js†L191-L288】
+  - Units / spaces: Uses world-speed (`phys.vtan`), normalized steering/height values, segment curvature, and atlas coordinates.【F:src/render.js†L217-L279】
+  - Determinism: Deterministic given identical physics/input history (relies on monotonic `state.phys.t`).【F:src/render.js†L191-L289】
+  - Keep / change / delete: Keep; encapsulates complex blending logic—alternative would be scattering pose math through the render loop.【F:src/render.js†L1353-L1365】
+  - Confidence / assumptions: Medium confidence; assumes metadata supplies `tex()` and atlas parameters and that physics state stays finite.【F:src/render.js†L207-L215】
 - `createPerfTracker`
+  - Purpose: Builds the instrumentation object that records per-frame rendering statistics for debugging overlays and performance monitoring.【F:src/render.js†L291-L412】
+  - Inputs: None directly; captures helper `makeFrameStats` within closure.【F:src/render.js†L291-L412】
+  - Outputs: Tracker object exposing methods like `beginFrame`, `registerSprite`, and `getLastFrameStats`.【F:src/render.js†L318-L409】
+  - Side effects: Instantiates mutable `stats` objects that persist across frames.【F:src/render.js†L310-L317】
+  - Shared state touched and where it’s used: Assigned to the module-global `perf` and used throughout the renderer for instrumentation (`src/render.js:414`, `1078-2118`).【F:src/render.js†L414-L415】【F:src/render.js†L1078-L2118】
+  - Dependencies: Relies on local helper `makeFrameStats`; methods call through to renderer wrappers and count functions.【F:src/render.js†L291-L409】
+  - Edge cases handled or missed: Initializes FPS/frame-time smoothing when valid `dt` values arrive; does not guard against external mutation of returned stats object.【F:src/render.js†L320-L335】
+  - Performance: Lightweight bookkeeping executed once per frame plus per-draw invocations.【F:src/render.js†L320-L409】
+  - Units / spaces: Tracks counts and milliseconds.【F:src/render.js†L320-L335】【F:src/render.js†L364-L407】
+  - Determinism: Deterministic aside from floating-point smoothing dependent on real frame times.【F:src/render.js†L320-L335】
+  - Keep / change / delete: Keep; centralizes perf tracking so overlays can consume consistent metrics.【F:src/render.js†L1972-L1998】
+  - Confidence / assumptions: High confidence; assumes renderer methods exist to wrap.【F:src/render.js†L336-L354】
 - `makeFrameStats`
+  - Purpose: Factory returning a blank statistics object for the perf tracker so per-frame counters start from zero.【F:src/render.js†L291-L309】
+  - Inputs: None.【F:src/render.js†L291-L309】
+  - Outputs: Object with draw counters, sprite tallies, physics step counts, etc.【F:src/render.js†L292-L308】
+  - Side effects: None; pure object creation.【F:src/render.js†L292-L309】
+  - Shared state touched and where it’s used: Used exclusively by `createPerfTracker` to reset `stats.current` and initialize `stats.last`.【F:src/render.js†L291-L335】
+  - Dependencies: None.【F:src/render.js†L292-L309】
+  - Edge cases handled or missed: Initializes every tracked field to zero; no dynamic sizing.【F:src/render.js†L292-L309】
+  - Performance: Constant-time allocation on frame reset.【F:src/render.js†L320-L334】
+  - Units / spaces: Numeric counts and milliseconds placeholders.【F:src/render.js†L292-L309】
+  - Determinism: Deterministic object literal.【F:src/render.js†L292-L309】
+  - Keep / change / delete: Keep; keeps tracker reset logic concise.【F:src/render.js†L320-L334】
+  - Confidence / assumptions: High confidence; assumes tracked counters align with overlay expectations.【F:src/render.js†L1972-L1998】
 - `beginFrame`
+  - Purpose: Resets current perf counters and updates smoothed FPS/frame-time metrics at the start of each frame.【F:src/render.js†L318-L333】
+  - Inputs: `dt` (seconds since last frame, should be positive).【F:src/render.js†L320-L329】
+  - Outputs: None; mutates tracker state.【F:src/render.js†L320-L333】
+  - Side effects: Clears `stats.current`, resets solid-depth stack, and updates `stats.fps`/`stats.frameTimeMs` using exponential smoothing.【F:src/render.js†L320-L330】
+  - Shared state touched and where it’s used: Called from the main loop before rendering to prep instrumentation (`src/render.js:2110-2118`).【F:src/render.js†L2110-L2118】
+  - Dependencies: Relies on `makeFrameStats` and numeric checks.【F:src/render.js†L318-L333】
+  - Edge cases handled or missed: Ignores invalid or non-positive `dt` values, leaving smoothed metrics unchanged.【F:src/render.js†L322-L329】
+  - Performance: Constant-time housekeeping per frame.【F:src/render.js†L320-L333】
+  - Units / spaces: `dt` in seconds; `frameTimeMs` stored in milliseconds.【F:src/render.js†L320-L329】
+  - Determinism: Depends on measured `dt`; otherwise deterministic.【F:src/render.js†L320-L333】
+  - Keep / change / delete: Keep; essential for accurate counters—alternative would be manual resets in the main loop.【F:src/render.js†L2110-L2118】
+  - Confidence / assumptions: High confidence; assumes `dt` from the main loop is finite.【F:src/render.js†L2110-L2118】
 - `endFrame`
+  - Purpose: Captures the finished frame’s counters into `stats.last` so overlays can display the most recent metrics.【F:src/render.js†L333-L335】
+  - Inputs: None.【F:src/render.js†L333-L335】
+  - Outputs: None; copies state.【F:src/render.js†L333-L335】
+  - Side effects: Spreads `stats.current` into `stats.last` for stable reporting.【F:src/render.js†L333-L335】
+  - Shared state touched and where it’s used: Called after each frame’s draw completes before the loop yields (`src/render.js:2121-2124`).【F:src/render.js†L2121-L2124】
+  - Dependencies: None.【F:src/render.js†L333-L335】
+  - Edge cases handled or missed: None; shallow copy suffices because counters are primitives.【F:src/render.js†L333-L335】
+  - Performance: Constant-time object spread.【F:src/render.js†L333-L335】
+  - Units / spaces: N/A beyond recorded counters.【F:src/render.js†L333-L335】
+  - Determinism: Deterministic.【F:src/render.js†L333-L335】
+  - Keep / change / delete: Keep; provides stable snapshot for overlays.【F:src/render.js†L1972-L1998】
+  - Confidence / assumptions: High confidence; assumes `stats.current` holds the current frame counts.【F:src/render.js†L333-L335】
 - `wrapRenderer`
+  - Purpose: Monkey-patches the GL renderer’s quad draw methods so perf tracking counts solids/textured draws automatically.【F:src/render.js†L336-L354】
+  - Inputs: `renderer` (RenderGL instance). Must not be previously wrapped.【F:src/render.js†L336-L344】
+  - Outputs: None; mutates the renderer object in place.【F:src/render.js†L336-L354】
+  - Side effects: Replaces `drawQuadTextured`/`drawQuadSolid` with wrappers that increment counters and manage the solid-depth stack, tagging the renderer as wrapped via `__perfWrapped`.【F:src/render.js†L336-L354】
+  - Shared state touched and where it’s used: Called once when bootstrapping the renderer to enable perf instrumentation (`src/render.js:2079-2083`).【F:src/render.js†L2079-L2083】
+  - Dependencies: Relies on tracker methods (`isSolidActive`, `countDrawCall`, `markSolidStart`, `markSolidEnd`).【F:src/render.js†L340-L351】
+  - Edge cases handled or missed: No-ops when renderer missing or already wrapped; does not unwrap if renderer methods change later.【F:src/render.js†L336-L354】
+  - Performance: Adds minimal overhead per draw call via wrapper closures.【F:src/render.js†L340-L351】
+  - Units / spaces: N/A.【F:src/render.js†L336-L354】
+  - Determinism: Deterministic instrumentation; does not alter draw order.【F:src/render.js†L336-L354】
+  - Keep / change / delete: Keep; provides centralized instrumentation—alternative is to sprinkle counter increments around call sites.【F:src/render.js†L2079-L2083】
+  - Confidence / assumptions: High confidence; assumes renderer exposes `drawQuadTextured`/`drawQuadSolid` methods.【F:src/render.js†L336-L347】
 - `markSolidStart`
+  - Purpose: Tracks entry into solid-draw sections so textured wrappers know when they should count draws as solid.【F:src/render.js†L345-L359】
+  - Inputs: None.【F:src/render.js†L355-L359】
+  - Outputs: None; increments counter.【F:src/render.js†L355-L359】
+  - Side effects: Increments `stats.solidDepth`, effectively acting as a stack depth indicator.【F:src/render.js†L355-L359】
+  - Shared state touched and where it’s used: Invoked by the `drawQuadSolid` wrapper when perf instrumentation surrounds solid draws (`src/render.js:346-351`).【F:src/render.js†L345-L351】
+  - Dependencies: None.【F:src/render.js†L355-L359】
+  - Edge cases handled or missed: None beyond ensuring depth increments by one; no overflow guard (depth expected small).【F:src/render.js†L355-L359】
+  - Performance: Constant increment per solid draw.【F:src/render.js†L355-L359】
+  - Units / spaces: Counter depth only.【F:src/render.js†L355-L359】
+  - Determinism: Deterministic.【F:src/render.js†L355-L359】
+  - Keep / change / delete: Keep; required for nested solid draws to be tracked accurately.【F:src/render.js†L345-L351】
+  - Confidence / assumptions: High confidence; assumes wrappers call start/end in pairs.【F:src/render.js†L345-L351】
 - `markSolidEnd`
+  - Purpose: Balances `markSolidStart` by decrementing the solid-depth counter after a solid quad draw completes.【F:src/render.js†L346-L359】
+  - Inputs: None.【F:src/render.js†L358-L359】
+  - Outputs: None.【F:src/render.js†L358-L359】
+  - Side effects: Decrements depth but never below zero to recover from mismatched calls.【F:src/render.js†L358-L359】
+  - Shared state touched and where it’s used: Called in a `finally` block inside the solid draw wrapper to guarantee balance (`src/render.js:345-351`).【F:src/render.js†L345-L351】
+  - Dependencies: None.【F:src/render.js†L358-L359】
+  - Edge cases handled or missed: Clamps negative depth to zero; doesn’t warn on imbalance.【F:src/render.js†L358-L359】
+  - Performance: Constant decrement per solid draw.【F:src/render.js†L358-L359】
+  - Units / spaces: Counter depth only.【F:src/render.js†L358-L359】
+  - Determinism: Deterministic.【F:src/render.js†L358-L359】
+  - Keep / change / delete: Keep; ensures instrumentation accuracy.【F:src/render.js†L345-L351】
+  - Confidence / assumptions: High confidence; assumes wrappers always invoke it via `finally`.【F:src/render.js†L345-L351】
 - `isSolidActive`
+  - Purpose: Reports whether the perf tracker is currently inside a solid draw block so textured draw wrappers can treat white-textured quads as solids.【F:src/render.js†L340-L363】
+  - Inputs: None.【F:src/render.js†L361-L363】
+  - Outputs: Boolean `stats.solidDepth > 0`.【F:src/render.js†L361-L363】
+  - Side effects: None.【F:src/render.js†L361-L363】
+  - Shared state touched and where it’s used: Called by the wrapped `drawQuadTextured` to determine solid counting rules (`src/render.js:341-343`).【F:src/render.js†L341-L343】
+  - Dependencies: Relies on `stats.solidDepth` maintained by start/end methods.【F:src/render.js†L355-L363】
+  - Edge cases handled or missed: None.【F:src/render.js†L361-L363】
+  - Performance: Constant check per draw call.【F:src/render.js†L341-L343】
+  - Units / spaces: Boolean flag.【F:src/render.js†L361-L363】
+  - Determinism: Deterministic.【F:src/render.js†L361-L363】
+  - Keep / change / delete: Keep; needed for accurate solid counts.【F:src/render.js†L341-L343】
+  - Confidence / assumptions: High confidence; assumes wrappers maintain depth correctly.【F:src/render.js†L345-L359】
 - `countDrawCall`
+  - Purpose: Increments aggregated draw counters and splits them into solid vs. textured categories for diagnostics.【F:src/render.js†L364-L371】
+  - Inputs: Optional `{ solid }` flag indicating whether to count as solid (`true`) or textured (`false`).【F:src/render.js†L364-L370】
+  - Outputs: None; mutates counters.【F:src/render.js†L364-L371】
+  - Side effects: Increases `drawCalls`, `quadCount`, and appropriate subtype counter each invocation.【F:src/render.js†L364-L370】
+  - Shared state touched and where it’s used: Called from the wrapped draw methods for every quad issued (`src/render.js:342-343`).【F:src/render.js†L342-L343】
+  - Dependencies: None beyond tracker state.【F:src/render.js†L364-L371】
+  - Edge cases handled or missed: Defaults to textured counts when `solid` falsy; no guard against overflow (counts expected to remain within safe integer range).【F:src/render.js†L364-L371】
+  - Performance: Constant-time increments executed per draw call.【F:src/render.js†L342-L371】
+  - Units / spaces: Integer counters.【F:src/render.js†L364-L371】
+  - Determinism: Deterministic given draw sequence.【F:src/render.js†L364-L371】
+  - Keep / change / delete: Keep; centralizes stats increments.【F:src/render.js†L342-L371】
+  - Confidence / assumptions: High confidence; assumes draws remain manageable in count.【F:src/render.js†L364-L371】
 - `registerDrawListSize`
+  - Purpose: Records the number of items in the world draw list so perf overlays can report batching sizes.【F:src/render.js†L373-L375】
+  - Inputs: `size` (numeric, expected ≥0).【F:src/render.js†L373-L375】
+  - Outputs: None.【F:src/render.js†L373-L375】
+  - Side effects: Stores sanitized size into `stats.current.drawListSize`.【F:src/render.js†L373-L375】
+  - Shared state touched and where it’s used: Called after building the draw list before rendering (`src/render.js:1373-1376`).【F:src/render.js†L1373-L1376】
+  - Dependencies: Uses `Number.isFinite` check via inline expression.【F:src/render.js†L373-L375】
+  - Edge cases handled or missed: Defaults to zero when size invalid; no upper-bound clamp.【F:src/render.js†L373-L375】
+  - Performance: Constant assignment per frame.【F:src/render.js†L373-L375】
+  - Units / spaces: Count of queued draw entries.【F:src/render.js†L373-L375】
+  - Determinism: Deterministic.【F:src/render.js†L373-L375】
+  - Keep / change / delete: Keep; simpler than recomputing size when overlay reads stats.【F:src/render.js†L1373-L1376】
+  - Confidence / assumptions: High confidence; assumes draw list length is finite.【F:src/render.js†L1373-L1376】
 - `registerStrip`
+  - Purpose: Counts how many road strips were enqueued for the current frame, aiding breakdown of geometry work.【F:src/render.js†L376-L378】
+  - Inputs: None.【F:src/render.js†L376-L378】
+  - Outputs: None; increments `stripCount`.【F:src/render.js†L376-L378】
+  - Side effects: Increments counter per strip.【F:src/render.js†L376-L378】
+  - Shared state touched and where it’s used: Called while iterating draw list entries (`src/render.js:1376-1388`).【F:src/render.js†L1376-L1388】
+  - Dependencies: None.【F:src/render.js†L376-L378】
+  - Edge cases handled or missed: None.【F:src/render.js†L376-L378】
+  - Performance: Constant increment per strip.【F:src/render.js†L1376-L1388】
+  - Units / spaces: Count of strip entries.【F:src/render.js†L376-L378】
+  - Determinism: Deterministic.【F:src/render.js†L376-L378】
+  - Keep / change / delete: Keep; gives visibility into ground geometry workload.【F:src/render.js†L1376-L1388】
+  - Confidence / assumptions: High confidence; assumes loop calls it appropriately.【F:src/render.js†L1376-L1388】
 - `registerSprite`
+  - Purpose: Tracks how many sprites of each category (npc/prop/player) were enqueued to inform debugging overlays.【F:src/render.js†L379-L384】
+  - Inputs: `kind` string `'npc'`, `'prop'`, `'player'`, or other.【F:src/render.js†L379-L383】
+  - Outputs: None.【F:src/render.js†L379-L384】
+  - Side effects: Increments `spriteCount` and specific sub-counter matching the kind.【F:src/render.js†L379-L384】
+  - Shared state touched and where it’s used: Called while queuing world draw items (`src/render.js:1380-1425`).【F:src/render.js†L1380-L1425】
+  - Dependencies: None.【F:src/render.js†L379-L384】
+  - Edge cases handled or missed: Unrecognized kinds only increment total count; no validation errors.【F:src/render.js†L379-L384】
+  - Performance: Constant increment per sprite.【F:src/render.js†L1380-L1425】
+  - Units / spaces: Sprite counts.【F:src/render.js†L379-L384】
+  - Determinism: Deterministic.【F:src/render.js†L379-L384】
+  - Keep / change / delete: Keep; supports overlay breakdowns.【F:src/render.js†L1972-L1998】
+  - Confidence / assumptions: High confidence; assumes kind strings follow expected values.【F:src/render.js†L1380-L1425】
 - `registerSnowScreen`
+  - Purpose: Tallies how many snow-screen quads are submitted each frame.【F:src/render.js†L385-L387】
+  - Inputs: None.【F:src/render.js†L385-L387】
+  - Outputs: None.【F:src/render.js†L385-L387】
+  - Side effects: Increments `snowScreenCount`.【F:src/render.js†L385-L387】
+  - Shared state touched and where it’s used: Called when enqueuing the snow overlay entry (`src/render.js:1422-1425`).【F:src/render.js†L1422-L1425】
+  - Dependencies: None.【F:src/render.js†L385-L387】
+  - Edge cases handled or missed: None.【F:src/render.js†L385-L387】
+  - Performance: Constant increment per frame when snow enabled.【F:src/render.js†L385-L387】
+  - Units / spaces: Count value.【F:src/render.js†L385-L387】
+  - Determinism: Deterministic.【F:src/render.js†L385-L387】
+  - Keep / change / delete: Keep; necessary for overlay reporting.【F:src/render.js†L1972-L1998】
+  - Confidence / assumptions: High confidence; assumes snow overlay uses this registration path.【F:src/render.js†L1422-L1425】
 - `registerSnowQuad`
+  - Purpose: Counts individual snow flakes/quads rendered inside the snow-screen pass for performance insight.【F:src/render.js†L388-L390】
+  - Inputs: None.【F:src/render.js†L388-L390】
+  - Outputs: None.【F:src/render.js†L388-L390】
+  - Side effects: Increments `snowQuadCount`.【F:src/render.js†L388-L390】
+  - Shared state touched and where it’s used: Called inside the snow rendering loop for each flake (`src/render.js:1521-1535`).【F:src/render.js†L1521-L1535】
+  - Dependencies: None.【F:src/render.js†L388-L390】
+  - Edge cases handled or missed: None.【F:src/render.js†L388-L390】
+  - Performance: Constant increment per flake; negligible overhead vs. draw call cost.【F:src/render.js†L1521-L1535】
+  - Units / spaces: Count.【F:src/render.js†L388-L390】
+  - Determinism: Deterministic given same snow field iteration.【F:src/render.js†L388-L390】
+  - Keep / change / delete: Keep; provides granular snow perf insight.【F:src/render.js†L1521-L1535】
+  - Confidence / assumptions: High confidence; assumes snow renderer calls it for each quad.【F:src/render.js†L1521-L1535】
 - `registerBoostQuad`
+  - Purpose: Tracks how many boost zone quads render per frame for overlay metrics.【F:src/render.js†L391-L393】
+  - Inputs: None.【F:src/render.js†L391-L393】
+  - Outputs: None.【F:src/render.js†L391-L393】
+  - Side effects: Increments `boostQuadCount`.【F:src/render.js†L391-L393】
+  - Shared state touched and where it’s used: Called while drawing zone overlays on road strips (`src/render.js:873-887`).【F:src/render.js†L873-L887】
+  - Dependencies: None.【F:src/render.js†L391-L393】
+  - Edge cases handled or missed: None.【F:src/render.js†L391-L393】
+  - Performance: Constant increment per boost quad.【F:src/render.js†L873-L887】
+  - Units / spaces: Count.【F:src/render.js†L391-L393】
+  - Determinism: Deterministic.【F:src/render.js†L391-L393】
+  - Keep / change / delete: Keep; surfaces boost rendering cost.【F:src/render.js†L873-L887】
+  - Confidence / assumptions: High confidence; assumes draw routine calls it per quad.【F:src/render.js†L873-L887】
 - `registerPhysicsSteps`
+  - Purpose: Aggregates how many fixed-physics steps executed during the frame so perf overlays can show simulation load.【F:src/render.js†L394-L397】
+  - Inputs: `count` (integer ≥0).【F:src/render.js†L394-L396】
+  - Outputs: None.【F:src/render.js†L394-L397】
+  - Side effects: Adds `count` to `stats.current.physicsSteps` if the value is finite and positive.【F:src/render.js†L394-L397】
+  - Shared state touched and where it’s used: Called from the main loop after stepping gameplay (`src/render.js:2118-2120`).【F:src/render.js†L2118-L2120】
+  - Dependencies: Numeric checks only.【F:src/render.js†L394-L397】
+  - Edge cases handled or missed: Ignores non-finite or non-positive counts; does not clamp large totals.【F:src/render.js†L394-L397】
+  - Performance: Constant addition per frame.【F:src/render.js†L394-L397】
+  - Units / spaces: Count of physics iterations.【F:src/render.js†L394-L397】
+  - Determinism: Deterministic.【F:src/render.js†L394-L397】
+  - Keep / change / delete: Keep; useful for diagnosing variable-step catch-up work.【F:src/render.js†L2118-L2120】
+  - Confidence / assumptions: High confidence; assumes main loop passes accurate counts.【F:src/render.js†L2118-L2120】
 - `registerSegment`
+  - Purpose: Tracks how many road segments were processed while building the draw list, providing visibility into horizon depth.【F:src/render.js†L399-L401】
+  - Inputs: None.【F:src/render.js†L399-L401】
+  - Outputs: None; increments `segments`.【F:src/render.js†L399-L401】
+  - Side effects: Increments counter per segment.【F:src/render.js†L399-L401】
+  - Shared state touched and where it’s used: Called once per segment while assembling strips (`src/render.js:1078-1110`).【F:src/render.js†L1078-L1110】
+  - Dependencies: None.【F:src/render.js†L399-L401】
+  - Edge cases handled or missed: None.【F:src/render.js†L399-L401】
+  - Performance: Constant increment per segment.【F:src/render.js†L399-L401】
+  - Units / spaces: Segment count.【F:src/render.js†L399-L401】
+  - Determinism: Deterministic.【F:src/render.js†L399-L401】
+  - Keep / change / delete: Keep; enables overlays to display how much of the road is being drawn.【F:src/render.js†L1078-L1110】
+  - Confidence / assumptions: High confidence; assumes build loop calls it each iteration.【F:src/render.js†L1078-L1110】
 - `getLastFrameStats`
+  - Purpose: Returns the most recent perf snapshot (FPS, frame time, and draw counters) for overlays and debugging panels.【F:src/render.js†L402-L407】
+  - Inputs: None.【F:src/render.js†L402-L407】
+  - Outputs: Object containing `fps`, `frameTimeMs`, and the `stats.last` counters.【F:src/render.js†L402-L407】
+  - Side effects: None; returns a shallow copy with derived FPS values.【F:src/render.js†L402-L407】
+  - Shared state touched and where it’s used: Called by `computeDebugPanels` to populate the HUD overlay (`src/render.js:1972-1998`).【F:src/render.js†L1972-L1998】
+  - Dependencies: None.【F:src/render.js†L402-L407】
+  - Edge cases handled or missed: Returns zeros until `endFrame` has populated `stats.last`; does not freeze values between reads.【F:src/render.js†L333-L407】
+  - Performance: Constant-time object assembly.【F:src/render.js†L402-L407】
+  - Units / spaces: FPS (frames per second), frame time in milliseconds, plus raw counts.【F:src/render.js†L402-L407】
+  - Determinism: Deterministic for a given tracker state.【F:src/render.js†L402-L407】
+  - Keep / change / delete: Keep; single accessor for overlays—alternative is to expose `stats` directly, risking mutation.【F:src/render.js†L1972-L1998】
+  - Confidence / assumptions: High confidence; assumes `endFrame` ran previously.【F:src/render.js†L333-L407】
 - `isSnowFeatureEnabled`
 - `numericOr`
 - `orderedRange`
