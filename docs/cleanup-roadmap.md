@@ -1574,36 +1574,425 @@
   - Determinism: Deterministic for a given segment object.【F:src/gameplay.js†L1162-L1165】
   - Keep / change / delete: Keep; small helper keeps feature access consistent and safe.
   - Confidence / assumptions: High confidence; assumes segments store boost-zone definitions under `features.boostZones`.
-- `playerWithinBoostZone`
-- `boostZonesForPlayer`
-- `jumpZoneForPlayer`
-- `applyBoostImpulse`
-- `applyJumpZoneBoost`
-- `playerHalfWN`
-- `spawnDriftSmokeSprites`
-- `spawnSparksSprites`
-- `applyDriftSmokeMotion`
-- `applySparksMotion`
-- `carMeta`
-- `carHalfWN`
-- `currentPlayerForwardSpeed`
-- `npcForwardSpeed`
-- `ensureCarNearMissReset`
-- `tryRegisterCarNearMiss`
-- `computeCollisionPush`
-- `configureImpactableSprite`
-- `applyImpactPushToSprite`
-- `updateImpactableSprite`
-- `carHitboxHeight`
-- `carHitboxTopY`
-- `applyNpcCollisionPush`
-- `playerBaseHeight`
-- `npcLateralLimit`
-- `slopeAngleDeg`
-- `slopeLimitRatio`
-- `slopeExceedsLimit`
-- `cliffSectionExceedsLimit`
-- `cliffInfoExceedsLimit`
+  - `playerWithinBoostZone`
+    - Purpose: Checks whether a player's normalized lateral position falls between a boost zone's start and end bounds, defaulting to lane clamps when the zone omits them.【F:src/gameplay.js†L1170-L1178】
+    - Inputs: `zone` — boost zone with optional `nStart`/`nEnd`; `nNorm` — player lateral offset clamped to lane range (defaults come from ±2 passed through `clampBoostLane`).【F:src/gameplay.js†L69-L75】【F:src/gameplay.js†L1170-L1178】
+    - Outputs: Returns `true` when `nNorm` lies between the zone bounds, otherwise `false`.【F:src/gameplay.js†L1176-L1178】
+    - Side effects: None; purely computes a boolean.【F:src/gameplay.js†L1170-L1178】
+    - Shared state touched and where it’s used: Does not mutate shared state; consumed by `boostZonesForPlayer` while evaluating the player's active boost zones in jump detection and physics updates.【F:src/gameplay.js†L1182-L1191】【F:src/gameplay.js†L2178-L2184】
+    - Dependencies: Uses `clampBoostLane` plus `Math.min`/`Math.max` to sanitize bounds.【F:src/gameplay.js†L1172-L1177】
+    - Edge cases handled or missed: Returns `false` when the zone object is missing; handles reversed start/end ordering via `Math.min`/`Math.max`, but assumes `nNorm` is finite.【F:src/gameplay.js†L1171-L1178】
+    - Performance: Constant time; invoked once per zone when filtering the current segment each frame.【F:src/gameplay.js†L1182-L1184】【F:src/gameplay.js†L2178-L2184】
+    - Units / spaces: Operates in normalized lane (`N`) space shared with `state.playerN` and lane clamps.【F:src/gameplay.js†L1172-L1178】【F:src/gameplay.js†L2170-L2184】
+    - Determinism: Deterministic for given inputs because it performs only arithmetic comparisons.【F:src/gameplay.js†L1170-L1178】
+    - Keep / change / delete: Keep; consolidates lane-bound fallback logic that would otherwise repeat inside callers.
+    - Confidence / assumptions: High confidence; assumes `clampBoostLane` returns consistent bounds and `nNorm` already reflects the player.
+
+  - `boostZonesForPlayer`
+    - Purpose: Collects only the boost zones on a segment that currently cover the player's lateral position so other systems can react.【F:src/gameplay.js†L1181-L1184】
+    - Inputs: `seg` — segment containing potential zones; `nNorm` — player’s normalized lane offset to test.【F:src/gameplay.js†L1181-L1184】
+    - Outputs: Returns a filtered array of zones that include `nNorm`, or an empty array when none match.【F:src/gameplay.js†L1182-L1184】
+    - Side effects: None; produces a new filtered array and leaves segment data untouched.【F:src/gameplay.js†L1181-L1184】
+    - Shared state touched and where it’s used: Reads segment feature data but no globals; used by `jumpZoneForPlayer` and by the per-frame physics step to drive boost behavior.【F:src/gameplay.js†L1187-L1191】【F:src/gameplay.js†L2178-L2184】
+    - Dependencies: Calls `boostZonesOnSegment` and `playerWithinBoostZone` for filtering.【F:src/gameplay.js†L1182-L1184】
+    - Edge cases handled or missed: Short-circuits when no zones exist; assumes zone objects are well-formed and does not deep-clone them, so later mutation would affect segment data.【F:src/gameplay.js†L1182-L1184】
+    - Performance: Iterates over the existing zone array; runs every frame for the current segment so zone lists should stay small.【F:src/gameplay.js†L1182-L1184】【F:src/gameplay.js†L2178-L2184】
+    - Units / spaces: Uses normalized lane coordinates for comparisons consistent with boost zone definitions.【F:src/gameplay.js†L1181-L1184】
+    - Determinism: Deterministic given the segment’s zone order and player position.【F:src/gameplay.js†L1181-L1184】
+    - Keep / change / delete: Keep; clear helper isolates boost-zone filtering away from callers.
+    - Confidence / assumptions: High confidence; assumes segment `features.boostZones` contains immutable zone descriptors during a frame.
+
+  - `jumpZoneForPlayer`
+    - Purpose: Finds the jump-type boost zone currently under the player so hops can trigger air boosts.【F:src/gameplay.js†L1187-L1192】
+    - Inputs: None; derives the player's segment `s` and lateral position from global state.【F:src/gameplay.js†L1187-L1191】
+    - Outputs: Returns the matching zone object or `null` when no jump zone applies.【F:src/gameplay.js†L1189-L1192】
+    - Side effects: None; performs lookups only.【F:src/gameplay.js†L1187-L1192】
+    - Shared state touched and where it’s used: Reads `state.phys.s` and `state.playerN`; used during hop attempts and spacebar boosts to decide whether to award jump bonuses.【F:src/gameplay.js†L1187-L1191】【F:src/gameplay.js†L1884-L1901】【F:src/gameplay.js†L2586-L2590】
+    - Dependencies: Calls `segmentAtS`, `boostZonesForPlayer`, and compares against `boost.types.jump`.【F:src/gameplay.js†L1187-L1192】
+    - Edge cases handled or missed: Returns `null` if the segment is missing or no jump zone exists; assumes `state.phys.s` is finite and segment data is current.【F:src/gameplay.js†L1187-L1192】
+    - Performance: Constant time; executed when hopping or polling jump zones during input handling.【F:src/gameplay.js†L1884-L1901】【F:src/gameplay.js†L2586-L2590】
+    - Units / spaces: Works in track distance (`s`) and normalized lane space, matching the rest of the boost system.【F:src/gameplay.js†L1187-L1191】
+    - Determinism: Deterministic for a given game state snapshot.【F:src/gameplay.js†L1187-L1192】
+    - Keep / change / delete: Keep; encapsulates jump-zone lookup so callers remain concise.
+    - Confidence / assumptions: High confidence; assumes boost zone data stays synchronized with `segmentAtS`.
+
+  - `applyBoostImpulse`
+    - Purpose: Adds a forward speed impulse to the player capped by the boosted top speed when a boost event fires.【F:src/gameplay.js†L1194-L1199】
+    - Inputs: None; uses `state.phys.vtan`, `player.topSpeed`, and boost tuning constants.【F:src/gameplay.js†L1194-L1199】
+    - Outputs: No return value; updates `state.phys.vtan` in place.【F:src/gameplay.js†L1194-L1199】
+    - Side effects: Clamps and mutates the player's tangential velocity.【F:src/gameplay.js†L1194-L1199】
+    - Shared state touched and where it’s used: Modifies `state.phys`; invoked by `applyJumpZoneBoost` and by drive boost handling inside the physics step.【F:src/gameplay.js†L1202-L1206】【F:src/gameplay.js†L2201-L2205】
+    - Dependencies: Relies on `clamp`, player/drift tuning, and the shared physics state object.【F:src/gameplay.js†L1194-L1199】
+    - Edge cases handled or missed: Prevents negative speeds via `Math.max`, and exits gracefully when boost cap is zero; assumes `player.topSpeed` and `drift.boostScale` are finite.【F:src/gameplay.js†L1194-L1199】
+    - Performance: Constant; triggered only when boosts are awarded, not every frame.【F:src/gameplay.js†L1202-L1206】【F:src/gameplay.js†L2201-L2205】
+    - Units / spaces: Operates on tangential world speed (`vtan`).【F:src/gameplay.js†L1194-L1199】
+    - Determinism: Deterministic given the same state and tuning constants.【F:src/gameplay.js†L1194-L1199】
+    - Keep / change / delete: Keep; centralizes boost capping so the impulse logic stays consistent.
+    - Confidence / assumptions: High confidence; assumes physics state is mutable and accessible here.
+
+  - `applyJumpZoneBoost`
+    - Purpose: Activates the player's boost timer and flash effect when entering a jump zone, layering on a speed impulse.【F:src/gameplay.js†L1202-L1207】
+    - Inputs: `zone` — jump zone descriptor; ignored when falsy.【F:src/gameplay.js†L1202-L1203】
+    - Outputs: None; mutates state timers and velocity.【F:src/gameplay.js†L1204-L1207】
+    - Side effects: Extends `state.boostTimer`, bumps `state.phys.boostFlashTimer`, and calls `applyBoostImpulse`.【F:src/gameplay.js†L1204-L1207】
+    - Shared state touched and where it’s used: Writes to global state and physics timers; triggered by hops and by spacebar boost input.【F:src/gameplay.js†L1884-L1901】【F:src/gameplay.js†L2586-L2590】
+    - Dependencies: Uses `applyBoostImpulse` along with `Math.max` and boost timing constants from `drift`.【F:src/gameplay.js†L1204-L1207】
+    - Edge cases handled or missed: Returns immediately if no zone is provided; assumes timers are numeric and non-negative.【F:src/gameplay.js†L1202-L1207】
+    - Performance: Constant; runs only when a jump boost is triggered.【F:src/gameplay.js†L1884-L1901】【F:src/gameplay.js†L2586-L2590】
+    - Units / spaces: Timer values are measured in seconds, aligning with physics time `phys.t`.【F:src/gameplay.js†L1204-L1207】
+    - Determinism: Deterministic; no randomness involved.【F:src/gameplay.js†L1202-L1207】
+    - Keep / change / delete: Keep; bundles jump-specific boost side effects in one place.
+    - Confidence / assumptions: High confidence; assumes `state.phys.boostFlashTimer` exists and is time-based.
+
+  - `playerHalfWN`
+    - Purpose: Computes half of the player's sprite width in normalized lane units for spacing and collision checks.【F:src/gameplay.js†L1209-L1211】
+    - Inputs: None; references player sprite metadata and scale from state.【F:src/gameplay.js†L1209-L1211】
+    - Outputs: Returns half-width in normalized units (may be `0` if metadata is missing).【F:src/gameplay.js†L1209-L1211】
+    - Side effects: None.【F:src/gameplay.js†L1209-L1211】
+    - Shared state touched and where it’s used: Reads sprite meta via `getSpriteMeta` and `state.getKindScale`; widely used for smoke spawning, sparks, lateral limits, and collision tests.【F:src/gameplay.js†L1209-L1211】【F:src/gameplay.js†L1213-L1296】【F:src/gameplay.js†L1904-L1917】【F:src/gameplay.js†L1922-L1975】
+    - Dependencies: Depends on `getSpriteMeta('PLAYER')` and `state.getKindScale('PLAYER')`.【F:src/gameplay.js†L1209-L1211】
+    - Edge cases handled or missed: Returns `NaN` if player metadata lacks `wN`, so it assumes the metadata is populated.【F:src/gameplay.js†L1209-L1211】
+    - Performance: Constant; invoked in several per-frame loops so keeping it lightweight avoids repeated metadata math in callers.【F:src/gameplay.js†L1213-L1975】
+    - Units / spaces: Normalized road-width (`N`) units.【F:src/gameplay.js†L1209-L1211】
+    - Determinism: Deterministic for the same sprite meta and scale.【F:src/gameplay.js†L1209-L1211】
+    - Keep / change / delete: Keep; avoids duplicating scale logic throughout gameplay code.
+    - Confidence / assumptions: Medium confidence; assumes metadata is loaded before use.
+
+  - `spawnDriftSmokeSprites`
+    - Purpose: Spawns transient drift-smoke sprites at both sides of the player while drifting to visualize tire slip.【F:src/gameplay.js†L1213-L1247】
+    - Inputs: None; relies on current physics state for position, velocity, and segment selection.【F:src/gameplay.js†L1213-L1247】
+    - Outputs: Returns nothing; appends new sprite objects into the current segment's `sprites` list.【F:src/gameplay.js†L1221-L1247】
+    - Side effects: Allocates sprites via `allocDriftSmokeSprite`, mutates segment sprite arrays, and uses `Math.random` for jitter and inherited speed, introducing nondeterminism.【F:src/gameplay.js†L1221-L1247】
+    - Shared state touched and where it’s used: Reads and writes segment sprite arrays and physics data; called repeatedly during the drift state update loop.【F:src/gameplay.js†L1213-L1247】【F:src/gameplay.js†L2289-L2299】
+    - Dependencies: Uses `hasSegments`, `segmentAtS`, `playerHalfWN`, `ensureArray`, `trackLengthRef`, `wrapDistance`, and sprite allocation helpers.【F:src/gameplay.js†L1213-L1247】
+    - Edge cases handled or missed: Early-outs if segments/physics are unavailable or the player is airborne; assumes `allocDriftSmokeSprite` succeeds and does not guard against allocation failure.【F:src/gameplay.js†L1213-L1247】
+    - Performance: Loops over two offsets and allocates per iteration; triggered repeatedly while drifting so excessive drift duration can create many sprites.【F:src/gameplay.js†L1220-L1247】【F:src/gameplay.js†L2289-L2299】
+    - Units / spaces: Positions sprites using normalized lateral offsets and wrapped track distance `s`; TTL measured in seconds.【F:src/gameplay.js†L1219-L1238】
+    - Determinism: Non-deterministic because of multiple `Math.random()` samples for jitter and speed variance.【F:src/gameplay.js†L1230-L1233】
+    - Keep / change / delete: Keep; encapsulates all drift-smoke initialization logic though pooling could limit allocations further.
+    - Confidence / assumptions: Medium confidence; assumes sprite pools are large enough to satisfy allocations without leaks.
+
+  - `spawnSparksSprites`
+    - Purpose: Emits spark sprites near the contact side when the player scrapes a guard rail for visual feedback.【F:src/gameplay.js†L1250-L1296】
+    - Inputs: `contactSide` — optional sign indicating which side triggered the sparks (defaults to player leaning side).【F:src/gameplay.js†L1250-L1259】
+    - Outputs: No return; appends configured spark sprites to the current segment.【F:src/gameplay.js†L1260-L1296】
+    - Side effects: Allocates sprites, mutates segment arrays, and samples random jitter, velocities, and screen offsets, affecting determinism.【F:src/gameplay.js†L1260-L1296】
+    - Shared state touched and where it’s used: Uses physics state, player lateral position, and guard-rail contact; invoked inside the guard-rail handling loop in the physics update.【F:src/gameplay.js†L1250-L1296】【F:src/gameplay.js†L2366-L2377】
+    - Dependencies: Relies on `hasSegments`, `segmentAtS`, `playerHalfWN`, `ensureArray`, `trackLengthRef`, `wrapDistance`, `allocSparksSprite`, and interpolation helpers like `lerp`.【F:src/gameplay.js†L1250-L1296】
+    - Edge cases handled or missed: Exits when no segments, when the player is airborne, or when contact side is indeterminate; assumes sprite allocation succeeds.【F:src/gameplay.js†L1251-L1296】
+    - Performance: Creates one sprite per call with several random computations; executed repeatedly while scraping rails, so sustained contact spawns many particles.【F:src/gameplay.js†L1259-L1296】【F:src/gameplay.js†L2366-L2377】
+    - Units / spaces: Positions use normalized offsets and wrapped track distance; motion data mixes track units with screen-space velocities.【F:src/gameplay.js†L1259-L1295】
+    - Determinism: Non-deterministic because of jitter and random velocity sampling.【F:src/gameplay.js†L1269-L1291】
+    - Keep / change / delete: Keep; encapsulates spark setup though random seeds could be injected for replay determinism.
+    - Confidence / assumptions: Medium confidence; assumes guard-rail contact detection prevents duplicate spawns within a frame.
+
+  - `applyDriftSmokeMotion`
+    - Purpose: Advances drift-smoke sprite motion over time, applying drag and moving sprites between segments when necessary.【F:src/gameplay.js†L1299-L1338】
+    - Inputs: `sprite` — expected to be a drift-smoke sprite; `dt` — simulation step in seconds; `currentSeg` — segment currently iterated (optional).【F:src/gameplay.js†L1299-L1305】
+    - Outputs: Returns a new segment reference when the sprite crosses into another segment; otherwise `null`.【F:src/gameplay.js†L1308-L1338】
+    - Side effects: Mutates the sprite’s position, offsets, and drift motion velocities with drag decay.【F:src/gameplay.js†L1308-L1334】
+    - Shared state touched and where it’s used: Reads track length and segment data; invoked during the per-frame sprite animation update loop.【F:src/gameplay.js†L1299-L1338】【F:src/gameplay.js†L2040-L2108】
+    - Dependencies: Uses `trackLengthRef`, `wrapDistance`, and `segmentAtS` for wrapping and segment lookup.【F:src/gameplay.js†L1306-L1334】
+    - Edge cases handled or missed: Returns early for missing sprites, wrong kinds, or non-positive time steps; assumes `sprite.driftMotion` exists.【F:src/gameplay.js†L1299-L1334】
+    - Performance: Constant work per sprite; executed for every drift-smoke sprite each frame, so large numbers of smoke puffs can add up.【F:src/gameplay.js†L1299-L1338】【F:src/gameplay.js†L2040-L2108】
+    - Units / spaces: Evolves both track-distance `s` and normalized lateral offset values; drag factors interpreted per second.【F:src/gameplay.js†L1308-L1334】
+    - Determinism: Deterministic for given initial motion values and `dt`.【F:src/gameplay.js†L1299-L1338】
+    - Keep / change / delete: Keep; isolates physics integration for smoke particles.
+    - Confidence / assumptions: High confidence; assumes calling code initializes `sprite.driftMotion`.
+
+  - `applySparksMotion`
+    - Purpose: Updates spark sprite motion, including track movement, lateral slide, and screen-space trails.【F:src/gameplay.js†L1341-L1406】
+    - Inputs: `sprite` — spark sprite; `dt` — time step; `currentSeg` — current segment context.【F:src/gameplay.js†L1341-L1346】
+    - Outputs: Returns a different segment when the sprite crosses boundaries, otherwise `null`.【F:src/gameplay.js†L1350-L1404】
+    - Side effects: Mutates track position, normalized offset, screen offsets, and motion velocities with drag and gravity.【F:src/gameplay.js†L1350-L1394】
+    - Shared state touched and where it’s used: Reads track length and segment data; invoked during sprite animation updates for every spark sprite.【F:src/gameplay.js†L1341-L1404】【F:src/gameplay.js†L2040-L2108】
+    - Dependencies: Uses `trackLengthRef`, `wrapDistance`, `segmentAtS`, and drag parameters stored on the sprite.【F:src/gameplay.js†L1348-L1404】
+    - Edge cases handled or missed: Early returns for invalid sprites or zero time steps; assumes `sprite.driftMotion` carries screen-motion parameters.【F:src/gameplay.js†L1341-L1394】
+    - Performance: Constant per sprite; cost grows with number of active sparks spawned during scraping.【F:src/gameplay.js†L1341-L1404】【F:src/gameplay.js†L2366-L2377】【F:src/gameplay.js†L2040-L2108】
+    - Units / spaces: Mixes track-distance `s`, normalized offsets, and pixel-space offsets for screen trails.【F:src/gameplay.js†L1350-L1394】
+    - Determinism: Deterministic once initial motion parameters are set (randomness happens at spawn time).【F:src/gameplay.js†L1341-L1404】
+    - Keep / change / delete: Keep; provides encapsulated kinematics for sparks.
+    - Confidence / assumptions: High confidence; assumes spark sprites always own a motion payload.
+
+  - `carMeta`
+    - Purpose: Retrieves the metadata describing a car sprite, defaulting to generic car data when custom metadata is absent.【F:src/gameplay.js†L1408-L1411】
+    - Inputs: `car` — NPC car object that may include `type` and `meta`.【F:src/gameplay.js†L1408-L1411】
+    - Outputs: Returns a metadata object for the car sprite.【F:src/gameplay.js†L1408-L1411】
+    - Side effects: None.【F:src/gameplay.js†L1408-L1411】
+    - Shared state touched and where it’s used: Reads from the sprite metadata table via `getSpriteMeta`; used by width/height helpers before collision logic.【F:src/gameplay.js†L1408-L1415】【F:src/gameplay.js†L1574-L1583】
+    - Dependencies: Depends on `getSpriteMeta` and optional `car.meta` overrides.【F:src/gameplay.js†L1408-L1411】
+    - Edge cases handled or missed: Falls back to `'CAR'` metadata when car type/meta missing; assumes `getSpriteMeta` returns something meaningful.【F:src/gameplay.js†L1408-L1411】
+    - Performance: Constant and inexpensive; called for each collision width/height calculation.【F:src/gameplay.js†L1408-L1415】【F:src/gameplay.js†L1574-L1583】
+    - Units / spaces: Metadata includes normalized width/height values used elsewhere.【F:src/gameplay.js†L1408-L1415】
+    - Determinism: Deterministic for a given car object and metadata table.【F:src/gameplay.js†L1408-L1411】
+    - Keep / change / delete: Keep; centralizes metadata fallback logic.
+    - Confidence / assumptions: High confidence; assumes metadata table is already loaded.
+
+  - `carHalfWN`
+    - Purpose: Calculates half the normalized width of an NPC car to support spacing, avoidance, and collision checks.【F:src/gameplay.js†L1413-L1415】
+    - Inputs: `car` — NPC car descriptor.【F:src/gameplay.js†L1413-L1415】
+    - Outputs: Returns half-width in normalized units, defaulting to `0` if metadata lacks `wN`.【F:src/gameplay.js†L1413-L1415】
+    - Side effects: None.【F:src/gameplay.js†L1413-L1415】
+    - Shared state touched and where it’s used: Leverages `carMeta`; referenced by player smoke spawning and collision avoidance routines.【F:src/gameplay.js†L1413-L1415】【F:src/gameplay.js†L1213-L1296】【F:src/gameplay.js†L1965-L2000】【F:src/gameplay.js†L2455-L2535】
+    - Dependencies: Calls `carMeta` to fetch the metadata.【F:src/gameplay.js†L1413-L1415】
+    - Edge cases handled or missed: Returns `0` if metadata is missing or lacks `wN`, which may underrepresent actual car width.【F:src/gameplay.js†L1413-L1415】
+    - Performance: Constant; computed frequently inside loops so avoiding repeated metadata lookups via this helper keeps code concise.【F:src/gameplay.js†L1413-L1415】
+    - Units / spaces: Normalized road width units shared with NPC positioning.【F:src/gameplay.js†L1413-L1415】
+    - Determinism: Deterministic for the same car metadata.【F:src/gameplay.js†L1413-L1415】
+    - Keep / change / delete: Keep; simple helper aids readability.
+    - Confidence / assumptions: High confidence; assumes metadata is static per car.
+
+  - `currentPlayerForwardSpeed`
+    - Purpose: Returns the player's current forward (tangential) speed clamped to a non-negative value.【F:src/gameplay.js†L1418-L1421】
+    - Inputs: None; reads from `state.phys.vtan`.【F:src/gameplay.js†L1418-L1421】
+    - Outputs: Non-negative numeric forward speed.【F:src/gameplay.js†L1418-L1421】
+    - Side effects: None.【F:src/gameplay.js†L1418-L1421】
+    - Shared state touched and where it’s used: Reads physics state; leveraged when computing near misses and sprite collision pushes.【F:src/gameplay.js†L1418-L1421】【F:src/gameplay.js†L1449-L1451】【F:src/gameplay.js†L1515-L1525】
+    - Dependencies: Uses `Math.max` and `Number.isFinite` to sanitize values.【F:src/gameplay.js†L1418-L1421】
+    - Edge cases handled or missed: Treats non-finite speeds as zero; assumes physics state exists.【F:src/gameplay.js†L1418-L1421】
+    - Performance: Constant; often called during collision handling but trivial in cost.【F:src/gameplay.js†L1418-L1451】
+    - Units / spaces: Tangential world speed units.【F:src/gameplay.js†L1418-L1421】
+    - Determinism: Deterministic.【F:src/gameplay.js†L1418-L1421】
+    - Keep / change / delete: Keep; avoids repeating guard logic on `state.phys.vtan`.
+    - Confidence / assumptions: High confidence; assumes physics state object stays defined.
+
+  - `npcForwardSpeed`
+    - Purpose: Sanitizes an NPC car's forward speed for collision comparisons.【F:src/gameplay.js†L1423-L1425】
+    - Inputs: `car` — NPC car with a `speed` property.【F:src/gameplay.js†L1423-L1425】
+    - Outputs: Returns a non-negative forward speed.【F:src/gameplay.js†L1423-L1425】
+    - Side effects: None.【F:src/gameplay.js†L1423-L1425】
+    - Shared state touched and where it’s used: Reads the car object; used in near-miss scoring and collision resolution to determine push direction.【F:src/gameplay.js†L1423-L1425】【F:src/gameplay.js†L1450-L1451】【F:src/gameplay.js†L1991-L1995】
+    - Dependencies: None beyond basic math checks.【F:src/gameplay.js†L1423-L1425】
+    - Edge cases handled or missed: Returns `0` when the car or speed is invalid; assumes speeds are already in player-forward units.【F:src/gameplay.js†L1423-L1425】
+    - Performance: Constant.【F:src/gameplay.js†L1423-L1425】
+    - Units / spaces: Tangential world speed.【F:src/gameplay.js†L1423-L1425】
+    - Determinism: Deterministic.【F:src/gameplay.js†L1423-L1425】
+    - Keep / change / delete: Keep; keeps sanity checks centralized.
+    - Confidence / assumptions: High confidence; assumes car objects expose `speed`.
+
+  - `ensureCarNearMissReset`
+    - Purpose: Marks an NPC car as ready for a future near-miss when the player is sufficiently far laterally away.【F:src/gameplay.js†L1428-L1436】
+    - Inputs: `car` — NPC object; `combinedHalf` — sum of player and car half-widths; `lateralGap` — current lateral separation.【F:src/gameplay.js†L1428-L1436】
+    - Outputs: None.【F:src/gameplay.js†L1428-L1436】
+    - Side effects: Mutates the car’s `CAR_NEAR_MISS_READY` flag.【F:src/gameplay.js†L1428-L1436】
+    - Shared state touched and where it’s used: Operates on car state within collision loops; called each time cars are evaluated for overlap.【F:src/gameplay.js†L1428-L1436】【F:src/gameplay.js†L1965-L1975】
+    - Dependencies: Relies on numeric checks and `NEAR_MISS_RESET_SCALE` constant.【F:src/gameplay.js†L1434-L1436】
+    - Edge cases handled or missed: Immediately readies the flag when parameters are invalid or combined width is non-positive; assumes `car` is mutable.【F:src/gameplay.js†L1428-L1436】
+    - Performance: Constant per car.【F:src/gameplay.js†L1428-L1436】
+    - Units / spaces: Lateral distances in normalized lane units.【F:src/gameplay.js†L1434-L1436】
+    - Determinism: Deterministic.【F:src/gameplay.js†L1428-L1436】
+    - Keep / change / delete: Keep; keeps near-miss gating logic separate from collision detection.
+    - Confidence / assumptions: High confidence; assumes callers provide consistent gap measurements.
+
+  - `tryRegisterCarNearMiss`
+    - Purpose: Detects and records a near-miss event when the player passes close to an NPC without colliding.【F:src/gameplay.js†L1439-L1455】
+    - Inputs: `car`, `combinedHalf`, and `lateralGap` matching the collision context.【F:src/gameplay.js†L1439-L1444】
+    - Outputs: None.【F:src/gameplay.js†L1439-L1455】
+    - Side effects: Updates the car’s `CAR_NEAR_MISS_READY` flag and increments `state.metrics.nearMisses`.【F:src/gameplay.js†L1453-L1455】
+    - Shared state touched and where it’s used: Requires `state.metrics` and physics state; invoked in the car collision loop after separation checks.【F:src/gameplay.js†L1439-L1455】【F:src/gameplay.js†L1965-L1975】
+    - Dependencies: Uses `shortestSignedTrackDistance`, `currentPlayerForwardSpeed`, and `npcForwardSpeed` to verify near-miss conditions.【F:src/gameplay.js†L1445-L1451】
+    - Edge cases handled or missed: Exits when metrics are absent, when the car isn’t ready, or when gaps exceed thresholds; assumes `phys.s` and `car.z` are finite.【F:src/gameplay.js†L1439-L1451】
+    - Performance: Constant per candidate car.【F:src/gameplay.js†L1439-L1455】
+    - Units / spaces: Mixes track distance (`s`) with normalized lateral distance checks.【F:src/gameplay.js†L1445-L1451】
+    - Determinism: Deterministic given state and inputs.【F:src/gameplay.js†L1439-L1455】
+    - Keep / change / delete: Keep; isolates metrics bookkeeping from collision logic.
+    - Confidence / assumptions: Medium confidence; assumes metrics object is initialized before collisions are processed.
+
+  - `computeCollisionPush`
+    - Purpose: Calculates forward and lateral push velocities to separate the player from another object after contact.【F:src/gameplay.js†L1457-L1491】
+    - Inputs: `forwardSpeed` — player speed; `playerOffset`/`targetOffset` — normalized lateral positions; `forwardMaxSegments`/`lateralMax` — tuning caps (defaults supplied).【F:src/gameplay.js†L1457-L1463】
+    - Outputs: Returns `{ forwardVel, lateralVel }` or `null` when no push is needed.【F:src/gameplay.js†L1470-L1491】
+    - Side effects: None.【F:src/gameplay.js†L1457-L1491】
+    - Shared state touched and where it’s used: Reads tuning constants and `segmentLength`; used when applying pushes to sprites and NPC cars after collisions.【F:src/gameplay.js†L1457-L1491】【F:src/gameplay.js†L1515-L1526】【F:src/gameplay.js†L1596-L1610】
+    - Dependencies: Uses `clamp01`, `Math.sign`, and collision tuning constants such as `COLLISION_PUSH_DURATION`.【F:src/gameplay.js†L1470-L1489】
+    - Edge cases handled or missed: Returns `null` for zero speeds, missing segment length, or negligible offsets; assumes offsets are normalized to [-1,1].【F:src/gameplay.js†L1464-L1486】
+    - Performance: Constant; called only when a collision requires response.【F:src/gameplay.js†L1457-L1491】
+    - Units / spaces: Converts normalized distances and segment counts into world velocities via segment length and duration.【F:src/gameplay.js†L1470-L1491】
+    - Determinism: Deterministic for given inputs.【F:src/gameplay.js†L1457-L1491】
+    - Keep / change / delete: Keep; reusable push computation shared by sprites and cars.
+    - Confidence / assumptions: High confidence; assumes tuning constants remain positive.
+
+  - `configureImpactableSprite`
+    - Purpose: Initializes and sanitizes the impact motion state on an impactable sprite so collision pushes can be applied safely.【F:src/gameplay.js†L1494-L1506】
+    - Inputs: `sprite` — sprite descriptor expected to carry `impactable` flag.【F:src/gameplay.js†L1494-L1496】
+    - Outputs: Returns the sprite’s `impactState` object or `null` when not impactable.【F:src/gameplay.js†L1497-L1506】
+    - Side effects: Creates or normalizes `sprite.impactState`, setting default timers and velocities to zero.【F:src/gameplay.js†L1497-L1505】
+    - Shared state touched and where it’s used: Called during sprite creation and whenever pushes update impactable sprites; mutates the sprite object in place.【F:src/gameplay.js†L858-L861】【F:src/gameplay.js†L1494-L1506】【F:src/gameplay.js†L1512-L1515】【F:src/gameplay.js†L1531-L1532】
+    - Dependencies: Relies on `Number.isFinite` checks and the sprite’s `impactable` flag.【F:src/gameplay.js†L1494-L1505】
+    - Edge cases handled or missed: Returns `null` when the sprite is absent or not impactable; resets NaN timers/velocities to zero but assumes the sprite object is mutable.【F:src/gameplay.js†L1494-L1505】
+    - Performance: Constant and cheap; invoked per impactable sprite during interactions and animation updates.【F:src/gameplay.js†L1494-L1532】【F:src/gameplay.js†L2040-L2108】
+    - Units / spaces: Stores velocities in track/lateral units consistent with collision push logic.【F:src/gameplay.js†L1497-L1505】
+    - Determinism: Deterministic; no randomness involved.【F:src/gameplay.js†L1494-L1506】
+    - Keep / change / delete: Keep; provides a safe initialization point for impactable sprites.
+    - Confidence / assumptions: High confidence; assumes all impactable sprites should carry a mutable `impactState`.
+
+  - `applyImpactPushToSprite`
+    - Purpose: Applies a freshly computed collision push to an impactable sprite, starting its impact timer and velocity.【F:src/gameplay.js†L1509-L1526】
+    - Inputs: `sprite` — candidate sprite to push.【F:src/gameplay.js†L1509-L1515】
+    - Outputs: None.【F:src/gameplay.js†L1509-L1526】
+    - Side effects: Configures the sprite’s impact state and writes new lateral/forward velocities plus timer duration.【F:src/gameplay.js†L1512-L1526】
+    - Shared state touched and where it’s used: Reads player state for offsets and stores results on the sprite; called when resolving sprite interactions with the player.【F:src/gameplay.js†L1515-L1526】【F:src/gameplay.js†L1951-L1953】
+    - Dependencies: Uses `configureImpactableSprite`, `computeCollisionPush`, `currentPlayerForwardSpeed`, and collision tuning constants.【F:src/gameplay.js†L1512-L1526】
+    - Edge cases handled or missed: Returns early if the sprite is absent, not impactable, or if no push is produced; assumes `sprite.offset` is valid.【F:src/gameplay.js†L1509-L1525】
+    - Performance: Constant; runs when the player collides with an impactable sprite, which is relatively infrequent.【F:src/gameplay.js†L1509-L1526】【F:src/gameplay.js†L1924-L1958】
+    - Units / spaces: Velocities align with track distance per second and normalized lateral offsets.【F:src/gameplay.js†L1515-L1526】
+    - Determinism: Deterministic for identical collision contexts.【F:src/gameplay.js†L1509-L1526】
+    - Keep / change / delete: Keep; bridges collision detection and sprite motion in a focused helper.
+    - Confidence / assumptions: High confidence; assumes `sprite.offset` mirrors normalized N space.
+
+  - `updateImpactableSprite`
+    - Purpose: Steps an impactable sprite’s push motion forward, updating offsets, timers, and optionally moving it to a new segment.【F:src/gameplay.js†L1529-L1572】
+    - Inputs: `sprite` — impactable sprite; `dt` — elapsed time; `currentSeg` — segment currently iterated (optional).【F:src/gameplay.js†L1529-L1537】
+    - Outputs: Returns the new segment when the sprite crosses into another, otherwise `null`.【F:src/gameplay.js†L1548-L1571】
+    - Side effects: Mutates sprite offsets, wrapped `s` position, and impact velocities/timer; may update `sprite.segIndex`.【F:src/gameplay.js†L1536-L1568】
+    - Shared state touched and where it’s used: Uses track queries and physics state for wrapping; invoked inside the sprite animation loop each frame.【F:src/gameplay.js†L1529-L1571】【F:src/gameplay.js†L2040-L2108】
+    - Dependencies: Calls `configureImpactableSprite`, `trackLengthRef`, `segmentAtIndex`, `wrapDistance`, and `segmentAtS`.【F:src/gameplay.js†L1531-L1558】
+    - Edge cases handled or missed: Returns early for invalid sprites or non-positive `dt`; clamps timers and zeroes velocities when finished, but assumes `sprite.segIndex` is valid when wrapping.【F:src/gameplay.js†L1529-L1568】
+    - Performance: Constant work per sprite per frame; heavy numbers of impactable sprites could add cost.【F:src/gameplay.js†L1529-L1571】【F:src/gameplay.js†L2040-L2108】
+    - Units / spaces: Handles normalized lateral offsets and wrapped track distance (`s`), with timers in seconds.【F:src/gameplay.js†L1544-L1568】
+    - Determinism: Deterministic given identical initial impact state and `dt`.【F:src/gameplay.js†L1529-L1571】
+    - Keep / change / delete: Keep; cleanly separates impact motion from interaction detection.
+    - Confidence / assumptions: Medium confidence; assumes referenced segments remain valid while sprites move.
+
+  - `carHitboxHeight`
+    - Purpose: Calculates an NPC car’s hitbox height in world units, honoring explicit overrides or deriving it from width and aspect ratio.【F:src/gameplay.js†L1574-L1583】
+    - Inputs: `car` — NPC descriptor; `s` — optional longitudinal position for road-width queries (defaults to player `s`).【F:src/gameplay.js†L1574-L1580】
+    - Outputs: Returns a numeric height in world units.【F:src/gameplay.js†L1578-L1583】
+    - Side effects: None.【F:src/gameplay.js†L1574-L1583】
+    - Shared state touched and where it’s used: Reads track width functions and car metadata; used when checking if the player is above an NPC during collisions.【F:src/gameplay.js†L1574-L1589】【F:src/gameplay.js†L1978-L1988】
+    - Dependencies: Calls `carMeta`, `roadWidthAt`, and falls back to `track.roadWidth`.【F:src/gameplay.js†L1574-L1580】
+    - Edge cases handled or missed: Supports explicit `hitbox.height` or `heightN`; assumes aspect ratios and widths are finite and returns `0` otherwise.【F:src/gameplay.js†L1576-L1583】
+    - Performance: Constant; invoked for each collision height check.【F:src/gameplay.js†L1574-L1583】
+    - Units / spaces: World height units consistent with elevation samples.【F:src/gameplay.js†L1579-L1583】
+    - Determinism: Deterministic given car metadata and track width.【F:src/gameplay.js†L1574-L1583】
+    - Keep / change / delete: Keep; centralizes hitbox derivation logic.
+    - Confidence / assumptions: Medium confidence; assumes `roadWidthAt` is available or falls back to `track.roadWidth`.
+
+  - `carHitboxTopY`
+    - Purpose: Computes the world-space Y coordinate of an NPC car’s hitbox top, blending road elevation with hitbox height.【F:src/gameplay.js†L1586-L1591】
+    - Inputs: `car` — NPC descriptor (uses its `z` and lateral offset when available).【F:src/gameplay.js†L1586-L1589】
+    - Outputs: Returns a world Y coordinate.【F:src/gameplay.js†L1589-L1591】
+    - Side effects: None.【F:src/gameplay.js†L1586-L1591】
+    - Shared state touched and where it’s used: Reads from physics state and elevation functions; used to ensure airborne players clear NPC roofs before treating contacts as collisions.【F:src/gameplay.js†L1586-L1591】【F:src/gameplay.js†L1978-L1988】
+    - Dependencies: Uses `floorElevationAt` when available, falling back to `elevationAt`, plus `carHitboxHeight`.【F:src/gameplay.js†L1588-L1591】
+    - Edge cases handled or missed: Defaults to player `s` and zero lateral offset when car data is missing; assumes elevation helpers return finite numbers.【F:src/gameplay.js†L1586-L1591】
+    - Performance: Constant.【F:src/gameplay.js†L1586-L1591】
+    - Units / spaces: World vertical units consistent with road elevation.【F:src/gameplay.js†L1588-L1591】
+    - Determinism: Deterministic given the same inputs.【F:src/gameplay.js†L1586-L1591】
+    - Keep / change / delete: Keep; simplifies collision height comparisons.
+    - Confidence / assumptions: High confidence; assumes elevation helpers are reliable at the queried positions.
+
+  - `applyNpcCollisionPush`
+    - Purpose: Starts a collision push response on an NPC car when the player rear-ends it, mirroring the player-side push.【F:src/gameplay.js†L1593-L1610】
+    - Inputs: `car` — NPC to push; `playerForwardSpeed` — player speed at impact.【F:src/gameplay.js†L1593-L1600】
+    - Outputs: None.【F:src/gameplay.js†L1593-L1610】
+    - Side effects: Ensures `car.collisionPush` exists then sets its velocities and timer.【F:src/gameplay.js†L1605-L1610】
+    - Shared state touched and where it’s used: Mutates the NPC car object; called during player-vs-NPC collision resolution.【F:src/gameplay.js†L1593-L1610】【F:src/gameplay.js†L1993-L2015】
+    - Dependencies: Uses `computeCollisionPush` and collision tuning constants including `COLLISION_PUSH_DURATION`.【F:src/gameplay.js†L1596-L1610】
+    - Edge cases handled or missed: Returns if the car is missing or if `computeCollisionPush` yields nothing; assumes NPC object is mutable.【F:src/gameplay.js†L1593-L1608】
+    - Performance: Constant per collision event.【F:src/gameplay.js†L1593-L1610】
+    - Units / spaces: Push velocities share the same track-distance and normalized lateral units as the player push.【F:src/gameplay.js†L1596-L1610】
+    - Determinism: Deterministic for a given collision context.【F:src/gameplay.js†L1593-L1610】
+    - Keep / change / delete: Keep; mirrors player push logic for NPC feedback.
+    - Confidence / assumptions: High confidence; assumes `COLLISION_PUSH_DURATION` positive.
+
+  - `playerBaseHeight`
+    - Purpose: Determines the player’s current floor height, choosing the road surface when grounded or the physics Y when airborne.【F:src/gameplay.js†L1613-L1618】
+    - Inputs: None.【F:src/gameplay.js†L1613-L1618】
+    - Outputs: Returns a world Y value.【F:src/gameplay.js†L1613-L1618】
+    - Side effects: None.【F:src/gameplay.js†L1613-L1618】
+    - Shared state touched and where it’s used: Reads from `state.phys` and `floorElevationAt`; used in collision checks to skip NPC hits while airborne.【F:src/gameplay.js†L1613-L1618】【F:src/gameplay.js†L1978-L1988】
+    - Dependencies: Uses `floorElevationAt` when grounded.【F:src/gameplay.js†L1614-L1617】
+    - Edge cases handled or missed: Falls back to `phys.y` when ungrounded or when floor samplers are unavailable; assumes physics state exists.【F:src/gameplay.js†L1613-L1618】
+    - Performance: Constant.【F:src/gameplay.js†L1613-L1618】
+    - Units / spaces: World height units.【F:src/gameplay.js†L1613-L1618】
+    - Determinism: Deterministic.【F:src/gameplay.js†L1613-L1618】
+    - Keep / change / delete: Keep; clarifies base-height logic across collision checks.
+    - Confidence / assumptions: High confidence; assumes `phys.grounded` flag accurately reflects landing state.
+
+  - `npcLateralLimit`
+    - Purpose: Calculates how far an NPC car may move laterally, respecting its width, safety padding, and guard-rail constraints.【F:src/gameplay.js†L1621-L1629】
+    - Inputs: `segIndex` — segment index; `car` — NPC descriptor.【F:src/gameplay.js†L1621-L1628】
+    - Outputs: Returns a symmetric lateral limit in normalized units.【F:src/gameplay.js†L1621-L1629】
+    - Side effects: None.【F:src/gameplay.js†L1621-L1629】
+    - Shared state touched and where it’s used: Reads car metadata, track rail info, and NPC tuning; used across NPC spawn, steering, and collision logic to clamp offsets.【F:src/gameplay.js†L1621-L1629】【F:src/gameplay.js†L2455-L2535】
+    - Dependencies: Uses `carHalfWN`, `segmentAtIndex`, and track guard-rail configuration.【F:src/gameplay.js†L1621-L1628】
+    - Edge cases handled or missed: Accounts for guard rails when present; assumes `track.railInset` and NPC padding values are valid numbers.【F:src/gameplay.js†L1623-L1628】
+    - Performance: Constant; invoked repeatedly while steering NPCs.【F:src/gameplay.js†L1621-L1629】【F:src/gameplay.js†L2455-L2535】
+    - Units / spaces: Normalized lane units relative to the road width.【F:src/gameplay.js†L1621-L1629】
+    - Determinism: Deterministic.【F:src/gameplay.js†L1621-L1629】
+    - Keep / change / delete: Keep; encapsulates guard-rail aware clamping.
+    - Confidence / assumptions: Medium confidence; assumes segment guard-rail data stays synchronized with indices.
+
+  - `slopeAngleDeg`
+    - Purpose: Converts a slope ratio into an absolute angle in degrees for cliff limit comparisons.【F:src/gameplay.js†L1632-L1635】
+    - Inputs: `slope` — rise/run ratio.【F:src/gameplay.js†L1632-L1635】
+    - Outputs: Returns the absolute slope angle in degrees (or `0` for invalid input).【F:src/gameplay.js†L1632-L1635】
+    - Side effects: None.【F:src/gameplay.js†L1632-L1635】
+    - Shared state touched and where it’s used: Used by `slopeLimitRatio` and cliff-steepness evaluation code.【F:src/gameplay.js†L1632-L1639】【F:src/gameplay.js†L1848-L1853】
+    - Dependencies: Relies on `Math.atan`, `Math.abs`, and conversion to degrees.【F:src/gameplay.js†L1632-L1635】
+    - Edge cases handled or missed: Returns `0` when slope is non-finite, preventing downstream NaNs.【F:src/gameplay.js†L1632-L1635】
+    - Performance: Constant.【F:src/gameplay.js†L1632-L1635】
+    - Units / spaces: Outputs degrees derived from slope ratios.【F:src/gameplay.js†L1632-L1635】
+    - Determinism: Deterministic.【F:src/gameplay.js†L1632-L1635】
+    - Keep / change / delete: Keep; small helper keeps degree conversion centralized.
+    - Confidence / assumptions: High confidence; assumes slope inputs are numeric.
+
+  - `slopeLimitRatio`
+    - Purpose: Expresses how close a slope is to the configured cliff angle limit as a 0..1+ ratio.【F:src/gameplay.js†L1637-L1641】
+    - Inputs: `slope` — rise/run ratio.【F:src/gameplay.js†L1637-L1641】
+    - Outputs: Returns `angleDeg / CLIFF_LIMIT_DEG`, or `0` when the limit is disabled.【F:src/gameplay.js†L1637-L1641】
+    - Side effects: None.【F:src/gameplay.js†L1637-L1641】
+    - Shared state touched and where it’s used: Reads global `CLIFF_LIMIT_DEG`; used by `slopeExceedsLimit` and cliff steepness heuristics.【F:src/gameplay.js†L1637-L1645】【F:src/gameplay.js†L1850-L1853】
+    - Dependencies: Calls `slopeAngleDeg`.【F:src/gameplay.js†L1637-L1640】
+    - Edge cases handled or missed: Returns `0` when the limit is missing or non-positive, effectively disabling ratio-based logic.【F:src/gameplay.js†L1637-L1641】
+    - Performance: Constant.【F:src/gameplay.js†L1637-L1641】
+    - Units / spaces: Ratio (unitless).【F:src/gameplay.js†L1637-L1641】
+    - Determinism: Deterministic.【F:src/gameplay.js†L1637-L1641】
+    - Keep / change / delete: Keep; simple ratio helper clarifies limit math.
+    - Confidence / assumptions: High confidence; assumes `CLIFF_LIMIT_DEG` describes a positive degree limit when enabled.
+
+  - `slopeExceedsLimit`
+    - Purpose: Flags slopes whose angle surpasses the configured cliff safety threshold.【F:src/gameplay.js†L1643-L1645】
+    - Inputs: `slope` — rise/run ratio.【F:src/gameplay.js†L1643-L1645】
+    - Outputs: Boolean indicating whether the slope is over the limit.【F:src/gameplay.js†L1643-L1645】
+    - Side effects: None.【F:src/gameplay.js†L1643-L1645】
+    - Shared state touched and where it’s used: Checks `CLIFF_LIMIT_DEG`; referenced by section and surface evaluators when warning about steep cliffs.【F:src/gameplay.js†L1643-L1663】
+    - Dependencies: Calls `slopeLimitRatio`.【F:src/gameplay.js†L1644-L1645】
+    - Edge cases handled or missed: Returns `false` when the limit is unset or non-positive; assumes slope ratio input is finite.【F:src/gameplay.js†L1643-L1645】
+    - Performance: Constant.【F:src/gameplay.js†L1643-L1645】
+    - Units / spaces: Operates on slope ratios; result unitless.【F:src/gameplay.js†L1643-L1645】
+    - Determinism: Deterministic.【F:src/gameplay.js†L1643-L1645】
+    - Keep / change / delete: Keep; keeps slope comparisons consistent.
+    - Confidence / assumptions: High confidence; assumes `slopeLimitRatio` returns sensible ratios.
+
+  - `cliffSectionExceedsLimit`
+    - Purpose: Evaluates a cliff cross-section’s slope to determine if it breaches the configured steepness limit.【F:src/gameplay.js†L1648-L1654】
+    - Inputs: `section` — object containing `dx`/`dy` components.【F:src/gameplay.js†L1648-L1653】
+    - Outputs: Boolean indicating whether the section exceeds the limit.【F:src/gameplay.js†L1648-L1654】
+    - Side effects: None.【F:src/gameplay.js†L1648-L1654】
+    - Shared state touched and where it’s used: Consumed by `segmentHasSteepCliff` when scanning cliff samples.【F:src/gameplay.js†L1674-L1688】
+    - Dependencies: Calls `slopeExceedsLimit` after computing slope magnitude from `dx`/`dy`.【F:src/gameplay.js†L1652-L1654】
+    - Edge cases handled or missed: Returns `false` when the section is missing or nearly flat (both deltas near zero); assumes `dx`/`dy` measured in consistent units.【F:src/gameplay.js†L1648-L1654】
+    - Performance: Constant.【F:src/gameplay.js†L1648-L1654】
+    - Units / spaces: Works in cliff geometric units (`dx`/`dy`) relative to world scale.【F:src/gameplay.js†L1650-L1654】
+    - Determinism: Deterministic.【F:src/gameplay.js†L1648-L1654】
+    - Keep / change / delete: Keep; localized helper simplifies `segmentHasSteepCliff`.
+    - Confidence / assumptions: Medium confidence; assumes `dx` is non-zero for meaningful slopes.
+
+  - `cliffInfoExceedsLimit`
+    - Purpose: Checks aggregated cliff surface info for any slope component that surpasses the configured limit.【F:src/gameplay.js†L1659-L1664】
+    - Inputs: `info` — structure with `slope`, `slopeA`, and `slopeB` fields.【F:src/gameplay.js†L1659-L1664】
+    - Outputs: Boolean indicating whether any component is too steep.【F:src/gameplay.js†L1659-L1664】
+    - Side effects: None.【F:src/gameplay.js†L1659-L1664】
+    - Shared state touched and where it’s used: Used within `segmentHasSteepCliff` as part of the per-sample evaluation.【F:src/gameplay.js†L1681-L1687】
+    - Dependencies: Calls `slopeExceedsLimit` on each slope component.【F:src/gameplay.js†L1661-L1664】
+    - Edge cases handled or missed: Returns `false` when info is missing; assumes slope fields are numeric.【F:src/gameplay.js†L1659-L1664】
+    - Performance: Constant.【F:src/gameplay.js†L1659-L1664】
+    - Units / spaces: Uses slope ratios derived from cliff surface sampling.【F:src/gameplay.js†L1659-L1664】
+    - Determinism: Deterministic.【F:src/gameplay.js†L1659-L1664】
+    - Keep / change / delete: Keep; keeps multi-slope checks concise inside segment scanning.
+    - Confidence / assumptions: High confidence; assumes upstream samplers populate slope fields consistently.
 - `segmentHasSteepCliff`
 - `wrapDistance`
 - `shortestSignedTrackDistance`
