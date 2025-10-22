@@ -2821,125 +2821,1529 @@
   - Keep / change / delete: Keep; single accessor for overlays—alternative is to expose `stats` directly, risking mutation.【F:src/render.js†L1972-L1998】
   - Confidence / assumptions: High confidence; assumes `endFrame` ran previously.【F:src/render.js†L333-L407】
 - `isSnowFeatureEnabled`
+  - Purpose: Determines whether the snow-screen effect should run by consulting the app’s snow toggle and defaulting to enabled when the toggle is missing so snowy segments always draw.【F:src/render.js†L416-L427】
+  - Inputs: None.【F:src/render.js†L416-L427】
+  - Outputs: Boolean flag indicating whether snow rendering stays active (defaults to `true`).【F:src/render.js†L416-L427】
+  - Side effects: Logs a console warning if the app hook throws; otherwise only reads global state.【F:src/render.js†L416-L423】
+  - Shared state touched and where it’s used: Reads `global.App` and feeds the result into snow activation checks inside `buildWorldDrawList` and `renderSnowScreen`.【F:src/render.js†L416-L427】【F:src/render.js†L1174-L1200】【F:src/render.js†L1431-L1523】
+  - Dependencies: Optional `App.isSnowEnabled` callback plus `console.warn` for diagnostics.【F:src/render.js†L416-L423】
+  - Edge cases handled or missed: Treats missing callbacks and thrown errors as “enabled,” so there’s no hard-off fallback; does not debounce rapid toggle changes.【F:src/render.js†L416-L424】
+  - Performance: Constant-time guard executed per snow segment and per snow-screen render; negligible cost.【F:src/render.js†L1174-L1200】【F:src/render.js†L1431-L1523】
+  - Units / spaces: Boolean only.【F:src/render.js†L416-L427】
+  - Determinism: Deterministic given the same `App.isSnowEnabled` behaviour; otherwise mirrors that callback’s result.【F:src/render.js†L416-L427】
+  - Keep / change / delete: Keep; isolates feature gating logic instead of repeating `App` checks at each site. Simplest alternative is inlining the null-safe call where needed.【F:src/render.js†L1174-L1200】【F:src/render.js†L1431-L1523】
+  - Confidence / assumptions: High confidence; assumes the `App` singleton remains stable while rendering.【F:src/render.js†L416-L427】
+
 - `numericOr`
+  - Purpose: Normalises configuration values into numbers, falling back to a supplied default whenever parsing fails so snow parameters stay valid.【F:src/render.js†L429-L457】
+  - Inputs: `value` (any type) and `fallback` (number used when parsing fails); accepts anything but only finite numbers survive.【F:src/render.js†L429-L457】
+  - Outputs: Finite number or the provided fallback.【F:src/render.js†L429-L457】
+  - Side effects: None.【F:src/render.js†L429-L457】
+  - Shared state touched and where it’s used: Used during snow configuration initialisation for size, speed, density, stretch, and screen factors.【F:src/render.js†L453-L457】
+  - Dependencies: `Number(value)` and `Number.isFinite`.【F:src/render.js†L429-L432】
+  - Edge cases handled or missed: Treats booleans/strings numerically; leaves extremely large finite values untouched for later clamping.【F:src/render.js†L429-L457】
+  - Performance: Constant-time conversion at module load.【F:src/render.js†L429-L457】
+  - Units / spaces: Preserves the units implied by the fallback (pixels, multipliers, etc.).【F:src/render.js†L453-L457】
+  - Determinism: Deterministic for a given input pair.【F:src/render.js†L429-L457】
+  - Keep / change / delete: Keep; avoids repeating verbose finite checks. Simplest alternative is to inline the `Number.isFinite(Number(v))` pattern at each usage.【F:src/render.js†L429-L457】
+  - Confidence / assumptions: High confidence; assumes fallbacks are sensible values from configuration.【F:src/render.js†L453-L457】
+
 - `orderedRange`
+  - Purpose: Converts any two endpoints into an ordered `{ min, max }` pair so later code can assume ascending ranges.【F:src/render.js†L434-L438】
+  - Inputs: `minVal`, `maxVal` numbers (may arrive inverted).【F:src/render.js†L434-L438】
+  - Outputs: Object with `min` ≤ `max`.【F:src/render.js†L434-L438】
+  - Side effects: None.【F:src/render.js†L434-L438】
+  - Shared state touched and where it’s used: Called by `rangeFromConfig` when preparing snow parameter ranges.【F:src/render.js†L440-L452】
+  - Dependencies: Simple comparisons; no external modules.【F:src/render.js†L434-L438】
+  - Edge cases handled or missed: Swaps values when needed but does not filter `NaN`—callers rely on `numericOr` first.【F:src/render.js†L434-L444】
+  - Performance: Constant-time.【F:src/render.js†L434-L438】
+  - Units / spaces: Maintains the units supplied by the caller (e.g., pixels).【F:src/render.js†L434-L452】
+  - Determinism: Deterministic per input pair.【F:src/render.js†L434-L438】
+  - Keep / change / delete: Keep; readability gain versus repeating ternaries. Alternative is inline conditional object creation.【F:src/render.js†L434-L445】
+  - Confidence / assumptions: High confidence; assumes upstream sanitises inputs to numbers.【F:src/render.js†L440-L452】
+
 - `rangeFromConfig`
+  - Purpose: Normalises snow configuration expressed as arrays, objects, or scalars into consistent `{ min, max }` ranges so later math works uniformly.【F:src/render.js†L440-L452】
+  - Inputs: `value` (array/object/number), `fallbackMin`, `fallbackMax` (numbers). Accepts partial data and fills gaps from fallbacks.【F:src/render.js†L440-L452】
+  - Outputs: Ordered range object.【F:src/render.js†L440-L452】
+  - Side effects: None.【F:src/render.js†L440-L452】
+  - Shared state touched and where it’s used: Generates snow size, speed, density, stretch, and screen scaling ranges at module load.【F:src/render.js†L453-L457】
+  - Dependencies: Uses `numericOr` and `orderedRange` for parsing and ordering.【F:src/render.js†L440-L449】
+  - Edge cases handled or missed: Supports arrays with ≥2 entries, `{min,max}` objects, and scalars; falls back entirely when data is unusable.【F:src/render.js†L440-L452】
+  - Performance: Constant-time during initialisation.【F:src/render.js†L440-L457】
+  - Units / spaces: Preserves units implied by the inputs (pixel scale, seconds, etc.).【F:src/render.js†L440-L457】
+  - Determinism: Deterministic given the same inputs.【F:src/render.js†L440-L452】
+  - Keep / change / delete: Keep; consolidates resilient config parsing instead of repeating shape checks for each knob.【F:src/render.js†L453-L457】
+  - Confidence / assumptions: High confidence; assumes caller-provided fallbacks reflect sane defaults.【F:src/render.js†L453-L457】
+
 - `computeSnowScreenBaseRadius`
+  - Purpose: Computes a base snow-screen radius from camera scale and road width so the overlay footprint matches the road before applying stretch effects.【F:src/render.js†L465-L471】
+  - Inputs: `scale` (projection scale >0) and `roadWidth` (world width units).【F:src/render.js†L465-L470】
+  - Outputs: Radius in pixels after applying minimum size and global multipliers.【F:src/render.js†L465-L471】
+  - Side effects: None.【F:src/render.js†L465-L471】
+  - Shared state touched and where it’s used: Called while enqueuing snow-screen draw items for visible segments.【F:src/render.js†L1174-L1200】
+  - Dependencies: Uses snow constants (`SNOW_SCREEN_MIN_RADIUS`, `SNOW_SCREEN_FOOTPRINT_SCALE`, `SNOW_SCREEN_BASE_EXPANSION`) and the size factor.【F:src/render.js†L458-L471】
+  - Edge cases handled or missed: Clamps to the minimum radius and guards against non-positive widths via `Math.max`; very large widths aren’t capped (left to camera visibility).【F:src/render.js†L465-L471】
+  - Performance: Constant-time per candidate segment.【F:src/render.js†L1174-L1200】
+  - Units / spaces: Returns pixel radius relative to the screen.【F:src/render.js†L465-L471】
+  - Determinism: Deterministic for given inputs.【F:src/render.js†L465-L471】
+  - Keep / change / delete: Keep; centralises tuning constants instead of repeating math. Alternative is to inline the formula inside the draw-list loop.【F:src/render.js†L1174-L1200】
+  - Confidence / assumptions: High confidence; assumes road width reflects the world width at the snow location.【F:src/render.js†L1174-L1200】
+
 - `mulberry32`
+  - Purpose: Provides a tiny deterministic RNG used to generate snow flake attributes from segment seeds.【F:src/render.js†L473-L481】
+  - Inputs: `seed` integer (any 32-bit value).【F:src/render.js†L473-L474】
+  - Outputs: Returns a closure that produces floats in `[0,1)`.【F:src/render.js†L473-L480】
+  - Side effects: Maintains internal 32-bit state within the returned closure.【F:src/render.js†L473-L480】
+  - Shared state touched and where it’s used: Instantiated by `buildSnowField` when constructing the pool of snow fields.【F:src/render.js†L485-L503】
+  - Dependencies: Uses bitwise arithmetic and `Math.imul`; no external modules.【F:src/render.js†L473-L480】
+  - Edge cases handled or missed: Works with any seed but is not cryptographically secure; sequence length limited to 2^32 steps (acceptable for visuals).【F:src/render.js†L473-L480】
+  - Performance: Very cheap per random number; runs only while building flake pools.【F:src/render.js†L485-L510】
+  - Units / spaces: Produces unitless ratios for later conversion to positions/sizes.【F:src/render.js†L485-L503】
+  - Determinism: Deterministic per seed.【F:src/render.js†L473-L480】
+  - Keep / change / delete: Keep; ensures reproducible snow fields. Simplest alternative is `Math.random`, which would lose determinism.【F:src/render.js†L485-L503】
+  - Confidence / assumptions: High confidence; assumes JS bitwise semantics remain stable across browsers.【F:src/render.js†L473-L480】
+
 - `buildSnowField`
+  - Purpose: Generates a single snow field composed of flake descriptors with varied offsets, speeds, sway, and phases for one deterministic seed.【F:src/render.js†L485-L503】
+  - Inputs: `seed` integer.【F:src/render.js†L485-L486】
+  - Outputs: Object `{ flakes, phaseOffset }` with an array of flake metadata and a random phase offset.【F:src/render.js†L485-L503】
+  - Side effects: Allocates arrays but does not mutate external state.【F:src/render.js†L485-L503】
+  - Shared state touched and where it’s used: Results cached into `snowFieldPool` and later consumed by `snowFieldFor`/`renderSnowScreen`.【F:src/render.js†L505-L518】【F:src/render.js†L1431-L1523】
+  - Dependencies: Uses `mulberry32`, `Math.round`, `Math.max`, `lerp`, and snow range constants.【F:src/render.js†L485-L503】
+  - Edge cases handled or missed: Guarantees non-negative flake counts and clamps offsets; does not prevent duplicate seeds (pool builder handles diversity).【F:src/render.js†L485-L503】
+  - Performance: Linear in flake count during pool construction; happens at start-up or when pool refreshed.【F:src/render.js†L485-L510】
+  - Units / spaces: Stores normalised positions `[0,1)` and relative size/stretch multipliers.【F:src/render.js†L485-L503】
+  - Determinism: Deterministic for the same seed and configuration constants.【F:src/render.js†L485-L503】
+  - Keep / change / delete: Keep; isolates procedural generation, avoiding per-frame random work. Alternative is to generate flakes inside `renderSnowScreen` each frame.【F:src/render.js†L1431-L1523】
+  - Confidence / assumptions: High confidence; assumes snow density/stretches remain within expected ranges.【F:src/render.js†L485-L503】
+
 - `ensureSnowFieldPool`
+  - Purpose: Lazily fills the reusable snow field pool so repeated lookups can reuse precomputed flake layouts.【F:src/render.js†L505-L511】
+  - Inputs: None.【F:src/render.js†L505-L511】
+  - Outputs: None; early-returns once the pool is populated.【F:src/render.js†L505-L511】
+  - Side effects: Pushes `SNOW_FIELD_POOL_SIZE` entries into the module-level `snowFieldPool`.【F:src/render.js†L505-L511】
+  - Shared state touched and where it’s used: Runs whenever `snowFieldFor` executes to guarantee pool availability.【F:src/render.js†L505-L518】
+  - Dependencies: Calls `buildSnowField` with deterministic seeds.【F:src/render.js†L507-L510】
+  - Edge cases handled or missed: No-ops if the pool already has entries; does not refresh once created (adequate for static snow).【F:src/render.js†L505-L511】
+  - Performance: O(pool size) on first call, constant-time guard thereafter.【F:src/render.js†L505-L518】
+  - Units / spaces: Manages arrays of normalised flake data; no direct units.【F:src/render.js†L485-L518】
+  - Determinism: Deterministic thanks to predictable seeds.【F:src/render.js†L505-L510】
+  - Keep / change / delete: Keep; amortises generation work. Simplest alternative is to rebuild per segment lookup.【F:src/render.js†L505-L518】
+  - Confidence / assumptions: High confidence; assumes pool size of 12 covers distinct snow patterns sufficiently.【F:src/render.js†L505-L511】
+
 - `snowFieldFor`
+  - Purpose: Retrieves a snow field for a segment index by wrapping the index into the prebuilt pool so snow visuals repeat predictably.【F:src/render.js†L513-L518】
+  - Inputs: `segIndex` integer (defaults to 0).【F:src/render.js†L513-L516】
+  - Outputs: Snow field object or `EMPTY_SNOW_FIELD` fallback.【F:src/render.js†L513-L518】
+  - Side effects: Ensures the pool is populated before access.【F:src/render.js†L513-L518】
+  - Shared state touched and where it’s used: Provides flake data to `renderSnowScreen`.【F:src/render.js†L513-L518】【F:src/render.js†L1439-L1473】
+  - Dependencies: Depends on `ensureSnowFieldPool` and the pool array.【F:src/render.js†L513-L518】
+  - Edge cases handled or missed: Returns the empty sentinel when the pool cannot be built; modulus handles negative indices gracefully.【F:src/render.js†L513-L518】
+  - Performance: Constant-time lookup.【F:src/render.js†L513-L518】
+  - Units / spaces: Returns normalised data consumed by the renderer to compute pixel positions.【F:src/render.js†L1439-L1473】
+  - Determinism: Deterministic mapping from index to cached field.【F:src/render.js†L513-L518】
+  - Keep / change / delete: Keep; ensures consistent snow without per-frame RNG. Alternative would be storing snow data on segments themselves.【F:src/render.js†L1439-L1473】
+  - Confidence / assumptions: High confidence; assumes repeating every 12 segments is visually acceptable.【F:src/render.js†L505-L518】
+
 - `fogNear`
+  - Purpose: Reports the world-space distance where fog begins based on configured segment counts and segment length.【F:src/render.js†L712-L717】
+  - Inputs: None.【F:src/render.js†L712-L717】
+  - Outputs: Numeric distance (track units).【F:src/render.js†L712-L717】
+  - Side effects: None.【F:src/render.js†L712-L717】
+  - Shared state touched and where it’s used: Consumed by `fogFactorFromZ` whenever fog intensity is computed for quads and sprites.【F:src/render.js†L714-L724】
+  - Dependencies: Reads `fog.nearSegments` and `segmentLength`.【F:src/render.js†L712-L717】
+  - Edge cases handled or missed: Allows zero or negative configuration values, which would clamp results in `fogFactorFromZ`.【F:src/render.js†L712-L719】
+  - Performance: Constant access.【F:src/render.js†L712-L717】
+  - Units / spaces: Track/world distance.【F:src/render.js†L712-L717】
+  - Determinism: Deterministic for fixed configuration.【F:src/render.js†L712-L717】
+  - Keep / change / delete: Keep; paired with `fogFar` for readability. Simplest alternative is to inline `fog.nearSegments * segmentLength` at each call.【F:src/render.js†L714-L724】
+  - Confidence / assumptions: High confidence; assumes fog settings remain static at runtime.【F:src/render.js†L712-L717】
+
 - `computeOverlayEnabled`
+  - Purpose: Determines whether the debug overlay canvas should be visible by consulting `App.isDebugEnabled` and the renderer’s debug config.【F:src/render.js†L554-L564】
+  - Inputs: None.【F:src/render.js†L554-L564】
+  - Outputs: Boolean flag.【F:src/render.js†L554-L564】
+  - Side effects: None, aside from swallowing errors from the app hook.【F:src/render.js†L554-L562】
+  - Shared state touched and where it’s used: Queried by `syncOverlayVisibility` to toggle canvas display and indirectly by `renderOverlay`.【F:src/render.js†L566-L577】【F:src/render.js†L1888-L2030】
+  - Dependencies: Optional `App.isDebugEnabled` callback plus local `debug` configuration.【F:src/render.js†L554-L563】
+  - Edge cases handled or missed: Falls back to config when the hook is missing or throws; cannot override config-driven debug-on state when the hook errors.【F:src/render.js†L554-L563】
+  - Performance: Constant-time check per frame.【F:src/render.js†L566-L577】
+  - Units / spaces: Boolean only.【F:src/render.js†L554-L564】
+  - Determinism: Deterministic for stable `App` responses and config.【F:src/render.js†L554-L564】
+  - Keep / change / delete: Keep; centralises debug toggle logic. Alternative is to inline the try/catch at each overlay call.【F:src/render.js†L566-L577】
+  - Confidence / assumptions: High confidence; assumes the app callback is synchronous.【F:src/render.js†L554-L563】
+
 - `syncOverlayVisibility`
+  - Purpose: Shows or hides the overlay canvas and clears it when hiding so stale debug imagery disappears.【F:src/render.js†L566-L577】
+  - Inputs: `force` boolean (default `false`) to force a resync.【F:src/render.js†L566-L577】
+  - Outputs: Final overlay visibility state.【F:src/render.js†L566-L577】
+  - Side effects: Mutates `overlayOn`, toggles `canvasOverlay.style.display`, and clears the overlay context when disabling.【F:src/render.js†L566-L577】
+  - Shared state touched and where it’s used: Called during overlay rendering and when attaching canvases to maintain visibility state.【F:src/render.js†L566-L577】【F:src/render.js†L1888-L2030】【F:src/render.js†L2089-L2094】
+  - Dependencies: Uses `computeOverlayEnabled` and DOM references for the overlay canvas.【F:src/render.js†L566-L577】
+  - Edge cases handled or missed: Safe when canvases are missing; assumes CSS `display` toggling is sufficient (no fade).【F:src/render.js†L566-L577】
+  - Performance: Constant-time per call.【F:src/render.js†L566-L577】
+  - Units / spaces: Boolean/DOM state.【F:src/render.js†L566-L577】
+  - Determinism: Deterministic for identical debug flags and DOM state.【F:src/render.js†L566-L577】
+  - Keep / change / delete: Keep; encapsulates overlay toggling logic. Alternative is manual `style.display` writes at each caller.【F:src/render.js†L1888-L2030】
+  - Confidence / assumptions: High confidence; assumes overlay context can be cleared without side effects.【F:src/render.js†L566-L577】
+
 - `createPoint`
+  - Purpose: Builds the `{ world, camera, screen }` structure used during projection, accepting either an object or raw coordinates.【F:src/render.js†L580-L589】
+  - Inputs: Either `worldOrX` object `{x,y,z}` or separate `worldOrX`, `y`, `z` numbers (defaults to 0).【F:src/render.js†L580-L589】
+  - Outputs: Point object with empty `camera`/`screen` dictionaries ready for projection.【F:src/render.js†L580-L589】
+  - Side effects: None besides allocation.【F:src/render.js†L580-L589】
+  - Shared state touched and where it’s used: Used by `projectWorldPoint` and `projectSegPoint` before calling `projectPoint`.【F:src/render.js†L592-L607】
+  - Dependencies: Pure object creation; no external modules.【F:src/render.js†L580-L589】
+  - Edge cases handled or missed: Gracefully handles null/undefined input by defaulting to zero; does not deep-clone nested objects.【F:src/render.js†L580-L604】
+  - Performance: Constant-time allocation.【F:src/render.js†L580-L589】
+  - Units / spaces: Stores world coordinates in track units; camera/screen filled later.【F:src/render.js†L580-L607】
+  - Determinism: Deterministic per input.【F:src/render.js†L580-L589】
+  - Keep / change / delete: Keep; avoids repetitive object literal boilerplate before projection. Alternative is to construct ad-hoc objects in each caller.【F:src/render.js†L592-L607】
+  - Confidence / assumptions: High confidence; assumes projection immediately follows creation.【F:src/render.js†L592-L607】
+
 - `projectWorldPoint`
+  - Purpose: Projects a world-space coordinate into camera and screen coordinates using the current camera origin.【F:src/render.js†L592-L596】
+  - Inputs: `world` object `{x,y,z}`, `camX`, `camY`, `camS` camera offsets.【F:src/render.js†L592-L606】
+  - Outputs: Point object with updated `camera` and `screen` fields.【F:src/render.js†L592-L606】
+  - Side effects: Allocates a point via `createPoint` and mutates it through `projectPoint`.【F:src/render.js†L592-L607】
+  - Shared state touched and where it’s used: Called by camera tilt logic and while enqueuing the player sprite each frame.【F:src/render.js†L1032-L1049】【F:src/render.js†L1335-L1370】
+  - Dependencies: `createPoint` and `projectPoint`.【F:src/render.js†L592-L607】
+  - Edge cases handled or missed: Relies on `projectPoint` to handle near-plane issues; assumes `world` fields are numeric or default to zero.【F:src/render.js†L592-L607】
+  - Performance: Constant per projection; invoked for only a few key points each frame.【F:src/render.js†L1032-L1049】【F:src/render.js†L1335-L1370】
+  - Units / spaces: Converts track/world units to screen pixels and stores width scaling.【F:src/render.js†L592-L607】
+  - Determinism: Deterministic for given inputs.【F:src/render.js†L592-L607】
+  - Keep / change / delete: Keep; clarifies intent versus calling `projectPoint` manually. Alternative is to inline object creation and projection each time.【F:src/render.js†L1032-L1049】
+  - Confidence / assumptions: High confidence; assumes camera depth stays positive.【F:src/render.js†L592-L607】
+
 - `projectSegPoint`
+  - Purpose: Projects a segment endpoint plus vertical offset into screen space, useful for rails and cliffs.【F:src/render.js†L598-L607】
+  - Inputs: `segPoint` (with `world`), `yOffset` (number), `camX`, `camY`, `camS`.【F:src/render.js†L598-L607】
+  - Outputs: Point object ready for rendering calculations.【F:src/render.js†L598-L607】
+  - Side effects: Allocates via `createPoint` and projects it.【F:src/render.js†L598-L607】
+  - Shared state touched and where it’s used: Heavily used while building the world draw list for strips, cliffs, and guard rails.【F:src/render.js†L1051-L1332】
+  - Dependencies: `createPoint` and `projectPoint`.【F:src/render.js†L598-L607】
+  - Edge cases handled or missed: Defaults missing coordinates to zero; assumes `segPoint.world` exists.【F:src/render.js†L598-L605】
+  - Performance: Hot path but only arithmetic and projection per point.【F:src/render.js†L1051-L1332】
+  - Units / spaces: Converts world coordinates to screen pixels with width scaling.【F:src/render.js†L598-L607】
+  - Determinism: Deterministic for given inputs.【F:src/render.js†L598-L607】
+  - Keep / change / delete: Keep; clarifies Y-offset handling per segment. Alternative is to compute offset and call `projectWorldPoint` manually.【F:src/render.js†L1051-L1332】
+  - Confidence / assumptions: High confidence; assumes segment data remains valid while iterating.【F:src/render.js†L1051-L1332】
+
 - `padWithSpriteOverlap`
+  - Purpose: Expands quads by the configured sprite overlap so adjacent tiles avoid seam gaps.【F:src/render.js†L610-L612】
+  - Inputs: `quad` object and optional override padding values.【F:src/render.js†L610-L612】
+  - Outputs: New quad with padding applied via `padQuad`.【F:src/render.js†L610-L612】
+  - Side effects: None.【F:src/render.js†L610-L612】
+  - Shared state touched and where it’s used: Applied during road, boost zone, rail, and cliff rendering to smooth edges.【F:src/render.js†L761-L879】【F:src/render.js†L1616-L1668】
+  - Dependencies: Uses renderer helper `padQuad` combined with default sprite overlap constants.【F:src/render.js†L523-L612】【F:src/gl/renderer.js†L221-L258】
+  - Edge cases handled or missed: Allows partial overrides but assumes quad keys exist; does not validate orientation.【F:src/render.js†L610-L612】
+  - Performance: Constant-time object merge per quad.【F:src/render.js†L761-L879】
+  - Units / spaces: Padding measured in screen pixels according to overlap config.【F:src/render.js†L523-L612】
+  - Determinism: Deterministic per inputs.【F:src/render.js†L610-L612】
+  - Keep / change / delete: Keep; prevents repeating padding logic. Alternative is manual per-edge adjustments in each draw routine.【F:src/render.js†L761-L879】
+  - Confidence / assumptions: High confidence; assumes overlap constants remain small relative to tile size.【F:src/render.js†L523-L612】
+
 - `computeCliffLaneProgress`
+  - Purpose: Converts off-road sprite offsets into progress through multi-stage cliff geometry so props align with layered cliffs.【F:src/render.js†L614-L655】
+  - Inputs: `segIndex` integer, `offset` lane offset, `t` segment interpolation (0–1), `roadWidth` world width.【F:src/render.js†L614-L626】
+  - Outputs: Object `{ o }` representing progress along inner/outer cliff sections.【F:src/render.js†L614-L655】
+  - Side effects: None.【F:src/render.js†L614-L655】
+  - Shared state touched and where it’s used: Called for sprites with |offset|>1 while assembling draw-list props.【F:src/render.js†L1241-L1287】
+  - Dependencies: Uses `cliffParamsAt`, `clamp`, and section widths.【F:src/render.js†L619-L647】
+  - Edge cases handled or missed: Falls back when geometry missing or widths near zero, ensuring props still place roughly in the right area.【F:src/render.js†L619-L655】
+  - Performance: Constant-time per eligible sprite.【F:src/render.js†L1241-L1287】
+  - Units / spaces: Works in normalised progress relative to road width.【F:src/render.js†L614-L655】
+  - Determinism: Deterministic for identical inputs.【F:src/render.js†L614-L655】
+  - Keep / change / delete: Keep; encapsulates cliff math used by multiple sprite kinds. Alternative is to inline calculations when placing each prop.【F:src/render.js†L1241-L1287】
+  - Confidence / assumptions: High confidence; assumes `cliffParamsAt` returns consistent geometry for both sides.【F:src/render.js†L614-L655】
+
 - `fogArray`
+  - Purpose: Produces per-vertex fog factors `[near, near, far, far]` for quads based on start/end depths.【F:src/render.js†L658-L662】
+  - Inputs: `zNear` number, optional `zFar` (defaults to `zNear`).【F:src/render.js†L658-L661】
+  - Outputs: Array of fog intensities.【F:src/render.js†L658-L661】
+  - Side effects: None.【F:src/render.js†L658-L662】
+  - Shared state touched and where it’s used: Used across road, boost zone, sprite, snow, and player rendering to tint by depth.【F:src/render.js†L761-L942】【F:src/render.js†L1370-L1730】
+  - Dependencies: Calls `fogFactorFromZ` for each depth.【F:src/render.js†L658-L661】
+  - Edge cases handled or missed: If fog disabled, `fogFactorFromZ` returns zero; duplicates near value when far missing.【F:src/render.js†L658-L719】
+  - Performance: Constant-time per call.【F:src/render.js†L658-L662】
+  - Units / spaces: Unitless fog weights.【F:src/render.js†L658-L662】
+  - Determinism: Deterministic given inputs.【F:src/render.js†L658-L662】
+  - Keep / change / delete: Keep; avoids repeating array assembly in each draw path.【F:src/render.js†L761-L1730】
+  - Confidence / assumptions: High confidence; assumes depth inputs are finite.【F:src/render.js†L658-L719】
+
 - `getTrackLength`
+  - Purpose: Retrieves the track length whether stored as a literal or function, defaulting to zero when absent.【F:src/render.js†L664-L667】
+  - Inputs: None.【F:src/render.js†L664-L667】
+  - Outputs: Numeric track length.【F:src/render.js†L664-L667】
+  - Side effects: None.【F:src/render.js†L664-L667】
+  - Shared state touched and where it’s used: Used for segment wrapping in `segmentAtS`, elevation sampling, and sprite placement math.【F:src/render.js†L945-L1235】
+  - Dependencies: Reads `data.trackLength`, invoking it if it’s a function.【F:src/render.js†L664-L667】
+  - Edge cases handled or missed: Returns 0 when length missing, causing upstream callers to bail (safe).【F:src/render.js†L664-L951】
+  - Performance: Constant-time.【F:src/render.js†L664-L667】
+  - Units / spaces: Track distance units.【F:src/render.js†L664-L967】
+  - Determinism: Deterministic when `data.trackLength` stable.【F:src/render.js†L664-L667】
+  - Keep / change / delete: Keep; small helper that hides mixed representation. Alternative is to repeat the ternary at each use.【F:src/render.js†L945-L1235】
+  - Confidence / assumptions: High confidence; assumes active tracks provide a positive value.【F:src/render.js†L945-L1235】
+
 - `projectPoint`
+  - Purpose: Core projection routine that converts a point from world space into camera-relative screen coordinates and width scaling.【F:src/render.js†L669-L681】
+  - Inputs: Point `p` plus `camX`, `camY`, `camS` camera offsets.【F:src/render.js†L669-L676】
+  - Outputs: Mutates `p.camera` and `p.screen` with projected coordinates.【F:src/render.js†L669-L681】
+  - Side effects: Overwrites the point’s `camera`/`screen` fields.【F:src/render.js†L669-L681】
+  - Shared state touched and where it’s used: Invoked by all projection helpers feeding the draw list, camera tilt, and overlay plotting.【F:src/render.js†L592-L607】【F:src/render.js†L1051-L1992】
+  - Dependencies: Uses camera depth, global canvas metrics, and `roadWidthAt` for width scaling.【F:src/render.js†L669-L681】
+  - Edge cases handled or missed: Assumes `p.camera.z` > 0; callers skip near-plane segments before invoking it.【F:src/render.js†L1051-L1087】
+  - Performance: Hot path executed many times per frame; minimal arithmetic beyond necessary perspective math.【F:src/render.js†L669-L681】
+  - Units / spaces: Converts track units to pixel positions and widths.【F:src/render.js†L669-L681】
+  - Determinism: Deterministic for identical inputs.【F:src/render.js†L669-L681】
+  - Keep / change / delete: Keep; fundamental to rendering. Alternative is none without rewriting projection logic.【F:src/render.js†L592-L607】
+  - Confidence / assumptions: High confidence; assumes camera depth stays positive and `roadWidthAt` is reliable.【F:src/render.js†L669-L681】
+
 - `makeCliffLeftQuads`
+  - Purpose: Builds two textured quads (inner and outer) for the left cliff wall segment, including UVs and intermediate points for sprite placement.【F:src/render.js†L683-L695】
+  - Inputs: Screen coordinates `x1,y1,w1,x2,y2,w2`, vertical targets `yA1,yA2,yB1,yB2`, horizontal offsets `dxA0,dxA1,dxB0,dxB1`, UV span `u0,u1`, and road widths `rw1,rw2`.【F:src/render.js†L683-L694】
+  - Outputs: Object containing quads, UVs, and cached inner edge positions.【F:src/render.js†L683-L695】
+  - Side effects: None.【F:src/render.js†L683-L695】
+  - Shared state touched and where it’s used: Called during draw-list assembly for every road segment to capture geometry for `renderStrip` and off-road sprite placement.【F:src/render.js†L1051-L1172】
+  - Dependencies: Pure arithmetic; relies on provided cliff parameters and road widths.【F:src/render.js†L683-L695】
+  - Edge cases handled or missed: Guards against division by near-zero road widths via `Math.max(1e-6, rw)`.【F:src/render.js†L683-L694】
+  - Performance: Constant-time per segment.【F:src/render.js†L1051-L1172】
+  - Units / spaces: Operates in screen pixels and UV coordinates.【F:src/render.js†L683-L695】
+  - Determinism: Deterministic given inputs.【F:src/render.js†L683-L695】
+  - Keep / change / delete: Keep; encapsulates verbose geometry math. Alternative is to inline the calculations inside `buildWorldDrawList`.【F:src/render.js†L1051-L1172】
+  - Confidence / assumptions: High confidence; assumes cliff parameter data is coherent for left wall.【F:src/render.js†L1051-L1172】
+
 - `makeCliffRightQuads`
+  - Purpose: Mirrors `makeCliffLeftQuads` for the right side, constructing two quads with UVs and inner edge positions.【F:src/render.js†L697-L709】
+  - Inputs: Same parameter set as the left variant, adjusted for right-hand offsets.【F:src/render.js†L697-L708】
+  - Outputs: Object with right cliff quads, UVs, and cached edge positions.【F:src/render.js†L697-L709】
+  - Side effects: None.【F:src/render.js†L697-L709】
+  - Shared state touched and where it’s used: Used during draw-list creation for rendering and sprite placement on the right cliff.【F:src/render.js†L1051-L1172】
+  - Dependencies: Pure math using provided geometry and widths.【F:src/render.js†L697-L709】
+  - Edge cases handled or missed: Also guards against near-zero widths with `Math.max(1e-6, rw)`.【F:src/render.js†L697-L708】
+  - Performance: Constant-time per segment.【F:src/render.js†L1051-L1172】
+  - Units / spaces: Screen pixels and UV coordinates.【F:src/render.js†L697-L709】
+  - Determinism: Deterministic per input.【F:src/render.js†L697-L709】
+  - Keep / change / delete: Keep; keeps symmetrical math isolated. Alternative is to inline inside `buildWorldDrawList`.【F:src/render.js†L1051-L1172】
+  - Confidence / assumptions: High confidence; assumes right-side cliff data mirrors left structure.【F:src/render.js†L1051-L1172】
+
 - `fogFactorFromZ`
+  - Purpose: Computes a fog interpolation factor (0–1) based on camera-space depth and configured near/far distances.【F:src/render.js†L714-L718】
+  - Inputs: `z` depth (number).【F:src/render.js†L714-L718】
+  - Outputs: Fog factor between 0 and 1.【F:src/render.js†L714-L718】
+  - Side effects: None.【F:src/render.js†L714-L718】
+  - Shared state touched and where it’s used: Used by `fogArray`, `spriteFarScaleFromZ`, and snow stretching to gauge visibility.【F:src/render.js†L658-L724】【F:src/render.js†L1455-L1511】
+  - Dependencies: Uses `fog.enabled`, `fogNear`, and `fogFar` plus `clamp`.【F:src/render.js†L714-L718】
+  - Edge cases handled or missed: Returns 0 when fog disabled; handles inverted near/far by treating anything beyond `f` as fully fogged.【F:src/render.js†L714-L718】
+  - Performance: Constant-time per call.【F:src/render.js†L714-L718】
+  - Units / spaces: Takes depth in world units relative to camera.【F:src/render.js†L714-L718】
+  - Determinism: Deterministic per input.【F:src/render.js†L714-L718】
+  - Keep / change / delete: Keep; central helper for fog math. Alternative is to repeat the interpolation formula everywhere.【F:src/render.js†L658-L724】
+  - Confidence / assumptions: High confidence; assumes fog distances remain positive or handled by guard logic.【F:src/render.js†L714-L718】
+
 - `spriteFarScaleFromZ`
+  - Purpose: Shrinks distant sprites according to fog factor so far objects taper as they fade out.【F:src/render.js†L720-L724】
+  - Inputs: `z` depth (number).【F:src/render.js†L720-L724】
+  - Outputs: Scale multiplier between `sprites.far.shrinkTo` and 1.【F:src/render.js†L720-L724】
+  - Side effects: None.【F:src/render.js†L720-L724】
+  - Shared state touched and where it’s used: Applied when enqueuing snow screens, NPCs, and props to scale them based on distance.【F:src/render.js†L1174-L1327】
+  - Dependencies: Uses `fogFactorFromZ`, `sprites.far.shrinkTo`, and `sprites.far.power`.【F:src/render.js†L720-L724】
+  - Edge cases handled or missed: Returns 1 when fog disabled; clamps shrink factor smoothly but does not enforce minimum beyond config.【F:src/render.js†L720-L724】
+  - Performance: Constant-time per sprite.【F:src/render.js†L1174-L1327】
+  - Units / spaces: Unitless scale factor applied to screen dimensions.【F:src/render.js†L720-L724】
+  - Determinism: Deterministic for given inputs.【F:src/render.js†L720-L724】
+  - Keep / change / delete: Keep; encapsulates far-distance scaling logic. Alternative is to replicate the power/easing math per sprite.【F:src/render.js†L1174-L1327】
+  - Confidence / assumptions: High confidence; assumes sprite config values stay within 0–1 range.【F:src/render.js†L720-L724】
+
 - `drawParallaxLayer`
+  - Purpose: Renders a background parallax layer by drawing a large textured quad offset by player lateral position; falls back to solid colour when textures disabled.【F:src/render.js†L728-L753】
+  - Inputs: `tex` (WebGL texture or null) and `cfg` descriptor (`parallaxX`, `uvSpanX`, `uvSpanY`, optional `key`).【F:src/render.js†L728-L753】
+  - Outputs: None; submits draw calls to the GL renderer.【F:src/render.js†L728-L753】
+  - Side effects: Uses `glr` to issue a draw call and optionally increments draw stats via wrappers.【F:src/render.js†L728-L753】【F:src/render.js†L337-L384】
+  - Shared state touched and where it’s used: Called for every parallax layer when rendering the horizon.【F:src/render.js†L755-L758】
+  - Dependencies: Requires `glr`, `areTexturesEnabled`, and `randomColorFor` for debug fills.【F:src/render.js†L728-L753】
+  - Edge cases handled or missed: No-ops when the renderer is missing; uses white texture fallback when textures enabled but layer texture absent.【F:src/render.js†L728-L753】
+  - Performance: Constant per layer (just one quad).【F:src/render.js†L728-L758】
+  - Units / spaces: Operates in screen pixels scaled by `BACKDROP_SCALE`.【F:src/render.js†L728-L747】
+  - Determinism: Deterministic for the same player position and configuration.【F:src/render.js†L728-L753】
+  - Keep / change / delete: Keep; isolates background rendering. Alternative is to inline inside `renderHorizon`.【F:src/render.js†L728-L758】
+  - Confidence / assumptions: High confidence; assumes `cfg` contains valid spans.【F:src/render.js†L728-L753】
+
 - `renderHorizon`
+  - Purpose: Draws all configured parallax layers to form the horizon backdrop before road geometry.【F:src/render.js†L755-L758】
+  - Inputs: None; iterates `parallaxLayers`.【F:src/render.js†L755-L758】
+  - Outputs: None; issues draw calls for each layer.【F:src/render.js†L755-L758】
+  - Side effects: Submits one quad per layer via `drawParallaxLayer`.【F:src/render.js†L755-L758】
+  - Shared state touched and where it’s used: Invoked at the top of `renderScene` before road strips render.【F:src/render.js†L995-L1003】
+  - Dependencies: Relies on `drawParallaxLayer`, textures map, and parallax configuration.【F:src/render.js†L755-L758】
+  - Edge cases handled or missed: Does nothing when `parallaxLayers` empty.【F:src/render.js†L755-L758】
+  - Performance: Linear in number of layers (small).【F:src/render.js†L755-L758】
+  - Units / spaces: Screen-space quads covering the viewport.【F:src/render.js†L728-L758】
+  - Determinism: Deterministic for a given configuration and player position.【F:src/render.js†L728-L758】
+  - Keep / change / delete: Keep; separates background pass. Alternative is to inline loop within `renderScene`.【F:src/render.js†L995-L1003】
+  - Confidence / assumptions: High confidence; assumes parallax texture keys resolve to textures map.【F:src/render.js†L755-L758】
+
 - `drawRoadStrip`
+  - Purpose: Tesselates a road segment into grid-aligned quads and draws them textured (or coloured) with fog gradients and padding to avoid seams.【F:src/render.js†L761-L813】
+  - Inputs: Screen coords `x1,y1,w1,x2,y2,w2`, texture V span `v0,v1`, fog array `fogRoad`, base texture `tex`, and `segIndex` for debug colouring.【F:src/render.js†L761-L813】
+  - Outputs: None; submits draw calls for each cell.【F:src/render.js†L761-L813】
+  - Side effects: Invokes `glr.drawQuadTextured`/`drawQuadSolid` for each quad and relies on perf wrappers to count draws.【F:src/render.js†L761-L813】【F:src/render.js†L337-L384】
+  - Shared state touched and where it’s used: Called from `renderStrip` whenever textures are enabled or debug fill requires road geometry.【F:src/render.js†L1605-L1625】
+  - Dependencies: Uses `areTexturesEnabled`, `lerp`, `padWithSpriteOverlap`, `clamp`, and `randomColorFor`.【F:src/render.js†L761-L813】
+  - Edge cases handled or missed: Clamps row/column counts, pads columns at edges, and falls back to white texture when needed; does not render if `glr` missing.【F:src/render.js†L761-L813】
+  - Performance: Loops over rows×cols per segment; heavier section of strip rendering but bounded by grid config.【F:src/render.js†L761-L813】【F:src/render.js†L1605-L1625】
+  - Units / spaces: Works in screen pixels with UV coordinates.【F:src/render.js†L761-L813】
+  - Determinism: Deterministic for given geometry, grid config, and texture state.【F:src/render.js†L761-L813】
+  - Keep / change / delete: Keep; encapsulates detailed strip tessellation. Alternative is to inline inside `renderStrip`, hurting readability.【F:src/render.js†L1605-L1625】
+  - Confidence / assumptions: High confidence; assumes grid config tuned to avoid aliasing.【F:src/render.js†L761-L813】
+
 - `drawBoostZonesOnStrip`
+  - Purpose: Draws boost zone overlays across a road strip by subdividing zone bounds into padded quads with fog-aware colouring or textures.【F:src/render.js†L815-L882】
+  - Inputs: `zones` array, near/far positions `xNear,yNear,xFar,yFar`, widths `wNear,wFar`, fog array, and `segIndex`.【F:src/render.js†L815-L883】
+  - Outputs: None; submits quads for each zone cell.【F:src/render.js†L815-L883】
+  - Side effects: Registers boost quad counts via perf tracker and issues draw calls.【F:src/render.js†L874-L879】【F:src/render.js†L337-L393】
+  - Shared state touched and where it’s used: Called from `renderStrip` for each segment when zones exist.【F:src/render.js†L1618-L1624】
+  - Dependencies: Uses `areTexturesEnabled`, `getZoneLaneBounds`, `padWithSpriteOverlap`, `lerp`, `clamp`, textures map, and perf tracker.【F:src/render.js†L815-L883】
+  - Edge cases handled or missed: Skips zones lacking bounds, clamps columns, and falls back to solid colours when textures disabled.【F:src/render.js†L815-L883】
+  - Performance: Similar to road tessellation; loops per zone per cell but zone counts are small.【F:src/render.js†L815-L883】
+  - Units / spaces: Screen pixel quads with UV coordinates.【F:src/render.js†L815-L883】
+  - Determinism: Deterministic for given inputs.【F:src/render.js†L815-L883】
+  - Keep / change / delete: Keep; isolates boost rendering logic separate from generic strip drawing. Alternative is to inline inside `renderStrip`.【F:src/render.js†L1616-L1624】
+  - Confidence / assumptions: High confidence; assumes zone configs supply valid bounds and textures when referenced.【F:src/render.js†L815-L883】
+
 - `drawBillboard`
+  - Purpose: Draws an upright sprite quad (npc/prop) with optional texture, tint, and fog, centred on the provided anchor.【F:src/render.js†L885-L912】
+  - Inputs: `anchorX`, `baseY`, width/height in pixels, fog depth, optional `tint`, `texture`, `uvOverride`, `colorKey`.【F:src/render.js†L885-L912】
+  - Outputs: None; submits a quad draw.【F:src/render.js†L885-L912】
+  - Side effects: Calls renderer draw methods and uses `randomColorFor` fallback when textures disabled.【F:src/render.js†L885-L912】
+  - Shared state touched and where it’s used: Invoked from `renderDrawList` for NPCs and non-rotated props.【F:src/render.js†L1370-L1419】
+  - Dependencies: Requires `glr`, `areTexturesEnabled`, `fogArray`, and `randomColorFor`.【F:src/render.js†L885-L912】
+  - Edge cases handled or missed: No-ops when renderer missing; ensures fallback tint array when solid colour requested.【F:src/render.js†L885-L912】
+  - Performance: Constant per sprite; one quad draw.【F:src/render.js†L1370-L1420】
+  - Units / spaces: Screen pixel dimensions with UV coordinates.【F:src/render.js†L885-L912】
+  - Determinism: Deterministic for given inputs (random colours keyed).【F:src/render.js†L885-L912】
+  - Keep / change / delete: Keep; central billboard helper. Alternative is to embed draw logic inside `renderDrawList`.【F:src/render.js†L1370-L1420】
+  - Confidence / assumptions: High confidence; assumes tint arrays follow `[r,g,b,a]`.【F:src/render.js†L885-L912】
+
 - `drawBillboardRotated`
+  - Purpose: Draws a sprite quad with rotation around its centre (used for angled props) using optional texture/tint inputs.【F:src/render.js†L915-L943】
+  - Inputs: Same as `drawBillboard` plus `angleRad` rotation.【F:src/render.js†L915-L942】
+  - Outputs: None.【F:src/render.js†L915-L942】
+  - Side effects: Calls `makeRotatedQuad` to compute geometry then issues draw call.【F:src/render.js†L915-L942】
+  - Shared state touched and where it’s used: Called from `renderDrawList` when a prop item sets `angle`.【F:src/render.js†L1393-L1407】
+  - Dependencies: Uses `glr`, `makeRotatedQuad`, `fogArray`, and `randomColorFor`.【F:src/render.js†L915-L942】【F:src/gl/renderer.js†L259-L275】
+  - Edge cases handled or missed: No-ops if renderer missing; falls back to solid tint when textures unavailable.【F:src/render.js†L915-L942】
+  - Performance: Constant per rotated sprite.【F:src/render.js†L1393-L1407】
+  - Units / spaces: Screen pixel quads rotated about centre.【F:src/render.js†L915-L942】
+  - Determinism: Deterministic for given inputs.【F:src/render.js†L915-L942】
+  - Keep / change / delete: Keep; isolates rotation math. Alternative is to inline inside draw list loop.【F:src/render.js†L1393-L1407】
+  - Confidence / assumptions: High confidence; assumes angle is in radians and quads remain reasonably small.【F:src/render.js†L915-L942】
+
 - `segmentAtS`
+  - Purpose: Finds the track segment corresponding to a world distance `s`, wrapping around the track length and segment list.【F:src/render.js†L945-L952】
+  - Inputs: `s` world distance (number).【F:src/render.js†L945-L951】
+  - Outputs: Segment object or `null` when track data unavailable.【F:src/render.js†L945-L952】
+  - Side effects: None.【F:src/render.js†L945-L952】
+  - Shared state touched and where it’s used: Used by `renderScene`, boost overlay, elevation queries, and snow-screen logic to anchor work to segments.【F:src/render.js†L998-L1199】【F:src/render.js†L1841-L1879】
+  - Dependencies: Calls `getTrackLength` and uses `segments` array plus `segmentLength`.【F:src/render.js†L945-L952】
+  - Edge cases handled or missed: Handles negative `s` by wrapping; returns `null` when track length ≤0.【F:src/render.js†L945-L952】
+  - Performance: Constant-time.【F:src/render.js†L945-L952】
+  - Units / spaces: Works in track distance units.【F:src/render.js†L945-L952】
+  - Determinism: Deterministic for given `s` and segment array.【F:src/render.js†L945-L952】
+  - Keep / change / delete: Keep; central lookup for many systems. Alternative is to repeat wrapping logic at each call site.【F:src/render.js†L945-L1235】
+  - Confidence / assumptions: High confidence; assumes segment array covers full track in order.【F:src/render.js†L945-L1235】
+
 - `elevationAt`
+  - Purpose: Returns interpolated road elevation at distance `s` by sampling the containing segment.【F:src/render.js†L954-L963】
+  - Inputs: `s` world distance (number).【F:src/render.js†L954-L961】
+  - Outputs: Elevation (world units).【F:src/render.js†L954-L963】
+  - Side effects: None.【F:src/render.js†L954-L963】
+  - Shared state touched and where it’s used: Used by `groundProfileAt` and overlay plotting to draw elevation charts.【F:src/render.js†L965-L973】【F:src/render.js†L1921-L2029】
+  - Dependencies: Calls `getTrackLength`, `segments`, and `lerp`.【F:src/render.js†L954-L963】
+  - Edge cases handled or missed: Returns 0 when segments missing; wraps `s` within track length.【F:src/render.js†L954-L963】
+  - Performance: Constant-time per query.【F:src/render.js†L954-L963】
+  - Units / spaces: Track elevation units.【F:src/render.js†L954-L973】
+  - Determinism: Deterministic for given track data.【F:src/render.js†L954-L963】
+  - Keep / change / delete: Keep; reused in multiple overlays. Alternative is to inline interpolation logic where needed.【F:src/render.js†L1921-L2029】
+  - Confidence / assumptions: High confidence; assumes segments expose `p1/p2.world.y` positions.【F:src/render.js†L954-L963】
+
 - `groundProfileAt`
+  - Purpose: Computes elevation, slope, and curvature (`dy`, `d2y`) at distance `s` using centered differences for overlay analytics.【F:src/render.js†L965-L973】
+  - Inputs: `s` world distance (number).【F:src/render.js†L965-L973】
+  - Outputs: Object `{ y, dy, d2y }`.【F:src/render.js†L965-L973】
+  - Side effects: None.【F:src/render.js†L965-L973】
+  - Shared state touched and where it’s used: Used by `renderOverlay` to plot elevation profiles and compute curvature for HUD text.【F:src/render.js†L1920-L2029】
+  - Dependencies: Calls `elevationAt` multiple times and uses finite difference math.【F:src/render.js†L965-L973】
+  - Edge cases handled or missed: When segments absent, returns zero slope/curvature; step size clamped to avoid divide-by-zero.【F:src/render.js†L965-L973】
+  - Performance: Constant-time, three elevation samples per call.【F:src/render.js†L965-L973】
+  - Units / spaces: Elevation units for `y`, slope in elevation per meter, curvature second derivative.【F:src/render.js†L965-L973】
+  - Determinism: Deterministic for given track data.【F:src/render.js†L965-L973】
+  - Keep / change / delete: Keep; clean helper for overlay analytics. Alternative is to inline derivative computations in the overlay function.【F:src/render.js†L1920-L2029】
+  - Confidence / assumptions: High confidence; assumes track spacing stays consistent.【F:src/render.js†L965-L973】
+
 - `boostZonesOnSegment`
+  - Purpose: Retrieves the boost zone definitions attached to a segment’s features, defaulting to an empty array when absent.【F:src/render.js†L976-L980】
+  - Inputs: `seg` segment object.【F:src/render.js†L976-L980】
+  - Outputs: Array of zone descriptors (possibly empty).【F:src/render.js†L976-L980】
+  - Side effects: None.【F:src/render.js†L976-L980】
+  - Shared state touched and where it’s used: Used in draw-list building and boost overlay rendering.【F:src/render.js†L1088-L1172】【F:src/render.js†L1841-L1879】
+  - Dependencies: Checks `seg.features.boostZones`.【F:src/render.js†L976-L980】
+  - Edge cases handled or missed: Returns `[]` for missing features or non-array data.【F:src/render.js†L976-L980】
+  - Performance: Constant-time.【F:src/render.js†L976-L980】
+  - Units / spaces: Returns configuration objects; no direct units.【F:src/render.js†L976-L980】
+  - Determinism: Deterministic for given segment.【F:src/render.js†L976-L980】
+  - Keep / change / delete: Keep; small helper reducing repeated null checks. Alternative is inline optional chaining each time.【F:src/render.js†L1088-L1172】
+  - Confidence / assumptions: High confidence; assumes zone arrays are immutable per segment.【F:src/render.js†L976-L980】
+
 - `zonesFor`
+  - Purpose: Retrieves texture zone ranges from track data for the given key (`road`, `rail`, `cliff`), supporting both top-level arrays and grouped `texZones` structure.【F:src/render.js†L982-L988】
+  - Inputs: `key` string.【F:src/render.js†L982-L988】
+  - Outputs: Array of zone descriptors or empty array.【F:src/render.js†L982-L988】
+  - Side effects: None.【F:src/render.js†L982-L988】
+  - Shared state touched and where it’s used: Used when preparing zone data for the draw list in `renderScene`.【F:src/render.js†L1004-L1011】
+  - Dependencies: Accesses `data` object for `keyTexZones` or nested `texZones`.【F:src/render.js†L982-L988】
+  - Edge cases handled or missed: Returns empty array when not found or value not array.【F:src/render.js†L982-L988】
+  - Performance: Constant-time lookup.【F:src/render.js†L982-L988】
+  - Units / spaces: Returns configuration objects; no direct units.【F:src/render.js†L982-L988】
+  - Determinism: Deterministic for given track data.【F:src/render.js†L982-L988】
+  - Keep / change / delete: Keep; centralises zone lookup. Alternative is to duplicate `data` access inside `renderScene`.【F:src/render.js†L1004-L1009】
+  - Confidence / assumptions: High confidence; assumes track data uses either legacy `keyTexZones` or grouped `texZones`.【F:src/render.js†L982-L988】
+
 - `renderScene`
+  - Purpose: Main 3D render function—clears the frame, builds the draw list from the current camera frame, sorts items by depth, and draws them.【F:src/render.js†L990-L1018】
+  - Inputs: None; pulls state from globals.【F:src/render.js†L990-L1018】
+  - Outputs: None; drives renderer side effects.【F:src/render.js†L990-L1018】
+  - Side effects: Begins/ends the GL frame, sorts draw list, and triggers draw-list rendering; early-outs if renderer or canvas missing.【F:src/render.js†L990-L1018】
+  - Shared state touched and where it’s used: Called every frame from the game loop; updates perf tracker counts and relies on `buildWorldDrawList`, `enqueuePlayer`, and `renderDrawList`.【F:src/render.js†L1011-L1016】【F:src/render.js†L2103-L2126】
+  - Dependencies: `glr`, `createCameraFrame`, `renderHorizon`, `segmentAtS`, `pctRem`, `zonesFor`, `buildWorldDrawList`, `enqueuePlayer`, `renderDrawList`.【F:src/render.js†L990-L1016】
+  - Edge cases handled or missed: If base segment missing, ends frame immediately; assumes draw list sort stable for equal depth (JS sort stable).【F:src/render.js†L998-L1016】
+  - Performance: Executes once per frame; overall cost depends on draw list size.【F:src/render.js†L990-L1018】
+  - Units / spaces: Works in world/camera units converted by underlying helpers.【F:src/render.js†L995-L1172】
+  - Determinism: Deterministic for given state snapshot (aside from potential floating sort tie).【F:src/render.js†L990-L1016】
+  - Keep / change / delete: Keep; orchestrates rendering pipeline. Alternative is to inline all steps in the game loop, reducing modularity.【F:src/render.js†L2103-L2126】
+  - Confidence / assumptions: High confidence; assumes `glr.begin/end` manage GL state correctly.【F:src/render.js†L990-L1018】
+
 - `createCameraFrame`
+  - Purpose: Gathers camera parameters (player position, camera offsets) for the current frame and applies tilt adjustments.【F:src/render.js†L1020-L1029】
+  - Inputs: None; reads `state`.【F:src/render.js†L1020-L1029】
+  - Outputs: Object `{ phys, sCar, sCam, camX, camY }`.【F:src/render.js†L1020-L1029】
+  - Side effects: Calls `applyCameraTilt`, which mutates state camera roll/tilt.【F:src/render.js†L1020-L1049】
+  - Shared state touched and where it’s used: Returned frame feeds `renderScene`; tilt updates affect renderer state.【F:src/render.js†L990-L1015】【F:src/render.js†L1032-L1049】
+  - Dependencies: Uses `state.phys`, `camera` config, `roadWidthAt`, and `applyCameraTilt`.【F:src/render.js†L1020-L1049】
+  - Edge cases handled or missed: Relies on `state.phys` existing; no fallback when player data invalid (renderScene would bail earlier).【F:src/render.js†L1020-L1034】
+  - Performance: Constant-time per frame.【F:src/render.js†L1020-L1049】
+  - Units / spaces: Track distances for `sCar/sCam`, screen offsets for `camX/camY`.【F:src/render.js†L1020-L1049】
+  - Determinism: Deterministic for given state (tilt uses smoothing).【F:src/render.js†L1020-L1049】
+  - Keep / change / delete: Keep; isolates camera parameter assembly. Alternative is to inline inside `renderScene`.【F:src/render.js†L990-L1015】
+  - Confidence / assumptions: High confidence; assumes `state.phys` updated by gameplay each frame.【F:src/render.js†L1020-L1049】
+
 - `applyCameraTilt`
+  - Purpose: Updates camera roll and player tilt based on speed, upcoming curve, and lateral movement, then sets the renderer’s roll pivot.【F:src/render.js†L1032-L1049】
+  - Inputs: Object `{ camX, camY, sCam, phys }` from `createCameraFrame`.【F:src/render.js†L1032-L1049】
+  - Outputs: None; mutates `state.camRollDeg`, `state.playerTiltDeg`, and configures renderer.【F:src/render.js†L1032-L1049】
+  - Side effects: Projects player body point, sets roll pivot on `glr`, smooths tilt state values.【F:src/render.js†L1032-L1049】
+  - Shared state touched and where it’s used: Updates state consumed by player rendering and overlay; called once per frame.【F:src/render.js†L1032-L1049】【F:src/render.js†L1673-L1730】
+  - Dependencies: `projectWorldPoint`, `clamp`, `segmentAtS`, `glr.setRollPivot`, state callbacks, and tilt configuration.【F:src/render.js†L1032-L1049】
+  - Edge cases handled or missed: Falls back when additive tilt callback missing; ensures pivot stays within viewport limits.【F:src/render.js†L1032-L1049】
+  - Performance: Constant-time per frame.【F:src/render.js†L1032-L1049】
+  - Units / spaces: Works in degrees for tilt, radians for roll pivot, screen pixels for pivot coordinates.【F:src/render.js†L1032-L1049】
+  - Determinism: Deterministic given same state inputs.【F:src/render.js†L1032-L1049】
+  - Keep / change / delete: Keep; isolates camera dynamics. Alternative is to embed inside `createCameraFrame`.【F:src/render.js†L1020-L1049】
+  - Confidence / assumptions: High confidence; assumes `state.getAdditiveTiltDeg` returns sensible values.【F:src/render.js†L1032-L1049】
+
 - `buildWorldDrawList`
+  - Purpose: Traverses visible segments to project road geometry, cliffs, cars, sprites, snow screens, and push them into a draw list sorted by depth.【F:src/render.js†L1051-L1332】
+  - Inputs: `baseSeg`, `basePct`, `frame`, and `zoneData`.【F:src/render.js†L1051-L1172】
+  - Outputs: Array of draw-list items (strips, NPCs, props, snow screens).【F:src/render.js†L1051-L1332】
+  - Side effects: Registers segments with perf tracker, reads numerous state/config values.【F:src/render.js†L1078-L1327】【F:src/render.js†L337-L401】
+  - Shared state touched and where it’s used: Called once per frame by `renderScene`; output consumed by `renderDrawList`.【F:src/render.js†L1011-L1016】【F:src/render.js†L1370-L1427】
+  - Dependencies: Extensive—`projectSegPoint`, `makeCliff*`, `fogArray`, `boostZonesOnSegment`, `zonesFor`, `computeSnowScreenBaseRadius`, `spriteFarScaleFromZ`, `computeCliffLaneProgress`, `snowFieldFor`, `state.spriteMeta`, etc.【F:src/render.js†L1051-L1332】
+  - Edge cases handled or missed: Skips segments behind near plane, handles looping track indices, clamps sprite offsets, and validates textures. Snow screens only added when enabled and within stride/distance limits.【F:src/render.js†L1074-L1327】
+  - Performance: Hot path; loops across `track.drawDistance` segments every frame. Complexity tied to number of sprites/cars per segment.【F:src/render.js†L1051-L1332】
+  - Units / spaces: Mix of world distances, camera space, and screen pixels; normalises everything to screen coordinates.【F:src/render.js†L1051-L1332】
+  - Determinism: Deterministic for given state snapshot (aside from RNG-driven snow fields seeded deterministically).【F:src/render.js†L1051-L1332】
+  - Keep / change / delete: Keep; core world assembly logic. Alternative is to split into smaller passes but still necessary central function.【F:src/render.js†L1051-L1332】
+  - Confidence / assumptions: Medium confidence; complex function relying on many configs but behaviour well understood.【F:src/render.js†L1051-L1332】
+
 - `enqueuePlayer`
+  - Purpose: Projects the player car body/shadow, computes sprite samples, and pushes a player draw item onto the list when visible.【F:src/render.js†L1335-L1367】
+  - Inputs: `drawList` array and `frame` from `createCameraFrame`.【F:src/render.js†L1335-L1367】
+  - Outputs: None; appends to draw list when the player is in front of the camera.【F:src/render.js†L1335-L1367】
+  - Side effects: Computes sprite UV samples and uses `state` to determine scale, tilt, and atlas data.【F:src/render.js†L1335-L1367】
+  - Shared state touched and where it’s used: Adds a `player` item consumed by `renderDrawList`; reads `state.spriteMeta` and `state.getKindScale`.【F:src/render.js†L1335-L1370】【F:src/render.js†L1424-L1427】
+  - Dependencies: `projectWorldPoint`, `roadWidthAt`, `floorElevationAt`, `computePlayerSpriteSamples`, `HALF_VIEW`, state helpers.【F:src/render.js†L1335-L1367】
+  - Edge cases handled or missed: Ensures player behind near plane is skipped; clamps minimum width/height; handles missing texture by falling back to tint.【F:src/render.js†L1335-L1367】
+  - Performance: Constant-time per frame (single player).【F:src/render.js†L1335-L1367】
+  - Units / spaces: Screen pixels for width/height and Y positions; uses atlas UV coordinates.【F:src/render.js†L1335-L1367】
+  - Determinism: Deterministic for given state snapshot.【F:src/render.js†L1335-L1367】
+  - Keep / change / delete: Keep; isolates player enqueue logic. Alternative is to embed inside `buildWorldDrawList`.【F:src/render.js†L1335-L1367】
+  - Confidence / assumptions: High confidence; assumes sprite metadata configured for the player atlas.【F:src/render.js†L1335-L1367】
+
 - `renderDrawList`
+  - Purpose: Iterates draw-list items, dispatching to specific renderers (road strips, NPCs, props, snow screens, player) and updating perf counters.【F:src/render.js†L1370-L1428】
+  - Inputs: `drawList` array.【F:src/render.js†L1370-L1374】
+  - Outputs: None; renders each item.【F:src/render.js†L1370-L1428】
+  - Side effects: Registers perf statistics (`registerStrip`, `registerSprite`, etc.) and invokes draw helpers for each item.【F:src/render.js†L1370-L1428】【F:src/render.js†L337-L401】
+  - Shared state touched and where it’s used: Called once per frame from `renderScene` after sorting.【F:src/render.js†L1014-L1016】
+  - Dependencies: `renderStrip`, `drawBillboard`, `drawBillboardRotated`, `renderSnowScreen`, `renderPlayer`, and perf tracker.【F:src/render.js†L1370-L1428】
+  - Edge cases handled or missed: Ignores unknown item types; handles empty list quickly.【F:src/render.js†L1370-L1428】
+  - Performance: Linear in draw-list size.【F:src/render.js†L1370-L1428】
+  - Units / spaces: Delegated to respective helpers.【F:src/render.js†L1370-L1428】
+  - Determinism: Deterministic for given draw list (order after sort).【F:src/render.js†L1370-L1428】
+  - Keep / change / delete: Keep; central dispatcher. Alternative is to render inline in `renderScene`.【F:src/render.js†L990-L1016】
+  - Confidence / assumptions: High confidence; assumes draw-list items follow documented structure.【F:src/render.js†L1051-L1428】
+
 - `renderSnowScreen`
+  - Purpose: Renders a snow screen overlay with animated flakes, stretching them based on player speed and distance, respecting fog.【F:src/render.js†L1431-L1523】
+  - Inputs: `item` containing `x,y,size,color,z,segIndex`.【F:src/render.js†L1431-L1499】
+  - Outputs: None; draws a series of solid quads for flakes.【F:src/render.js†L1431-L1523】
+  - Side effects: Calls `snowFieldFor`, computes animations, and draws each flake while updating perf counters.【F:src/render.js†L1439-L1522】【F:src/render.js†L385-L390】
+  - Shared state touched and where it’s used: Invoked from `renderDrawList` for each snow-screen item when snow enabled.【F:src/render.js†L1421-L1424】
+  - Dependencies: `glr`, `isSnowFeatureEnabled`, `fogArray`, `snowFieldFor`, `spriteFarScaleFromZ`, `computeSnowScreenBaseRadius`, `clamp`, `lerp`, `randomColorFor`, perf tracker.【F:src/render.js†L1431-L1522】
+  - Edge cases handled or missed: Skips when snow disabled, size ≤0, or renderer missing; clamps stretch amount and handles empty flake arrays.【F:src/render.js†L1431-L1512】
+  - Performance: Loops over flake count per screen; moderate but bounded by pool configuration.【F:src/render.js†L1431-L1523】
+  - Units / spaces: Screen pixels for snow disc and flake positions; uses fog factors.【F:src/render.js†L1431-L1523】
+  - Determinism: Deterministic per frame given deterministic snow fields and state (time influences animation).【F:src/render.js†L1431-L1523】
+  - Keep / change / delete: Keep; specialised effect rendering. Alternative is to pre-render snow to texture, which is heavier work.【F:src/render.js†L1431-L1523】
+  - Confidence / assumptions: Medium confidence; relies on consistent state.phys timing and flake counts but behaviour observed stable.【F:src/render.js†L1431-L1523】
+
 - `renderStrip`
+  - Purpose: Draws a road strip item, including road surface, cliffs, rails, and boost overlays, respecting debug fill modes.【F:src/render.js†L1526-L1670】
+  - Inputs: Strip descriptor from draw list containing projected points, widths, UV spans, boost data, and cliff quads.【F:src/render.js†L1526-L1669】
+  - Outputs: None; issues multiple draw calls per strip.【F:src/render.js†L1526-L1670】
+  - Side effects: Uses `drawRoadStrip`, `drawBoostZonesOnStrip`, draws cliffs/rails via textured or solid quads, uses perf tracker for segments.【F:src/render.js†L1526-L1669】【F:src/render.js†L337-L399】
+  - Shared state touched and where it’s used: Called from `renderDrawList` for each `strip` item.【F:src/render.js†L1375-L1379】
+  - Dependencies: `areTexturesEnabled`, `padWithSpriteOverlap`, `fogArray`, `randomColorFor`, textures map, debug config.【F:src/render.js†L1526-L1669】
+  - Edge cases handled or missed: Handles debug fill vs textured modes, ensures road drawn even when textures disabled, draws rails only when segment features include them.【F:src/render.js†L1605-L1669】
+  - Performance: Per-strip cost includes multiple quads; major contributor to frame time but necessary for visuals.【F:src/render.js†L1526-L1669】
+  - Units / spaces: Screen pixels and UV coordinates.【F:src/render.js†L1526-L1669】
+  - Determinism: Deterministic for given strip data.【F:src/render.js†L1526-L1669】
+  - Keep / change / delete: Keep; encapsulates complex strip rendering steps. Alternative is to break into sub-functions for cliffs/rails if refactoring later.【F:src/render.js†L1526-L1669】
+  - Confidence / assumptions: Medium confidence due to complexity; behaviour battle-tested in gameplay.【F:src/render.js†L1526-L1669】
+
 - `renderPlayer`
+  - Purpose: Draws the player’s shadow and body quads with rotation, sampling atlas frames (including multi-sample blending) or fallback tint.【F:src/render.js†L1673-L1757】
+  - Inputs: `item` produced by `enqueuePlayer` containing geometry, sprite data, and fog depths.【F:src/render.js†L1673-L1757】
+  - Outputs: None; issues draw calls for shadow and body.【F:src/render.js†L1673-L1757】
+  - Side effects: Uses `makeRotatedQuad`, reads sprite metadata, sorts samples to blend textures, and uses renderer for draws.【F:src/render.js†L1673-L1757】【F:src/gl/renderer.js†L259-L275】
+  - Shared state touched and where it’s used: Called from `renderDrawList` when encountering the player item.【F:src/render.js†L1424-L1427】
+  - Dependencies: `areTexturesEnabled`, `fogArray`, `makeRotatedQuad`, `atlasUvFromRowCol`, sprite metadata, `randomColorFor`.【F:src/render.js†L1673-L1757】
+  - Edge cases handled or missed: Falls back to solid tint when textures disabled, ensures at least one sample even if sprite info missing.【F:src/render.js†L1673-L1757】
+  - Performance: Constant-time per frame; limited to shadow + body draws and small sample loops.【F:src/render.js†L1673-L1757】
+  - Units / spaces: Screen pixels for geometry; UV coordinates for atlas sampling.【F:src/render.js†L1673-L1757】
+  - Determinism: Deterministic given the same player state and sprite metadata.【F:src/render.js†L1673-L1757】
+  - Keep / change / delete: Keep; specialised player rendering logic. Alternative is to integrate into draw list but loses clarity.【F:src/render.js†L1370-L1427】
+  - Confidence / assumptions: High confidence; assumes sprite metadata includes atlas info for player.【F:src/render.js†L1673-L1757】
+
 - `computeDebugPanels`
+  - Purpose: Calculates rectangles for the boost and elevation panels on the overlay canvas, leaving margins and padding for layout.【F:src/render.js†L1760-L1799】
+  - Inputs: None; uses canvas dimensions and constants.【F:src/render.js†L1760-L1799】
+  - Outputs: Object `{ boost, profile }` with panel geometry.【F:src/render.js†L1760-L1799】
+  - Side effects: None.【F:src/render.js†L1760-L1799】
+  - Shared state touched and where it’s used: Used by `renderOverlay` each frame to position debug panels.【F:src/render.js†L1888-L2030】
+  - Dependencies: Panel margin constants and overlay canvas width/height (`SW`, `SH`).【F:src/render.js†L1760-L1799】
+  - Edge cases handled or missed: Clamps profile width to non-negative area.【F:src/render.js†L1760-L1799】
+  - Performance: Constant-time.【F:src/render.js†L1760-L1799】
+  - Units / spaces: Overlay canvas pixels.【F:src/render.js†L1760-L1799】
+  - Determinism: Deterministic for given canvas size.【F:src/render.js†L1760-L1799】
+  - Keep / change / delete: Keep; centralises layout numbers. Alternative is inline calculations inside `renderOverlay`.【F:src/render.js†L1888-L2030】
+  - Confidence / assumptions: High confidence; assumes overlay dimensions set during `attach`.【F:src/render.js†L2077-L2101】
+
 - `worldToOverlay`
+  - Purpose: Converts world distance/elevation into overlay canvas coordinates for plotting the elevation profile.【F:src/render.js†L1800-L1811】
+  - Inputs: `s`, `y`, optional `panelRect`.【F:src/render.js†L1800-L1811】
+  - Outputs: `{ x, y }` overlay coordinates.【F:src/render.js†L1800-L1811】
+  - Side effects: None.【F:src/render.js†L1800-L1811】
+  - Shared state touched and where it’s used: Used by `renderOverlay` when drawing the profile curve and marker.【F:src/render.js†L1916-L1930】
+  - Dependencies: Track meter-to-pixel scaling, player state, panel padding constants.【F:src/render.js†L1800-L1811】
+  - Edge cases handled or missed: Falls back to default positioning when panelRect missing, ensures non-zero inner dimensions via `Math.max(1, ...)`.【F:src/render.js†L1800-L1811】
+  - Performance: Constant-time per point.【F:src/render.js†L1800-L1811】
+  - Units / spaces: Outputs overlay pixels; inputs in track meters/elevation.【F:src/render.js†L1800-L1811】
+  - Determinism: Deterministic for given state snapshot.【F:src/render.js†L1800-L1811】
+  - Keep / change / delete: Keep; shared between curve plotting and crosshair. Alternative is duplicating conversion math inside overlay drawing.【F:src/render.js†L1916-L1930】
+  - Confidence / assumptions: High confidence; assumes `track.metersPerPixel` configured.【F:src/render.js†L1800-L1811】
+
 - `drawBoostCrossSection`
+  - Purpose: Renders a cross-section panel showing active boost zones relative to lanes, including centre lines and player position marker.【F:src/render.js†L1812-L1887】
+  - Inputs: `ctx` canvas context and optional `panelRect`.【F:src/render.js†L1812-L1887】
+  - Outputs: None; draws onto overlay context.【F:src/render.js†L1812-L1887】
+  - Side effects: Draws rectangles/lines, uses boost colours, and writes labels.【F:src/render.js†L1812-L1887】
+  - Shared state touched and where it’s used: Called each frame by `renderOverlay`.【F:src/render.js†L1939-L1955】
+  - Dependencies: `segmentAtS`, `boostZonesOnSegment`, `laneToRoadRatio`, `getZoneLaneBounds`, `mapRatio`, player state.【F:src/render.js†L1812-L1887】
+  - Edge cases handled or missed: Skips drawing when panel has non-positive size or zone bounds missing; clamps lane mapping outputs.【F:src/render.js†L1812-L1887】
+  - Performance: Constant-time per frame with modest loops (zones and columns).【F:src/render.js†L1812-L1887】
+  - Units / spaces: Overlay pixels; uses lane ratios for horizontal mapping.【F:src/render.js†L1812-L1887】
+  - Determinism: Deterministic for given track state.【F:src/render.js†L1812-L1887】
+  - Keep / change / delete: Keep; encapsulates panel drawing. Alternative is to inline the drawing logic in `renderOverlay`.【F:src/render.js†L1888-L2030】
+  - Confidence / assumptions: High confidence; assumes lane mapping helpers return valid ratios.【F:src/render.js†L1812-L1887】
+
 - `mapRatio`
+  - Purpose: Helper closure inside `drawBoostCrossSection` that maps a lane ratio (−1…1) into panel X coordinates.【F:src/render.js†L1843-L1854】
+  - Inputs: `ratio` (number).【F:src/render.js†L1843-L1847】
+  - Outputs: X coordinate in panel pixels.【F:src/render.js†L1843-L1854】
+  - Side effects: None; closes over `roadX`/`roadW`.【F:src/render.js†L1833-L1854】
+  - Shared state touched and where it’s used: Used multiple times within `drawBoostCrossSection` to place zone edges and player marker.【F:src/render.js†L1849-L1879】
+  - Dependencies: Relies on computed panel geometry from outer function.【F:src/render.js†L1833-L1854】
+  - Edge cases handled or missed: None beyond parent guard (panel width must be positive).【F:src/render.js†L1833-L1854】
+  - Performance: Constant.【F:src/render.js†L1843-L1854】
+  - Units / spaces: Overlay pixels.【F:src/render.js†L1843-L1854】
+  - Determinism: Deterministic per ratio.【F:src/render.js†L1843-L1854】
+  - Keep / change / delete: Keep; micro-helper that improves readability inside the panel function. Alternative is inline `roadX + ratio * roadW`.【F:src/render.js†L1843-L1854】
+  - Confidence / assumptions: High confidence; closure scope stable.【F:src/render.js†L1833-L1854】
+
 - `fmtSeconds`
+  - Purpose: Formats a metric value in seconds with two decimals for overlay text, returning `'0.00s'` when value missing or ≤0.【F:src/render.js†L1942-L1945】
+  - Inputs: `value` number.【F:src/render.js†L1942-L1945】
+  - Outputs: String like `'1.23s'` or `'0.00s'`.【F:src/render.js†L1942-L1945】
+  - Side effects: None.【F:src/render.js†L1942-L1945】
+  - Shared state touched and where it’s used: Local helper within `renderOverlay` when composing debug lines.【F:src/render.js†L1957-L1983】
+  - Dependencies: `Number.isFinite` and `toFixed`.【F:src/render.js†L1942-L1945】
+  - Edge cases handled or missed: Clamps non-positive to `'0.00s'`; does not show milliseconds for extremely small positives (flooring).【F:src/render.js†L1942-L1945】
+  - Performance: Constant.【F:src/render.js†L1942-L1945】
+  - Units / spaces: Seconds displayed as string with `s` suffix.【F:src/render.js†L1942-L1945】
+  - Determinism: Deterministic for given value.【F:src/render.js†L1942-L1945】
+  - Keep / change / delete: Keep; small local helper clarifies formatting. Alternative is inline checks per metric.【F:src/render.js†L1957-L1983】
+  - Confidence / assumptions: High confidence; assumes overlay metrics measured in seconds.【F:src/render.js†L1957-L1983】
+
 - `fmtCount`
+  - Purpose: Formats counters as non-negative integers, defaulting to 0 for invalid inputs.【F:src/render.js†L1946-L1947】
+  - Inputs: `value` number.【F:src/render.js†L1946-L1947】
+  - Outputs: Integer count.【F:src/render.js†L1946-L1947】
+  - Side effects: None.【F:src/render.js†L1946-L1947】
+  - Shared state touched and where it’s used: Used when composing overlay metrics (hits, pickups, counts).【F:src/render.js†L1957-L1983】
+  - Dependencies: `Number.isFinite`, `Math.max`, `Math.floor`.【F:src/render.js†L1946-L1947】
+  - Edge cases handled or missed: Floors negatives to 0; ignores decimals by floor.【F:src/render.js†L1946-L1947】
+  - Performance: Constant.【F:src/render.js†L1946-L1947】
+  - Units / spaces: Count values.【F:src/render.js†L1946-L1947】
+  - Determinism: Deterministic per input.【F:src/render.js†L1946-L1947】
+  - Keep / change / delete: Keep; prevents repeated guard logic. Alternative is inline guard for each metric.【F:src/render.js†L1957-L1983】
+  - Confidence / assumptions: High confidence; assumes metrics meant to be counts.【F:src/render.js†L1957-L1983】
+
 - `fmtSpeed`
+  - Purpose: Formats speed metrics to one decimal, returning `'0.0'` when invalid or non-positive.【F:src/render.js†L1947-L1949】
+  - Inputs: `value` number.【F:src/render.js†L1947-L1949】
+  - Outputs: String (no suffix) representing speed.【F:src/render.js†L1947-L1949】
+  - Side effects: None.【F:src/render.js†L1947-L1949】
+  - Shared state touched and where it’s used: Adds to overlay debug lines (`Top speed`).【F:src/render.js†L1957-L1983】
+  - Dependencies: `Number.isFinite`, `toFixed`.【F:src/render.js†L1947-L1949】
+  - Edge cases handled or missed: Treats non-positive as zero string; does not add units (caller appends `u/s`).【F:src/render.js†L1947-L1949】
+  - Performance: Constant.【F:src/render.js†L1947-L1949】
+  - Units / spaces: Speed units defined by caller (units per second).【F:src/render.js†L1957-L1983】
+  - Determinism: Deterministic per input.【F:src/render.js†L1947-L1949】
+  - Keep / change / delete: Keep; avoids repeated formatting logic. Alternative is inline formatting per metric.【F:src/render.js†L1957-L1983】
+  - Confidence / assumptions: High confidence; assumes positive values mean real speed.【F:src/render.js†L1957-L1983】
+
 - `fmtFloat`
+  - Purpose: Generic formatter returning a fixed-decimal string or fallback when value invalid, used for FPS and other floats.【F:src/render.js†L1951-L1953】
+  - Inputs: `value`, optional `digits` and `fallback` string.【F:src/render.js†L1951-L1953】
+  - Outputs: Formatted string.【F:src/render.js†L1951-L1953】
+  - Side effects: None.【F:src/render.js†L1951-L1953】
+  - Shared state touched and where it’s used: Used multiple times in debug metrics (FPS, frame time).【F:src/render.js†L1972-L1982】
+  - Dependencies: `Number.isFinite`, `toFixed`.【F:src/render.js†L1951-L1953】
+  - Edge cases handled or missed: Returns fallback when value invalid; default fallback `'0.0'`.【F:src/render.js†L1951-L1953】
+  - Performance: Constant.【F:src/render.js†L1951-L1953】
+  - Units / spaces: Formats floats; units defined by caller.【F:src/render.js†L1972-L1982】
+  - Determinism: Deterministic per inputs.【F:src/render.js†L1951-L1953】
+  - Keep / change / delete: Keep; reduces duplication when formatting multiple floats. Alternative is inline ternaries for each metric.【F:src/render.js†L1972-L1982】
+  - Confidence / assumptions: High confidence; assumes digits parameter small.【F:src/render.js†L1951-L1953】
+
 - `renderOverlay`
+  - Purpose: Draws the 2D debug overlay, including elevation profile, boost cross-section, metrics list, and HUD text, while respecting overlay visibility toggles.【F:src/render.js†L1888-L2030】
+  - Inputs: None; uses canvas contexts and state metrics.【F:src/render.js†L1888-L2030】
+  - Outputs: None; renders to overlay and HUD canvases.【F:src/render.js†L1888-L2030】
+  - Side effects: Clears overlay canvas, draws panels, text, and metrics; calls `syncOverlayVisibility`; writes HUD text to `ctxSide`.【F:src/render.js†L1888-L2030】
+  - Shared state touched and where it’s used: Called once per frame after 3D rendering; uses perf tracker, gameplay metrics, and track profile data.【F:src/render.js†L1957-L2030】【F:src/render.js†L2103-L2126】
+  - Dependencies: `syncOverlayVisibility`, `computeDebugPanels`, `drawBoostCrossSection`, `worldToOverlay`, format helpers, `computeCurvature`, metrics state.【F:src/render.js†L1888-L2030】
+  - Edge cases handled or missed: No-ops when overlay hidden or canvas missing; clamps panel sizes and list height to canvas bounds.【F:src/render.js†L1888-L2030】
+  - Performance: Runs once per frame; loops over a few dozen points for profile and metrics list—lightweight relative to 3D rendering.【F:src/render.js†L1888-L2030】
+  - Units / spaces: Overlay pixels; uses track meters and seconds for metrics converted to strings.【F:src/render.js†L1888-L2030】
+  - Determinism: Deterministic for given state metrics (random colours keyed).【F:src/render.js†L1888-L2030】
+  - Keep / change / delete: Keep; central overlay routine. Alternative is to break into submodules if overlay grows.【F:src/render.js†L1888-L2030】
+  - Confidence / assumptions: Medium confidence; depends on many state fields but behaviour is well-understood in overlay feature.【F:src/render.js†L1888-L2030】
+
 - `start`
+  - Purpose: Begins the reset matte animation, optionally configuring respawn parameters, and marks the matte as active.【F:src/render.js†L2032-L2041】
+  - Inputs: `nextMode` (`'reset'` or `'respawn'`), `sForRespawn`, `nForRespawn`.【F:src/render.js†L2032-L2041】
+  - Outputs: None.【F:src/render.js†L2032-L2041】
+  - Side effects: Sets internal flags (`active`, `t`, `scale`, `mode`, respawn targets) and flips `state.resetMatteActive` true.【F:src/render.js†L2032-L2041】
+  - Shared state touched and where it’s used: Called via `Renderer.matte.startReset/startRespawn` when gameplay triggers reset/respawn transitions.【F:src/render.js†L2103-L2136】【F:src/bootstrap.js†L40-L46】
+  - Dependencies: Uses `state.phys` for default respawn location and `state.resetMatteActive`.【F:src/render.js†L2032-L2041】
+  - Edge cases handled or missed: No-ops if already active; falls back to current player position when respawn parameters missing.【F:src/render.js†L2032-L2041】
+  - Performance: Constant-time state updates.【F:src/render.js†L2032-L2041】
+  - Units / spaces: Respawn distances in track units; scale is unitless.【F:src/render.js†L2032-L2041】
+  - Determinism: Deterministic for given parameters.【F:src/render.js†L2032-L2041】
+  - Keep / change / delete: Keep; encapsulates matte initialisation. Alternative is to replicate state resets in each public entry point.【F:src/render.js†L2132-L2136】
+  - Confidence / assumptions: High confidence; assumes `state.phys` valid when starting matte.【F:src/render.js†L2032-L2041】
+
 - `tick`
+  - Purpose: Advances the reset matte animation each frame, executing callbacks when the cover reaches midpoint and clearing state when finished.【F:src/render.js†L2042-L2056】
+  - Inputs: None; uses internal timer `t`.【F:src/render.js†L2042-L2056】
+  - Outputs: None.【F:src/render.js†L2042-L2056】
+  - Side effects: Updates animation scale, invokes `state.callbacks.onResetScene` or `Gameplay.respawnPlayerAt`, clears HUD canvas, and toggles `state.resetMatteActive` when done.【F:src/render.js†L2042-L2056】
+  - Shared state touched and where it’s used: Called each frame from the render loop and exposed via `Renderer.matte.tick`.【F:src/render.js†L2112-L2136】
+  - Dependencies: Uses timing constants, `state.callbacks`, `Gameplay.respawnPlayerAt`, and HUD canvas context.【F:src/render.js†L2042-L2056】
+  - Edge cases handled or missed: Safely handles missing callbacks/resume functions by checking before calling; stops when `active` false.【F:src/render.js†L2042-L2056】
+  - Performance: Constant-time per frame.【F:src/render.js†L2042-L2056】
+  - Units / spaces: Frame counts for animation; respawn distances passed through unchanged.【F:src/render.js†L2042-L2056】
+  - Determinism: Deterministic for given start state.【F:src/render.js†L2042-L2056】
+  - Keep / change / delete: Keep; central to matte timing. Alternative is to integrate into main loop manually.【F:src/render.js†L2103-L2136】
+  - Confidence / assumptions: High confidence; assumes `requestAnimationFrame` cadence drives tick consistently.【F:src/render.js†L2042-L2056】
+
 - `draw`
+  - Purpose: Renders the circular matte on the HUD canvas according to the current animation scale, cutting a hole when active.【F:src/render.js†L2057-L2068】
+  - Inputs: None.【F:src/render.js†L2057-L2068】
+  - Outputs: None; draws to `ctxHUD`.【F:src/render.js†L2057-L2068】
+  - Side effects: Clears HUD canvas, fills black, and punches out a circle using `destination-out` blending when radius >0.【F:src/render.js†L2057-L2068】
+  - Shared state touched and where it’s used: Called from render loop after `renderOverlay` and exposed via `Renderer.matte.draw`.【F:src/render.js†L2119-L2136】
+  - Dependencies: Uses HUD canvas context and cached radius constant.【F:src/render.js†L2057-L2068】
+  - Edge cases handled or missed: No-ops when matte inactive or HUD context missing.【F:src/render.js†L2057-L2068】
+  - Performance: Constant-time per frame; simple canvas operations.【F:src/render.js†L2057-L2068】
+  - Units / spaces: HUD canvas pixels; radius computed from canvas diagonal.【F:src/render.js†L2057-L2068】
+  - Determinism: Deterministic for given animation state.【F:src/render.js†L2057-L2068】
+  - Keep / change / delete: Keep; isolates matte drawing. Alternative is to draw matte inside main overlay function.【F:src/render.js†L1888-L2056】
+  - Confidence / assumptions: High confidence; assumes HUD canvas initialised in `attach`.【F:src/render.js†L2077-L2100】
+
 - `startReset`
+  - Purpose: Public API that triggers the reset matte animation in reset mode by delegating to `resetMatte.start('reset')`.【F:src/render.js†L2132-L2134】
+  - Inputs: None.【F:src/render.js†L2133-L2134】
+  - Outputs: None.【F:src/render.js†L2133-L2134】
+  - Side effects: Starts matte via `start`.【F:src/render.js†L2132-L2134】
+  - Shared state touched and where it’s used: Called from bootstrap reset handlers when gameplay requests a full reset.【F:src/bootstrap.js†L40-L44】
+  - Dependencies: `resetMatte.start`.【F:src/render.js†L2133-L2134】
+  - Edge cases handled or missed: Relies on `start` guard to avoid reentry.【F:src/render.js†L2032-L2038】
+  - Performance: Constant.【F:src/render.js†L2133-L2134】
+  - Units / spaces: N/A.【F:src/render.js†L2133-L2134】
+  - Determinism: Same as `start`.【F:src/render.js†L2032-L2041】
+  - Keep / change / delete: Keep; provides semantic API for reset transitions. Alternative is to call `resetMatte.start('reset')` directly wherever needed.【F:src/render.js†L2132-L2134】
+  - Confidence / assumptions: High confidence; wrapper only.【F:src/render.js†L2133-L2134】
+
 - `startRespawn`
+  - Purpose: Public API to launch the matte in respawn mode with target distance/offset.【F:src/render.js†L2132-L2136】
+  - Inputs: `s`, optional `n` lane offset.【F:src/render.js†L2134-L2135】
+  - Outputs: None.【F:src/render.js†L2134-L2135】
+  - Side effects: Delegates to `resetMatte.start('respawn', s, n)`.【F:src/render.js†L2134-L2135】
+  - Shared state touched and where it’s used: Called when gameplay triggers respawn transitions via bootstrap or gameplay logic.【F:src/bootstrap.js†L44-L46】【F:src/gameplay.js†L2405-L2450】
+  - Dependencies: `resetMatte.start`.【F:src/render.js†L2134-L2135】
+  - Edge cases handled or missed: Follows `start` guard; defaults lane offset to 0 at call site.【F:src/render.js†L2134-L2135】
+  - Performance: Constant.【F:src/render.js†L2134-L2135】
+  - Units / spaces: Uses track distance/lane offset units.【F:src/render.js†L2134-L2135】
+  - Determinism: Same as `start`.【F:src/render.js†L2032-L2041】
+  - Keep / change / delete: Keep; clearer API for respawn transitions. Alternative is to call `resetMatte.start` with mode arguments directly.【F:src/render.js†L2132-L2136】
+  - Confidence / assumptions: High confidence; minimal wrapper.【F:src/render.js†L2134-L2135】
+
 - `attach`
+  - Purpose: Wires the renderer to WebGL and overlay canvases, storing contexts, wrapping the renderer with perf tracking, and computing canvas dimensions/radii.【F:src/render.js†L2077-L2101】
+  - Inputs: `glRenderer` object and `dom` container with `canvas`, `overlay`, `hud`.【F:src/render.js†L2077-L2083】
+  - Outputs: None.【F:src/render.js†L2077-L2101】
+  - Side effects: Sets module-level renderer/canvas references, initialises overlay/HUD contexts, updates dimensions, runs `syncOverlayVisibility(true)`, and computes HUD cover radius.【F:src/render.js†L2077-L2101】
+  - Shared state touched and where it’s used: Invoked during bootstrap to initialise rendering; stored contexts used by subsequent render passes.【F:src/bootstrap.js†L55-L65】【F:src/render.js†L990-L2136】
+  - Dependencies: Perf tracker `wrapRenderer`, canvas contexts, `syncOverlayVisibility`.【F:src/render.js†L2077-L2101】
+  - Edge cases handled or missed: Gracefully handles missing overlay/HUD canvases by skipping related setup; assumes `canvas3D` exists to set dimensions.【F:src/render.js†L2077-L2101】
+  - Performance: One-time initialisation with a few canvas operations.【F:src/render.js†L2077-L2101】
+  - Units / spaces: Canvas pixel dimensions stored for later conversions.【F:src/render.js†L2077-L2101】
+  - Determinism: Deterministic for given DOM inputs.【F:src/render.js†L2077-L2101】
+  - Keep / change / delete: Keep; centralises renderer setup. Alternative is to perform setup scattered across bootstrap code.【F:src/bootstrap.js†L55-L65】
+  - Confidence / assumptions: High confidence; assumes DOM canvases sized correctly before attach.【F:src/render.js†L2077-L2101】
+
 - `frame`
+  - Purpose: Starts the main game loop using `requestAnimationFrame`, implementing fixed-step physics with variable render timing, and orchestrating per-frame rendering and matte updates.【F:src/render.js†L2103-L2127】
+  - Inputs: `stepFn` callback for fixed physics step.【F:src/render.js†L2103-L2124】
+  - Outputs: None.【F:src/render.js†L2103-L2127】
+  - Side effects: Schedules RAF loop, accumulates delta time, calls `stepFn` in fixed increments, updates perf tracker, renders scene/overlay, ticks/draws reset matte, and updates boost flash timer.【F:src/render.js†L2103-L2127】
+  - Shared state touched and where it’s used: Invoked by bootstrap to start the game; loop mutates global `state` via `stepFn` and matte updates.【F:src/bootstrap.js†L77-L83】【F:src/render.js†L2103-L2127】
+  - Dependencies: `performance.now`, `requestAnimationFrame`, perf tracker, `renderScene`, `renderOverlay`, `resetMatte`.【F:src/render.js†L2103-L2127】
+  - Edge cases handled or missed: Clamps delta to 0.25s to avoid spiral of death; ensures `stepFn` exists before invoking; does not handle pausing internally (handled elsewhere).【F:src/render.js†L2103-L2124】
+  - Performance: Runs every animation frame; cost dominated by rendering and physics steps.【F:src/render.js†L2103-L2127】
+  - Units / spaces: Time measured in seconds; physics step fixed at 1/60.【F:src/render.js†L2103-L2124】
+  - Determinism: Deterministic for given `stepFn` and timing inputs (floating rounding aside).【F:src/render.js†L2103-L2127】
+  - Keep / change / delete: Keep; core game loop orchestrator. Alternative is to manage loop outside renderer module.【F:src/bootstrap.js†L77-L83】
+  - Confidence / assumptions: High confidence; widely used pattern for fixed-step update with variable render.【F:src/render.js†L2103-L2127】
+
 - `loop`
+  - Purpose: Inner RAF callback defined within `frame` that processes accumulated time, runs physics steps, renders the scene/overlay, updates matte, and schedules the next frame.【F:src/render.js†L2106-L2125】
+  - Inputs: `now` timestamp from RAF.【F:src/render.js†L2106-L2125】
+  - Outputs: None.【F:src/render.js†L2106-L2125】
+  - Side effects: Same as `frame`—updates accumulators, perf tracker, rendering, matte, and boost flash timer—then calls `requestAnimationFrame(loop)`.【F:src/render.js†L2106-L2125】
+  - Shared state touched and where it’s used: Created inside `frame`; not exposed externally but drives the entire runtime loop.【F:src/render.js†L2103-L2127】
+  - Dependencies: Captures `stepFn`, `perf`, `renderScene`, `renderOverlay`, `resetMatte`.【F:src/render.js†L2103-L2125】
+  - Edge cases handled or missed: Clamps `dt`, guards `stepFn` before calling; ensures matte tick/draw run even if no physics steps executed.【F:src/render.js†L2106-L2124】
+  - Performance: Executes every RAF tick; same cost as frame orchestration.【F:src/render.js†L2106-L2125】
+  - Units / spaces: Time in seconds; same as `frame`.【F:src/render.js†L2106-L2124】
+  - Determinism: Deterministic for given callback and browser timing sequence.【F:src/render.js†L2106-L2125】
+  - Keep / change / delete: Keep; essential part of the RAF loop. Alternative is to expose loop externally, losing closure benefits.【F:src/render.js†L2103-L2127】
+  - Confidence / assumptions: High confidence; assumes browser provides `performance.now` and RAF.【F:src/render.js†L2103-L2125】
 
 ### 3.8 WebGL Renderer (`src/gl/renderer.js`)
 - `constructor`
+  - Purpose: Configures the WebGL renderer by acquiring a context, compiling shaders, caching attribute/uniform lookups, seeding a streaming vertex buffer, and creating the fallback white texture and fog defaults used by draw helpers.【F:src/gl/renderer.js†L15-L104】
+  - Inputs: `canvas` HTMLCanvasElement providing `width`/`height` and a `getContext('webgl', ...)` hook; assumes numeric dimensions and a valid DOM canvas.【F:src/gl/renderer.js†L15-L77】
+  - Outputs: None; initialises instance fields such as `gl`, `prog`, buffer handles, fog caches, and `whiteTex`.【F:src/gl/renderer.js†L15-L104】
+  - Side effects: Requests a WebGL context, compiles/links shaders, binds and initialises buffers, sets blend/viewport state, seeds fog uniforms, and throws if context creation or shader compilation fails.【F:src/gl/renderer.js†L15-L118】
+  - Shared state touched and where it’s used: Instances are constructed during bootstrap (`src/bootstrap.js:7-35`) and expose `whiteTex`/draw methods consumed throughout the renderer (`src/render.js:728-1767`).【F:src/bootstrap.js†L7-L35】【F:src/gl/renderer.js†L190-L198】【F:src/render.js†L728-L1767】
+  - Dependencies: Relies on `_createProgram`, `_makeWhiteTex`, and WebGL APIs such as `createBuffer`, `viewport`, and uniform setters to prepare GPU state.【F:src/gl/renderer.js†L57-L170】
+  - Edge cases handled or missed: Throws immediately when WebGL is unavailable or shader/program compilation fails; does not implement recovery for lost contexts or shader rebuilds.【F:src/gl/renderer.js†L15-L118】
+  - Performance: One-time cost dominated by shader compilation and buffer allocation during startup.【F:src/bootstrap.js†L7-L35】【F:src/gl/renderer.js†L57-L118】
+  - Units / spaces: Stores pivot positions and viewport sizes in canvas pixels and expects color components in normalized `[0,1]` RGBA space.【F:src/gl/renderer.js†L60-L170】
+  - Determinism: Deterministic for a fixed canvas and shader source; runtime differences stem only from browser WebGL implementations.【F:src/gl/renderer.js†L15-L170】
+  - Keep / change / delete: Keep; centralises GL bootstrap logic. Alternative would spread context setup across bootstrap/render modules, increasing coupling.【F:src/bootstrap.js†L7-L35】
+  - Confidence / assumptions: High confidence; assumes a standard WebGL 1.0 environment and valid shader sources.【F:src/gl/renderer.js†L15-L118】
 - `_createShader`
+  - Purpose: Compiles a GLSL shader of the requested type using the renderer’s WebGL context, surfacing compilation errors via thrown exceptions.【F:src/gl/renderer.js†L105-L109】
+  - Inputs: `src` shader source string and `type` (`gl.VERTEX_SHADER`/`gl.FRAGMENT_SHADER`).【F:src/gl/renderer.js†L105-L109】
+  - Outputs: Returns the compiled `WebGLShader` on success.【F:src/gl/renderer.js†L105-L109】
+  - Side effects: Calls `gl.createShader`, uploads/compiles source, and inspects compile status, throwing with the info log when compilation fails.【F:src/gl/renderer.js†L105-L109】
+  - Shared state touched and where it’s used: Invoked exclusively by `_createProgram` during renderer construction (`src/gl/renderer.js:111-115`).【F:src/gl/renderer.js†L111-L115】
+  - Dependencies: Requires a valid `this.gl` WebGL context and uses `getShaderParameter`/`getShaderInfoLog` for diagnostics.【F:src/gl/renderer.js†L105-L109】
+  - Edge cases handled or missed: Handles compilation failures but assumes the context remains valid and does not attempt retries.【F:src/gl/renderer.js†L105-L109】
+  - Performance: Called twice at startup (vertex + fragment shader); negligible outside load time.【F:src/gl/renderer.js†L57-L115】
+  - Units / spaces: Operates on shader source text; no spatial units involved.【F:src/gl/renderer.js†L105-L109】
+  - Determinism: Deterministic for identical source and driver state, aside from driver-specific optimisation differences.【F:src/gl/renderer.js†L105-L109】
+  - Keep / change / delete: Keep; helper avoids duplicating compile boilerplate for each shader stage.【F:src/gl/renderer.js†L57-L115】
+  - Confidence / assumptions: High confidence; thin wrapper around standard WebGL calls.【F:src/gl/renderer.js†L105-L109】
 - `_createProgram`
+  - Purpose: Builds a linked shader program from vertex/fragment sources, attaching compiled shaders and validating link success.【F:src/gl/renderer.js†L111-L117】
+  - Inputs: `vs` vertex shader source, `fs` fragment shader source (strings).【F:src/gl/renderer.js†L111-L116】
+  - Outputs: Returns a linked `WebGLProgram`.【F:src/gl/renderer.js†L111-L117】
+  - Side effects: Attaches compiled shaders, links the program, and throws if linking fails; also consumes compiled shader objects from `_createShader`.【F:src/gl/renderer.js†L111-L117】
+  - Shared state touched and where it’s used: Called once by the constructor to initialise `this.prog` before attribute/uniform lookup.【F:src/gl/renderer.js†L57-L70】
+  - Dependencies: Depends on `_createShader` for compilation and on WebGL program APIs (`attachShader`, `linkProgram`, `getProgramParameter`).【F:src/gl/renderer.js†L111-L117】
+  - Edge cases handled or missed: Propagates link errors via exceptions but does not delete partially created resources on failure.【F:src/gl/renderer.js†L111-L117】
+  - Performance: Single startup link operation; negligible during gameplay.【F:src/gl/renderer.js†L57-L118】
+  - Units / spaces: None—operates on shader/program objects.【F:src/gl/renderer.js†L111-L117】
+  - Determinism: Deterministic given identical sources and WebGL driver behaviour.【F:src/gl/renderer.js†L111-L117】
+  - Keep / change / delete: Keep; encapsulates shader program creation for clarity. Alternative would inline into constructor, reducing readability.【F:src/gl/renderer.js†L57-L117】
+  - Confidence / assumptions: High confidence; follows standard WebGL program setup.【F:src/gl/renderer.js†L111-L117】
 - `_makeWhiteTex`
+  - Purpose: Creates a 1×1 RGBA white texture used as the default when drawing solids without external textures.【F:src/gl/renderer.js†L119-L127】
+  - Inputs: None; relies on the renderer’s WebGL context.【F:src/gl/renderer.js†L119-L124】
+  - Outputs: Returns a `WebGLTexture` handle configured with repeat wrap and nearest filtering.【F:src/gl/renderer.js†L119-L126】
+  - Side effects: Allocates/binds a texture, uploads a single white pixel, and sets sampler parameters.【F:src/gl/renderer.js†L119-L126】
+  - Shared state touched and where it’s used: Stored on `this.whiteTex` during construction and reused by `drawQuadSolid` as a solid fill surrogate.【F:src/gl/renderer.js†L103-L104】【F:src/gl/renderer.js†L194-L198】
+  - Dependencies: Requires WebGL texture APIs (`createTexture`, `bindTexture`, `texImage2D`, `texParameteri`).【F:src/gl/renderer.js†L119-L126】
+  - Edge cases handled or missed: Assumes texture creation succeeds; does not guard against context loss or NPOT restrictions (texture is 1×1).【F:src/gl/renderer.js†L119-L126】
+  - Performance: Single allocation during startup; negligible runtime impact.【F:src/gl/renderer.js†L119-L126】
+  - Units / spaces: Texture space is UV-based; pixel data uses 0–255 byte values for RGBA.【F:src/gl/renderer.js†L119-L126】
+  - Determinism: Deterministic; always produces the same white texel.【F:src/gl/renderer.js†L119-L126】
+  - Keep / change / delete: Keep; avoids rebuilding dummy textures for every solid draw. Alternative is to construct ad hoc solid quads on CPU.【F:src/gl/renderer.js†L194-L198】
+  - Confidence / assumptions: High confidence; standard technique for solid-color quads.【F:src/gl/renderer.js†L119-L127】
 - `loadTexture`
+  - Purpose: Asynchronously loads an image, uploads it to WebGL, and resolves with a configured texture for use in draw calls.【F:src/gl/renderer.js†L129-L147】
+  - Inputs: `url` string pointing to the image resource; expects reachable image data.【F:src/gl/renderer.js†L129-L146】
+  - Outputs: Resolves to a `WebGLTexture` on success or `null` if loading fails.【F:src/gl/renderer.js†L129-L146】
+  - Side effects: Creates an `Image`, performs GPU texture uploads, and sets sampler parameters; leaves texture bound to `TEXTURE_2D` on the renderer context during setup.【F:src/gl/renderer.js†L129-L145】
+  - Shared state touched and where it’s used: Called while preloading manifests in bootstrap to populate `World.assets.textures` before rendering begins.【F:src/bootstrap.js†L18-L35】
+  - Dependencies: Uses DOM `Image`, WebGL texture APIs, and respects `gl.pixelStorei` for premultiplied alpha settings.【F:src/gl/renderer.js†L129-L143】
+  - Edge cases handled or missed: Resolves `null` on `onerror` but does not reject the promise; assumes CORS via `crossOrigin = 'anonymous'` suffices.【F:src/gl/renderer.js†L132-L146】
+  - Performance: Bounded by network/image decode and GPU upload; typically run during loading screens, not per-frame.【F:src/bootstrap.js†L18-L35】
+  - Units / spaces: Uploads textures in pixel space; UV usage determined later by draw calls.【F:src/gl/renderer.js†L136-L145】
+  - Determinism: Deterministic for a given URL and image content.【F:src/gl/renderer.js†L129-L146】
+  - Keep / change / delete: Keep; central loader ensures consistent texture parameters. Alternative is duplicating texture setup in asset pipeline.【F:src/bootstrap.js†L18-L35】
+  - Confidence / assumptions: High confidence; assumes images are power-of-two friendly or rely on repeat wrap as configured.【F:src/gl/renderer.js†L136-L145】
 - `begin`
+  - Purpose: Prepares the frame by resizing the viewport if needed, clearing the color buffer, positioning the roll pivot, and updating fog uniforms from configuration.【F:src/gl/renderer.js†L149-L170】
+  - Inputs: Optional `clear` RGBA array (defaults to `[0.9,0.95,1.0,1]`).【F:src/gl/renderer.js†L149-L161】
+  - Outputs: None; sets GL state for subsequent draw calls.【F:src/gl/renderer.js†L149-L170】
+  - Side effects: Adjusts cached canvas dimensions, updates uniforms (`u_viewSize`, `u_pivot`, fog), performs `gl.viewport`/`gl.clearColor`/`gl.clear`, and reads `window.Config.fog`.【F:src/gl/renderer.js†L149-L170】
+  - Shared state touched and where it’s used: Invoked each frame before world rendering (`src/render.js:990-1017`) and exercised by the resize smoke test (`test/glrenderer.resize.test.js:34-58`).【F:src/render.js†L990-L1017】【F:test/glrenderer.resize.test.js†L34-L58】
+  - Dependencies: Requires `window.Config` fog settings and WebGL calls (`viewport`, `uniform2f`, `clearColor`, `clear`).【F:src/gl/renderer.js†L149-L170】
+  - Edge cases handled or missed: Detects canvas resizes to refresh `u_viewSize`; defaults fog values when config is missing but does not debounce frequent size changes beyond simple caching.【F:src/gl/renderer.js†L153-L170】
+  - Performance: Called once per frame; work scales with uniform updates and clear operations (constant-time).【F:src/render.js†L990-L1017】
+  - Units / spaces: Colors expressed in normalized floats; pivot derived from canvas pixel coordinates (center x, 82% height y).【F:src/gl/renderer.js†L149-L170】
+  - Determinism: Deterministic for given canvas size and fog config; reliant on external config state.【F:src/gl/renderer.js†L149-L170】
+  - Keep / change / delete: Keep; encapsulates per-frame GL housekeeping. Alternative would force renderers to repeat viewport/clear logic inline.【F:src/render.js†L990-L1017】
+  - Confidence / assumptions: High confidence; validated via resize test ensuring uniform updates when the canvas changes.【F:test/glrenderer.resize.test.js†L34-L58】
 - `setRollPivot`
+  - Purpose: Updates the roll angle uniform and pivot coordinates used by the vertex shader to rotate quads around a screen-space pivot.【F:src/gl/renderer.js†L172-L172】
+  - Inputs: `rad` roll angle in radians, `px`/`py` pivot coordinates in pixels.【F:src/gl/renderer.js†L172-L172】
+  - Outputs: None; writes to shader uniforms.【F:src/gl/renderer.js†L172-L172】
+  - Side effects: Calls `gl.uniform1f`/`uniform2f` to update `u_roll` and `u_pivot`.【F:src/gl/renderer.js†L172-L172】
+  - Shared state touched and where it’s used: Called when applying camera tilt each frame to pivot the world around the player horizon (`src/render.js:1032-1048`).【F:src/render.js†L1032-L1048】
+  - Dependencies: Relies on shader uniforms initialised during construction.【F:src/gl/renderer.js†L60-L170】
+  - Edge cases handled or missed: Assumes numeric inputs; does not clamp angles or validate pivot bounds.【F:src/gl/renderer.js†L172-L172】
+  - Performance: Constant-time uniform updates per frame when tilt changes.【F:src/render.js†L1032-L1048】
+  - Units / spaces: Angle in radians; pivot coordinates in canvas pixels matching vertex shader expectations.【F:src/gl/renderer.js†L25-L36】【F:src/gl/renderer.js†L172-L172】
+  - Determinism: Deterministic given inputs; idempotent for repeated values.【F:src/gl/renderer.js†L172-L172】
+  - Keep / change / delete: Keep; isolates shader uniform plumbing from camera logic. Alternative would inline uniform calls inside renderer, reducing reuse.【F:src/render.js†L1032-L1048】
+  - Confidence / assumptions: High confidence; thin wrapper around straightforward uniform writes.【F:src/gl/renderer.js†L172-L172】
 - `drawQuadTextured`
+  - Purpose: Streams a single quad worth of vertices with per-vertex tint and fog into the shared VBO, binds the chosen texture (or fallback), and issues a triangle draw.【F:src/gl/renderer.js†L173-L193】
+  - Inputs: `tex` (`WebGLTexture` or falsy), `quad` object with `x1..x4`/`y1..y4` pixel coordinates, `uv` struct with `u1..u4`/`v1..v4`, optional `tint` RGBA array, optional `fog` array of four fog weights.【F:src/gl/renderer.js†L173-L193】
+  - Outputs: None; enqueues geometry to GPU.【F:src/gl/renderer.js†L173-L193】
+  - Side effects: Writes into `this.slab` Float32Array, updates the GL array buffer via `bufferSubData`, binds texture unit 0, toggles `u_useTex`, and draws two triangles covering the quad.【F:src/gl/renderer.js†L173-L193】
+  - Shared state touched and where it’s used: Core draw path for nearly every world element including parallax layers, road strips, rails, cliffs, and sprites (`src/render.js:728-1767`).【F:src/render.js†L728-L813】【F:src/render.js†L906-L941】【F:src/render.js†L1645-L1767】
+  - Dependencies: Uses WebGL buffer, texture, and draw APIs; depends on constructor-initialised VBO/uniforms and default tint/fog constants.【F:src/gl/renderer.js†L3-L193】
+  - Edge cases handled or missed: Falls back to identity tint/fog when omitted and uses `whiteTex` when `tex` is falsy; does not validate quad winding or NaN coordinates.【F:src/gl/renderer.js†L174-L191】
+  - Performance: Executes per draw call; writes 54 floats and performs a single `gl.drawArrays`—hot path in the render loop.【F:src/gl/renderer.js†L173-L193】【F:src/render.js†L728-L1767】
+  - Units / spaces: Quad coordinates are screen pixels; UVs are unit texture coordinates; fog values treated as unitless blend factors.【F:src/gl/renderer.js†L173-L193】
+  - Determinism: Deterministic given identical inputs and GL state; floating precision may vary slightly across hardware.【F:src/gl/renderer.js†L173-L193】
+  - Keep / change / delete: Keep; foundational draw primitive. Alternative would require batching multiple quads per submission, which is a broader redesign.【F:src/render.js†L728-L1767】
+  - Confidence / assumptions: High confidence; heavily exercised by render loop.【F:src/render.js†L728-L1767】
 - `drawQuadSolid`
+  - Purpose: Convenience wrapper that renders a solid-colored quad (with optional fog) by delegating to `drawQuadTextured` using the shared white texture and unit UVs.【F:src/gl/renderer.js†L194-L198】
+  - Inputs: `quad` coordinates, optional `color` RGBA array, optional `fog` array.【F:src/gl/renderer.js†L194-L198】
+  - Outputs: None.【F:src/gl/renderer.js†L194-L198】
+  - Side effects: Calls `drawQuadTextured` with `this.whiteTex`, default solid color (`[1,0,0,1]`) when unspecified, and default fog array.【F:src/gl/renderer.js†L194-L198】
+  - Shared state touched and where it’s used: Used whenever textured rendering is disabled or fallback shading is needed for roads, cliffs, sprites, and debug quads (`src/render.js:728-1767`).【F:src/render.js†L728-L813】【F:src/render.js†L1581-L1598】【F:src/render.js†L1645-L1767】
+  - Dependencies: Relies on `drawQuadTextured`, `UNIT_UV`, and `this.whiteTex`.【F:src/gl/renderer.js†L7-L198】
+  - Edge cases handled or missed: Provides reasonable defaults but assumes callers supply sensible quad geometry; inherits textured path limitations.【F:src/gl/renderer.js†L194-L198】
+  - Performance: Same cost as a textured draw; invoked frequently when textures are disabled or solid fills are desired.【F:src/gl/renderer.js†L194-L198】【F:src/render.js†L728-L1767】
+  - Units / spaces: Same as `drawQuadTextured` (pixels for geometry, unitless tint/fog values).【F:src/gl/renderer.js†L173-L198】
+  - Determinism: Deterministic given inputs.【F:src/gl/renderer.js†L194-L198】
+  - Keep / change / delete: Keep; avoids duplicating tint/fog packing for solid draws. Alternative would require callers to manage textures manually.【F:src/render.js†L728-L1767】
+  - Confidence / assumptions: High confidence; extensively used in current renderer.【F:src/render.js†L728-L1767】
 - `makeCircleTex`
+  - Purpose: Generates a radial-gradient circle texture on an offscreen canvas and uploads it to WebGL, useful for particle or glow effects.【F:src/gl/renderer.js†L199-L216】
+  - Inputs: Optional `size` (pixels, defaults to `64`); expects positive integers for reasonable quality.【F:src/gl/renderer.js†L199-L216】
+  - Outputs: Returns a `WebGLTexture` with clamp-to-edge wrap and nearest filtering.【F:src/gl/renderer.js†L199-L215】
+  - Side effects: Allocates a DOM canvas, paints a gradient, uploads it to the GPU, and configures sampler parameters.【F:src/gl/renderer.js†L199-L215】
+  - Shared state touched and where it’s used: Exported on `RenderGL` but currently has no runtime call sites in the repo (available for future sprite/particle systems).【F:src/gl/renderer.js†L199-L216】【F:src/gl/renderer.js†L270-L271】
+  - Dependencies: Requires DOM canvas 2D context and WebGL texture APIs.【F:src/gl/renderer.js†L199-L215】
+  - Edge cases handled or missed: Assumes canvas creation succeeds and does not validate negative/zero sizes beyond whatever canvas enforces.【F:src/gl/renderer.js†L199-L215】
+  - Performance: Intended for occasional asset generation; work scales with `size^2` due to canvas fill but typically done off the main loop.【F:src/gl/renderer.js†L199-L215】
+  - Units / spaces: Texture coordinates remain unit-based; size parameter directly sets pixel resolution.【F:src/gl/renderer.js†L199-L216】
+  - Determinism: Deterministic gradient for a given size.【F:src/gl/renderer.js†L199-L216】
+  - Keep / change / delete: Keep; handy utility despite no current callers. Simplest alternative is to ship a baked circle sprite asset.【F:src/gl/renderer.js†L199-L216】
+  - Confidence / assumptions: High confidence; straightforward texture generation routine.【F:src/gl/renderer.js†L199-L216】
 - `end`
+  - Purpose: Placeholder terminator for the render pass; currently a no-op reserved for future teardown or post-frame bookkeeping.【F:src/gl/renderer.js†L218-L218】
+  - Inputs: None.【F:src/gl/renderer.js†L218-L218】
+  - Outputs: None.【F:src/gl/renderer.js†L218-L218】
+  - Side effects: None today.【F:src/gl/renderer.js†L218-L218】
+  - Shared state touched and where it’s used: Called after world rendering to keep the begin/end pairing explicit (`src/render.js:990-1017`).【F:src/render.js†L990-L1017】
+  - Dependencies: None beyond class context.【F:src/gl/renderer.js†L218-L218】
+  - Edge cases handled or missed: N/A—does nothing.【F:src/gl/renderer.js†L218-L218】
+  - Performance: Negligible.【F:src/gl/renderer.js†L218-L218】
+  - Units / spaces: N/A.【F:src/gl/renderer.js†L218-L218】
+  - Determinism: N/A.【F:src/gl/renderer.js†L218-L218】
+  - Keep / change / delete: Keep for symmetry; alternative is to remove and adjust callers, but that would reduce clarity around frame lifecycle.【F:src/render.js†L990-L1017】
+  - Confidence / assumptions: High confidence; inert stub.【F:src/gl/renderer.js†L218-L218】
 - `padQuad`
+  - Purpose: Returns a new quad expanded by configurable padding along each edge, ensuring sprites overlap cleanly regardless of vertex ordering.【F:src/gl/renderer.js†L221-L256】
+  - Inputs: `q` quad with `x1..x4`/`y1..y4`; optional padding object `{ padLeft, padRight, padTop, padBottom }` (defaults to `0`).【F:src/gl/renderer.js†L221-L249】
+  - Outputs: New quad object with adjusted coordinates.【F:src/gl/renderer.js†L242-L256】
+  - Side effects: Pure function—allocates and returns a new object without mutating the input.【F:src/gl/renderer.js†L221-L256】
+  - Shared state touched and where it’s used: Wrapped by `padWithSpriteOverlap` to widen road/rail quads before drawing (`src/render.js:610-812`).【F:src/render.js†L610-L812】
+  - Dependencies: Uses `Math.abs` comparisons to determine edge orientation; no external modules.【F:src/gl/renderer.js†L242-L249】
+  - Edge cases handled or missed: Handles any vertex winding by deriving min/max per axis; does not account for rotated quads (expects axis-aligned input).【F:src/gl/renderer.js†L221-L256】
+  - Performance: Constant-time arithmetic; invoked per road/rail quad before rendering.【F:src/render.js†L728-L812】
+  - Units / spaces: Operates in screen pixels consistent with renderer quads.【F:src/gl/renderer.js†L221-L256】
+  - Determinism: Deterministic given inputs.【F:src/gl/renderer.js†L221-L256】
+  - Keep / change / delete: Keep; simplifies sprite overlap tuning. Alternative is to repeat padding math at each call site.【F:src/render.js†L610-L812】
+  - Confidence / assumptions: High confidence; behaviour covered by numerous draw callers relying on overlap.【F:src/render.js†L728-L812】
 - `makeRotatedQuad`
+  - Purpose: Computes the four vertices of a rectangle rotated around its center, returning screen-space coordinates ready for rendering.【F:src/gl/renderer.js†L259-L267】
+  - Inputs: `cx`/`cy` center pixels, `w` width, `h` height, `rad` rotation in radians.【F:src/gl/renderer.js†L259-L266】
+  - Outputs: Quad object `{ x1,y1,...,x4,y4 }` in pixels.【F:src/gl/renderer.js†L259-L267】
+  - Side effects: None; pure calculation.【F:src/gl/renderer.js†L259-L267】
+  - Shared state touched and where it’s used: Used to orient sprites such as player vehicle components and collectible bodies before drawing (`src/render.js:933-1767`).【F:src/render.js†L933-L1767】
+  - Dependencies: Relies on `Math.cos`/`Math.sin` trig functions; no external modules.【F:src/gl/renderer.js†L259-L266】
+  - Edge cases handled or missed: Assumes finite width/height; rotation of 0 returns axis-aligned quad. Does not normalise negative sizes.【F:src/gl/renderer.js†L259-L266】
+  - Performance: Constant-time math executed for each rotated sprite draw.【F:src/render.js†L933-L1767】
+  - Units / spaces: Inputs in pixels/radians; outputs same pixel space used by renderer.【F:src/gl/renderer.js†L259-L267】
+  - Determinism: Deterministic given inputs.【F:src/gl/renderer.js†L259-L267】
+  - Keep / change / delete: Keep; isolates rotation math and keeps draw code readable. Alternative is duplicating trig math at each call site.【F:src/render.js†L933-L1767】
+  - Confidence / assumptions: High confidence; long-standing helper for sprite orientation.【F:src/gl/renderer.js†L259-L267】
 
 ### 3.9 Sprite Catalog (`src/sprite-catalog.js`)
 - `freezeClip`
+  - Purpose: Normalises optional animation clip definitions into immutable objects with frozen frame arrays and a playback mode, providing safe defaults when clips are absent.【F:src/sprite-catalog.js†L19-L27】
+  - Inputs: `clip` object with optional `frames` array and `playback` string; falsy values trigger a default empty clip.【F:src/sprite-catalog.js†L19-L27】
+  - Outputs: Returns a frozen object `{ frames, playback }`, where `frames` is a frozen array copy and `playback` defaults to `'none'`.【F:src/sprite-catalog.js†L19-L27】
+  - Side effects: Allocates new arrays and freezes them; does not mutate the input clip.【F:src/sprite-catalog.js†L19-L27】
+  - Shared state touched and where it’s used: Applied when seeding each catalog entry’s `baseClip`/`interactClip`, ensuring downstream consumers see immutable definitions (`src/sprite-catalog.js:132-151`).【F:src/sprite-catalog.js†L132-L151】
+  - Dependencies: Uses `Array.isArray`, `slice`, and `Object.freeze`; no external modules.【F:src/sprite-catalog.js†L19-L27】
+  - Edge cases handled or missed: Treats missing clips as empty, gracefully handles non-array `frames`, but does not validate playback strings beyond providing defaults.【F:src/sprite-catalog.js†L19-L27】
+  - Performance: Linear in the number of frames copied; run only when constructing the static catalog at startup.【F:src/sprite-catalog.js†L112-L151】
+  - Units / spaces: Frame indices remain numeric with no inherent units; semantics determined by sprite atlas consumers.【F:src/sprite-catalog.js†L19-L27】
+  - Determinism: Deterministic for a given input clip.【F:src/sprite-catalog.js†L19-L27】
+  - Keep / change / delete: Keep; encapsulates defensive cloning. Alternative is to freeze in-line for each entry, duplicating code.【F:src/sprite-catalog.js†L132-L151】
+  - Confidence / assumptions: High confidence; straightforward immutable wrapper.【F:src/sprite-catalog.js†L19-L27】
 - `makeFrames`
+  - Purpose: Generates an inclusive sequence of frame indices between `start` and `end`, supporting ascending and descending ranges for atlas clips.【F:src/sprite-catalog.js†L30-L36】
+  - Inputs: `start`, `end` numbers; expects finite values to produce frames.【F:src/sprite-catalog.js†L30-L34】
+  - Outputs: Returns an array of integers from `start` to `end` inclusive (empty if inputs are non-finite).【F:src/sprite-catalog.js†L30-L36】
+  - Side effects: None; allocates a new array.【F:src/sprite-catalog.js†L30-L36】
+  - Shared state touched and where it’s used: Used to build reusable frame sets for tree and pickup atlases before freezing into catalog entries (`src/sprite-catalog.js:52-78`).【F:src/sprite-catalog.js†L52-L78】
+  - Dependencies: Relies on `Number.isFinite` and simple loops; no external modules.【F:src/sprite-catalog.js†L30-L36】
+  - Edge cases handled or missed: Handles reversed ranges by stepping `-1`; returns `[]` if either bound is non-finite but does not clamp to atlas length.【F:src/sprite-catalog.js†L30-L36】
+  - Performance: O(|end-start|); invoked during catalog initialisation only.【F:src/sprite-catalog.js†L30-L78】
+  - Units / spaces: Outputs frame indices; callers interpret as atlas frame numbers.【F:src/sprite-catalog.js†L30-L78】
+  - Determinism: Deterministic for given start/end.【F:src/sprite-catalog.js†L30-L36】
+  - Keep / change / delete: Keep; concise helper for frame lists. Alternative is manual loops at each call site.【F:src/sprite-catalog.js†L52-L78】
+  - Confidence / assumptions: High confidence; simple numeric iteration.【F:src/sprite-catalog.js†L30-L36】
 - `makeAtlasFrameAssets`
+  - Purpose: Converts a list of frame numbers into atlas asset descriptors consumed by the renderer/loader for sprite animation.【F:src/sprite-catalog.js†L40-L43】
+  - Inputs: `key` texture manifest key string, `frameValues` array-like of frame numbers.【F:src/sprite-catalog.js†L40-L43】
+  - Outputs: Array of `{ type: 'atlas', key, frames: [frame] }` objects cloned per frame.【F:src/sprite-catalog.js†L40-L43】
+  - Side effects: None beyond new array allocation.【F:src/sprite-catalog.js†L40-L43】
+  - Shared state touched and where it’s used: Generates the static tree atlas asset list baked into the catalog (`src/sprite-catalog.js:70-78`).【F:src/sprite-catalog.js†L70-L78】
+  - Dependencies: Uses `Array.isArray`, `map`, and object literals.【F:src/sprite-catalog.js†L40-L43】
+  - Edge cases handled or missed: Treats non-array inputs as empty; does not deduplicate frames or validate bounds.【F:src/sprite-catalog.js†L40-L43】
+  - Performance: O(frame count) during catalog build.【F:src/sprite-catalog.js†L40-L78】
+  - Units / spaces: Frame indices are integers referencing atlas slots.【F:src/sprite-catalog.js†L40-L78】
+  - Determinism: Deterministic given inputs.【F:src/sprite-catalog.js†L40-L43】
+  - Keep / change / delete: Keep; keeps catalog construction declarative. Alternative is manual object literals for every frame.【F:src/sprite-catalog.js†L70-L78】
+  - Confidence / assumptions: High confidence; minimal transformation.【F:src/sprite-catalog.js†L40-L43】
 - `cloneCatalog`
+  - Purpose: Produces a shallow copy of the internal `CATALOG_MAP` so callers can iterate without mutating the shared singleton.【F:src/sprite-catalog.js†L158-L160】
+  - Inputs: None.【F:src/sprite-catalog.js†L158-L160】
+  - Outputs: New `Map` instance populated with the same entries.【F:src/sprite-catalog.js†L158-L160】
+  - Side effects: None; constructs a new map from the original.【F:src/sprite-catalog.js†L158-L160】
+  - Shared state touched and where it’s used: Exposed via `SpriteCatalog.getCatalog()` and consumed when gameplay loads sprite metadata (`src/gameplay.js:928-934`).【F:src/sprite-catalog.js†L175-L179】【F:src/gameplay.js†L928-L934】
+  - Dependencies: Relies on the standard `Map` copy constructor.【F:src/sprite-catalog.js†L158-L160】
+  - Edge cases handled or missed: Provides a shallow clone; underlying entry objects remain frozen so deep copies aren’t required.【F:src/sprite-catalog.js†L140-L152】【F:src/sprite-catalog.js†L158-L160】
+  - Performance: Linear in number of catalog entries; invoked infrequently when systems request the catalog snapshot.【F:src/gameplay.js†L928-L934】
+  - Units / spaces: Entries contain normalised metrics (width-as-road fractions, etc.) as defined when building the map.【F:src/sprite-catalog.js†L112-L156】
+  - Determinism: Deterministic snapshot of the underlying map.【F:src/sprite-catalog.js†L158-L160】
+  - Keep / change / delete: Keep; prevents accidental mutation of the singleton map. Alternative is to expose the map directly and trust callers.【F:src/sprite-catalog.js†L175-L179】
+  - Confidence / assumptions: High confidence; simple wrapper around `new Map`.【F:src/sprite-catalog.js†L158-L160】
 - `getTextureManifest`
+  - Purpose: Returns a shallow copy of the sprite texture manifest so loaders can request sprite-specific assets without mutating shared data.【F:src/sprite-catalog.js†L5-L34】【F:src/sprite-catalog.js†L162-L164】
+  - Inputs: None.【F:src/sprite-catalog.js†L162-L164】
+  - Outputs: Plain object copy of `TEXTURE_MANIFEST` entries.【F:src/sprite-catalog.js†L5-L34】【F:src/sprite-catalog.js†L162-L164】
+  - Side effects: None; uses object spread to clone manifest values.【F:src/sprite-catalog.js†L162-L164】
+  - Shared state touched and where it’s used: Queried during bootstrap to load sprite textures alongside the main manifest (`src/bootstrap.js:32-35`).【F:src/bootstrap.js†L32-L35】
+  - Dependencies: Relies on spread syntax and the frozen `TEXTURE_MANIFEST`.【F:src/sprite-catalog.js†L5-L34】【F:src/sprite-catalog.js†L162-L164】
+  - Edge cases handled or missed: Produces a copy so callers can edit without affecting the catalog; does not validate URLs.【F:src/sprite-catalog.js†L5-L34】【F:src/sprite-catalog.js†L162-L164】
+  - Performance: Iterates over manifest keys once per request; small data set (four entries).【F:src/sprite-catalog.js†L5-L34】【F:src/sprite-catalog.js†L162-L164】
+  - Units / spaces: Manifest values are asset URLs relative to project root.【F:src/sprite-catalog.js†L5-L34】
+  - Determinism: Deterministic; always mirrors the static manifest.【F:src/sprite-catalog.js†L5-L34】【F:src/sprite-catalog.js†L162-L164】
+  - Keep / change / delete: Keep; isolates manifest exposure. Alternative is to export the frozen manifest directly, limiting caller flexibility.【F:src/sprite-catalog.js†L162-L164】
+  - Confidence / assumptions: High confidence; trivial copy helper.【F:src/sprite-catalog.js†L162-L164】
 - `getCatalogEntry`
+  - Purpose: Fetches a frozen catalog entry by `spriteId`, enabling callers to inspect metrics/assets for individual sprites.【F:src/sprite-catalog.js†L166-L168】
+  - Inputs: `spriteId` string.【F:src/sprite-catalog.js†L166-L168】
+  - Outputs: Returns the frozen entry or `null` when missing.【F:src/sprite-catalog.js†L166-L168】
+  - Side effects: None.【F:src/sprite-catalog.js†L166-L168】
+  - Shared state touched and where it’s used: Forms the basis of the exported API (`SpriteCatalog.getEntry`) though no current repo code calls it directly; `getMetrics` delegates to it for metric lookups.【F:src/sprite-catalog.js†L166-L178】
+  - Dependencies: Relies on the internal `CATALOG_MAP`.【F:src/sprite-catalog.js†L132-L157】【F:src/sprite-catalog.js†L166-L168】
+  - Edge cases handled or missed: Returns `null` for unknown IDs; does not throw for invalid argument types.【F:src/sprite-catalog.js†L166-L168】
+  - Performance: O(1) map lookup.【F:src/sprite-catalog.js†L166-L168】
+  - Units / spaces: Entries contain metrics in normalised road-width units and tint colors per catalog definition.【F:src/sprite-catalog.js†L112-L156】
+  - Determinism: Deterministic; entries are frozen and static.【F:src/sprite-catalog.js†L132-L178】
+  - Keep / change / delete: Keep; essential point lookup for future gameplay/render code. Alternative would require callers to copy the entire catalog and filter manually.【F:src/sprite-catalog.js†L166-L178】
+  - Confidence / assumptions: High confidence; straightforward map access.【F:src/sprite-catalog.js†L166-L168】
 - `getMetrics`
+  - Purpose: Convenience accessor that returns sprite metrics or the frozen fallback when an entry is missing.【F:src/sprite-catalog.js†L170-L172】
+  - Inputs: `spriteId` string.【F:src/sprite-catalog.js†L170-L172】
+  - Outputs: Metrics object (frozen) or `METRIC_FALLBACK`.【F:src/sprite-catalog.js†L10-L16】【F:src/sprite-catalog.js†L170-L172】
+  - Side effects: None.【F:src/sprite-catalog.js†L170-L172】
+  - Shared state touched and where it’s used: Exposed via `SpriteCatalog.getMetrics`; while no current module calls it, gameplay relies on the adjacent `metricsFallback` export when seeding defaults (`src/gameplay.js:368-371`).【F:src/sprite-catalog.js†L170-L180】【F:src/gameplay.js†L368-L371】
+  - Dependencies: Calls `getCatalogEntry` for lookup.【F:src/sprite-catalog.js†L166-L172】
+  - Edge cases handled or missed: Provides a safe fallback; does not memoize lookups or warn on missing entries.【F:src/sprite-catalog.js†L170-L172】
+  - Performance: O(1) map access; negligible.【F:src/sprite-catalog.js†L166-L172】
+  - Units / spaces: Metrics express sprite width as a fraction of road width (`wN`), aspect ratio, tint RGBA, and optional atlas metadata.【F:src/sprite-catalog.js†L10-L16】【F:src/sprite-catalog.js†L112-L156】
+  - Determinism: Deterministic mapping from ID to metrics/fallback.【F:src/sprite-catalog.js†L10-L16】【F:src/sprite-catalog.js†L170-L172】
+  - Keep / change / delete: Keep; simplifies caller code that only needs metrics. Alternative is repeated `getEntry` + fallback checks.【F:src/sprite-catalog.js†L166-L172】
+  - Confidence / assumptions: High confidence; tiny wrapper around `getCatalogEntry`.【F:src/sprite-catalog.js†L166-L172】
 
 ### 3.10 Math Utilities (`src/math.js`)
 - `clamp`
+  - Purpose: Limits a numeric value to an inclusive `[min, max]` range, preventing downstream math from exceeding configured bounds in rendering and gameplay systems.【F:src/math.js†L1-L1】【F:src/render.js†L84-L104】【F:src/gameplay.js†L1199-L1201】
+  - Inputs: `value` (number to bound), `min` lower limit, `max` upper limit; expects numeric inputs with `min ≤ max` for intuitive results.【F:src/math.js†L1-L1】
+  - Outputs: Returns the clipped number within the specified range.【F:src/math.js†L1-L1】
+  - Side effects: None; pure function.【F:src/math.js†L1-L1】
+  - Shared state touched and where it’s used: Imported by the renderer to constrain random colours and camera tilt easing (`src/render.js:35-1048`) and by gameplay to cap velocity, lateral position, and lane indices (`src/gameplay.js:564-2349`).【F:src/render.js†L35-L1048】【F:src/gameplay.js†L564-L2349】
+  - Dependencies: Uses `Math.min`/`Math.max`.【F:src/math.js†L1-L1】
+  - Edge cases handled or missed: If `min > max` the nested min/max effectively returns `min`; caller should ensure sensible bounds.【F:src/math.js†L1-L1】
+  - Performance: Constant-time; heavily used but negligible cost per call.【F:src/math.js†L1-L1】
+  - Units / spaces: Agnostic—applies to whatever units callers supply (colors, speeds, angles). Example: clamps HSV parameters and tilt degrees.【F:src/render.js†L84-L104】【F:src/render.js†L1032-L1043】
+  - Determinism: Deterministic pure math.【F:src/math.js†L1-L1】
+  - Keep / change / delete: Keep; ubiquitous helper avoiding verbose inline min/max chains.【F:src/math.js†L1-L1】
+  - Confidence / assumptions: High confidence; trivial wrapper around built-ins.【F:src/math.js†L1-L1】
 - `clamp01`
+  - Purpose: Convenience wrapper that clamps a value into the `[0,1]` interval, widely used for normalised ratios and easing inputs.【F:src/math.js†L2-L2】【F:src/gameplay.js†L570-L588】
+  - Inputs: `value` number.【F:src/math.js†L2-L2】
+  - Outputs: Returns `value` bounded between `0` and `1`.【F:src/math.js†L2-L2】
+  - Side effects: None.【F:src/math.js†L2-L2】
+  - Shared state touched and where it’s used: Applied across gameplay for interpolation weights and normalised timers (`src/gameplay.js:570-1869`) and inside world asset easing definitions (`src/world.js:482-506`).【F:src/gameplay.js†L570-L1869】【F:src/world.js†L482-L506】
+  - Dependencies: Calls `clamp`.【F:src/math.js†L2-L2】
+  - Edge cases handled or missed: Guarantees output in `[0,1]`; does not warn on NaN input (propagates NaN).【F:src/math.js†L2-L2】
+  - Performance: Constant-time; frequent but cheap.【F:src/math.js†L2-L2】
+  - Units / spaces: Intended for normalised scalar ratios.【F:src/math.js†L2-L2】【F:src/gameplay.js†L570-L588】
+  - Determinism: Deterministic.【F:src/math.js†L2-L2】
+  - Keep / change / delete: Keep; reduces boilerplate when constraining easing parameters.【F:src/math.js†L2-L2】
+  - Confidence / assumptions: High confidence; simple call-through.【F:src/math.js†L2-L2】
 - `lerp`
+  - Purpose: Performs linear interpolation between `start` and `end` by factor `t`, supporting numerous projection and animation calculations.【F:src/math.js†L4-L4】【F:src/render.js†L780-L812】【F:src/world.js†L503-L510】
+  - Inputs: `start`, `end`, `t` numbers; `t` typically within `[0,1]` though not enforced.【F:src/math.js†L4-L4】
+  - Outputs: Returns interpolated value `start + (end - start) * t`.【F:src/math.js†L4-L4】
+  - Side effects: None.【F:src/math.js†L4-L4】
+  - Shared state touched and where it’s used: Critical for draw-list generation (road strips, sprite placement) and cliff easing (`src/render.js:780-1290`) and for cliff CSV interpolation in world data (`src/world.js:503-510`).【F:src/render.js†L780-L1290】【F:src/world.js†L503-L510】
+  - Dependencies: Relies on arithmetic only.【F:src/math.js†L4-L4】
+  - Edge cases handled or missed: Accepts any numeric `t`; extrapolates when outside `[0,1]` which some callers expect.【F:src/math.js†L4-L4】
+  - Performance: Constant-time; invoked per sprite/segment interpolation but extremely cheap.【F:src/math.js†L4-L4】
+  - Units / spaces: Works in caller units (pixels, world metres, colour components).【F:src/render.js†L780-L1290】
+  - Determinism: Deterministic given inputs.【F:src/math.js†L4-L4】
+  - Keep / change / delete: Keep; ubiquitous interpolation helper.【F:src/math.js†L4-L4】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L4-L4】
 - `pctRem`
+  - Purpose: Computes the fractional remainder of `value` relative to `total`, returning a normalised modulus often used for wrapping track positions.【F:src/math.js†L5-L5】【F:src/render.js†L1004-L1015】
+  - Inputs: `value` number, `total` number (non-zero recommended).【F:src/math.js†L5-L5】
+  - Outputs: `(value % total) / total` result.【F:src/math.js†L5-L5】
+  - Side effects: None.【F:src/math.js†L5-L5】
+  - Shared state touched and where it’s used: Used by the renderer to compute the camera’s fractional progress through a segment for draw ordering (`src/render.js:1004-1015`).【F:src/render.js†L1004-L1015】
+  - Dependencies: Native modulo operator.【F:src/math.js†L5-L5】
+  - Edge cases handled or missed: Inherits JavaScript `%` semantics (negative values keep sign of dividend); callers must avoid zero totals.【F:src/math.js†L5-L5】
+  - Performance: Constant-time.【F:src/math.js†L5-L5】
+  - Units / spaces: Outputs a ratio in `[0,1)` for positive totals; used as a unit interval along the track.【F:src/render.js†L1004-L1015】
+  - Determinism: Deterministic.【F:src/math.js†L5-L5】
+  - Keep / change / delete: Keep; concise helper for normalised modular arithmetic.【F:src/math.js†L5-L5】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L5-L5】
 - `createEaseIn`
+  - Purpose: Factory that returns an easing function raising `clamp01(t)` to a power, producing standard ease-in curves.【F:src/math.js†L7-L8】【F:src/math.js†L17-L23】
+  - Inputs: `power` positive number.【F:src/math.js†L7-L7】
+  - Outputs: Returns `(t) => Math.pow(clamp01(t), power)`.【F:src/math.js†L7-L7】
+  - Side effects: None.【F:src/math.js†L7-L7】
+  - Shared state touched and where it’s used: Instantiates `easeInQuad01`/`easeInCub01` used in easing families (`src/math.js:18-23`).【F:src/math.js†L18-L23】
+  - Dependencies: Uses `clamp01`, `Math.pow`.【F:src/math.js†L7-L7】
+  - Edge cases handled or missed: Clamps negative/overshoot `t` automatically; does not validate `power` (NaN propagates).【F:src/math.js†L7-L7】
+  - Performance: Constant-time per call; used only to define static easers.【F:src/math.js†L18-L23】
+  - Units / spaces: Operates on normalised time in `[0,1]`.【F:src/math.js†L7-L23】
+  - Determinism: Deterministic.【F:src/math.js†L7-L7】
+  - Keep / change / delete: Keep; avoids repeating exponent logic for each curve.【F:src/math.js†L18-L23】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L7-L7】
 - `createEaseOut`
+  - Purpose: Produces an ease-out function that mirrors ease-in behaviour by flipping and clamping `t`.【F:src/math.js†L8-L8】【F:src/math.js†L17-L23】
+  - Inputs: `power` number.【F:src/math.js†L8-L8】
+  - Outputs: `(t) => 1 - Math.pow(1 - clamp01(t), power)`.【F:src/math.js†L8-L8】
+  - Side effects: None.【F:src/math.js†L8-L8】
+  - Shared state touched and where it’s used: Used to build `easeOutQuad01`/`easeOutCub01` curves consumed by `EASE_CURVES_01`.【F:src/math.js†L19-L23】【F:src/math.js†L33-L36】
+  - Dependencies: `clamp01`, `Math.pow`.【F:src/math.js†L8-L8】
+  - Edge cases handled or missed: Handles out-of-range `t` by clamping; same NaN caveats as `createEaseIn`.【F:src/math.js†L8-L8】
+  - Performance: Constant-time; invoked during module init only.【F:src/math.js†L19-L23】
+  - Units / spaces: Normalised `[0,1]` domain.【F:src/math.js†L8-L23】
+  - Determinism: Deterministic.【F:src/math.js†L8-L8】
+  - Keep / change / delete: Keep; complements other ease factories.【F:src/math.js†L19-L23】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L8-L8】
 - `createEaseInOut`
+  - Purpose: Generates a symmetric ease-in/ease-out curve by applying a power to the first half of the timeline and mirroring it for the second half.【F:src/math.js†L9-L15】
+  - Inputs: `power` number.【F:src/math.js†L9-L15】
+  - Outputs: Returns `(t) => { … }` splitting around `0.5`.【F:src/math.js†L9-L15】
+  - Side effects: None.【F:src/math.js†L9-L15】
+  - Shared state touched and where it’s used: Creates `easeInOutQuad01`/`easeInOutCub01` referenced by smoothing tables.【F:src/math.js†L20-L23】【F:src/math.js†L33-L36】
+  - Dependencies: `clamp01`, `Math.pow`.【F:src/math.js†L9-L15】
+  - Edge cases handled or missed: Clamps `t`; handles degenerate `power` but does not guard against negative exponents.【F:src/math.js†L9-L15】
+  - Performance: Constant-time; executed during initialisation.【F:src/math.js†L20-L23】
+  - Units / spaces: Normalised time domain.【F:src/math.js†L9-L15】
+  - Determinism: Deterministic.【F:src/math.js†L9-L15】
+  - Keep / change / delete: Keep; avoids hand-writing mirrored curves.【F:src/math.js†L20-L23】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L9-L15】
 - `easeLinear01`
+  - Purpose: Identity easing returning `clamp01(t)`, used as the neutral curve in easing tables.【F:src/math.js†L17-L17】【F:src/math.js†L33-L36】
+  - Inputs: `t` number.【F:src/math.js†L17-L17】
+  - Outputs: `clamp01(t)`.【F:src/math.js†L17-L17】
+  - Side effects: None.【F:src/math.js†L17-L17】
+  - Shared state touched and where it’s used: Included in `EASE_CURVES_01.linear` for default smoothing and referenced by `getEase01`.【F:src/math.js†L33-L42】
+  - Dependencies: `clamp01`.【F:src/math.js†L17-L17】
+  - Edge cases handled or missed: Clamps out-of-range values; NaN propagates.【F:src/math.js†L17-L17】
+  - Performance: Constant-time.【F:src/math.js†L17-L17】
+  - Units / spaces: `[0,1]` domain.【F:src/math.js†L17-L17】
+  - Determinism: Deterministic.【F:src/math.js†L17-L17】
+  - Keep / change / delete: Keep; baseline entry in easing map.【F:src/math.js†L33-L42】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L17-L17】
 - `easeInQuad01`
+  - Purpose: Quadratic ease-in curve produced by `createEaseIn(2)` for smooth acceleration.【F:src/math.js†L18-L18】【F:src/math.js†L33-L36】
+  - Inputs: `t` number.【F:src/math.js†L18-L18】
+  - Outputs: Returns `clamp01(t)^2`.【F:src/math.js†L7-L18】
+  - Side effects: None.【F:src/math.js†L18-L18】
+  - Shared state touched and where it’s used: Populates `EASE_CURVES_01.smooth.in` and `CURVE_EASE.smooth.in` used by world/renderer smoothing utilities.【F:src/math.js†L33-L48】
+  - Dependencies: `createEaseIn`.【F:src/math.js†L18-L18】
+  - Edge cases handled or missed: Clamps `t`; NaN flows through.【F:src/math.js†L7-L18】
+  - Performance: Constant-time.【F:src/math.js†L18-L18】
+  - Units / spaces: Normalised time.【F:src/math.js†L18-L36】
+  - Determinism: Deterministic.【F:src/math.js†L18-L18】
+  - Keep / change / delete: Keep; part of standard easing set.【F:src/math.js†L33-L48】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L18-L18】
 - `easeOutQuad01`
+  - Purpose: Quadratic ease-out curve for decelerating transitions.【F:src/math.js†L19-L19】
+  - Inputs: `t` number.【F:src/math.js†L19-L19】
+  - Outputs: Returns `1 - (1 - clamp01(t))^2`.【F:src/math.js†L8-L19】
+  - Side effects: None.【F:src/math.js†L19-L19】
+  - Shared state touched and where it’s used: Provides `EASE_CURVES_01.smooth.out` and `CURVE_EASE.smooth.out`.【F:src/math.js†L33-L48】
+  - Dependencies: `createEaseOut`.【F:src/math.js†L19-L19】
+  - Edge cases handled or missed: Same as other ease functions.【F:src/math.js†L8-L19】
+  - Performance: Constant-time.【F:src/math.js†L19-L19】
+  - Units / spaces: `[0,1]` domain.【F:src/math.js†L19-L36】
+  - Determinism: Deterministic.【F:src/math.js†L19-L19】
+  - Keep / change / delete: Keep; complements ease-in for smooth curves.【F:src/math.js†L33-L48】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L19-L19】
 - `easeInOutQuad01`
+  - Purpose: Symmetric quadratic ease-in/out curve for smooth transitions.【F:src/math.js†L20-L20】
+  - Inputs: `t` number.【F:src/math.js†L20-L20】
+  - Outputs: Piecewise polynomial produced by `createEaseInOut(2)`.【F:src/math.js†L9-L20】
+  - Side effects: None.【F:src/math.js†L20-L20】
+  - Shared state touched and where it’s used: Selected by `EASE_CURVES_01.smooth.io` and by `getEase01('smooth:io')` to shape cliff easing blends.【F:src/math.js†L33-L42】【F:src/world.js†L483-L506】
+  - Dependencies: `createEaseInOut`.【F:src/math.js†L20-L20】
+  - Edge cases handled or missed: Handles all `t` by clamping; NaN passes through.【F:src/math.js†L9-L20】
+  - Performance: Constant-time.【F:src/math.js†L20-L20】
+  - Units / spaces: `[0,1]` time.【F:src/math.js†L20-L36】
+  - Determinism: Deterministic.【F:src/math.js†L20-L20】
+  - Keep / change / delete: Keep; key part of smoothing presets.【F:src/math.js†L33-L42】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L20-L20】
 - `easeInCub01`
+  - Purpose: Cubic ease-in for sharper acceleration.【F:src/math.js†L21-L21】
+  - Inputs: `t` number.【F:src/math.js†L21-L21】
+  - Outputs: `clamp01(t)^3`.【F:src/math.js†L7-L21】
+  - Side effects: None.【F:src/math.js†L21-L21】
+  - Shared state touched and where it’s used: Supplies `EASE_CURVES_01.sharp.in` and `CURVE_EASE.sharp.in`.【F:src/math.js†L33-L48】
+  - Dependencies: `createEaseIn`.【F:src/math.js†L21-L21】
+  - Edge cases handled or missed: Same as other easing helpers.【F:src/math.js†L7-L21】
+  - Performance: Constant-time.【F:src/math.js†L21-L21】
+  - Units / spaces: `[0,1]` time.【F:src/math.js†L21-L36】
+  - Determinism: Deterministic.【F:src/math.js†L21-L21】
+  - Keep / change / delete: Keep; part of sharper easing family.【F:src/math.js†L33-L48】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L21-L21】
 - `easeOutCub01`
+  - Purpose: Cubic ease-out curve for quick start/slow finish transitions.【F:src/math.js†L22-L22】
+  - Inputs: `t` number.【F:src/math.js†L22-L22】
+  - Outputs: `1 - (1 - clamp01(t))^3`.【F:src/math.js†L8-L22】
+  - Side effects: None.【F:src/math.js†L22-L22】
+  - Shared state touched and where it’s used: Used in `EASE_CURVES_01.sharp.out` and `CURVE_EASE.sharp.out`.【F:src/math.js†L33-L48】
+  - Dependencies: `createEaseOut`.【F:src/math.js†L22-L22】
+  - Edge cases handled or missed: Same as other curves.【F:src/math.js†L8-L22】
+  - Performance: Constant-time.【F:src/math.js†L22-L22】
+  - Units / spaces: `[0,1]`.【F:src/math.js†L22-L36】
+  - Determinism: Deterministic.【F:src/math.js†L22-L22】
+  - Keep / change / delete: Keep.【F:src/math.js†L33-L48】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L22-L22】
 - `easeInOutCub01`
+  - Purpose: Cubic ease-in/out for sharper yet symmetric transitions.【F:src/math.js†L23-L23】
+  - Inputs: `t` number.【F:src/math.js†L23-L23】
+  - Outputs: Piecewise cubic computed via `createEaseInOut(3)`.【F:src/math.js†L9-L23】
+  - Side effects: None.【F:src/math.js†L23-L23】
+  - Shared state touched and where it’s used: Provides `EASE_CURVES_01.sharp.io` and exported `easeInOutCub01` for smoothing tables.【F:src/math.js†L33-L36】【F:src/math.js†L73-L74】
+  - Dependencies: `createEaseInOut`.【F:src/math.js†L23-L23】
+  - Edge cases handled or missed: Same as other ease functions.【F:src/math.js†L9-L23】
+  - Performance: Constant-time.【F:src/math.js†L23-L23】
+  - Units / spaces: `[0,1]` time.【F:src/math.js†L23-L36】
+  - Determinism: Deterministic.【F:src/math.js†L23-L23】
+  - Keep / change / delete: Keep; part of exported easing suite.【F:src/math.js†L73-L74】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L23-L23】
 - `createCurveEase`
+  - Purpose: Lifts a `[0,1]` easing function into a three-parameter lerp helper returning values between `start` and `end`.【F:src/math.js†L25-L25】
+  - Inputs: `fn01` easing function.【F:src/math.js†L25-L25】
+  - Outputs: Returns `(start, end, t) => lerp(start, end, fn01(t))`.【F:src/math.js†L25-L25】
+  - Side effects: None.【F:src/math.js†L25-L25】
+  - Shared state touched and where it’s used: Constructs the exported `easeLinear`, `easeInQuad`, `easeOutQuad`, `easeInCub`, and `easeOutCub` curve helpers.【F:src/math.js†L27-L31】
+  - Dependencies: Depends on `lerp` and provided easing.【F:src/math.js†L25-L31】
+  - Edge cases handled or missed: Inherits behaviour from `fn01`; does not guard against non-function inputs.【F:src/math.js†L25-L31】
+  - Performance: Constant-time per invocation; used mainly for exported curves.【F:src/math.js†L25-L31】
+  - Units / spaces: Accepts caller-defined units for `start`/`end`; `t` expected in `[0,1]`.【F:src/math.js†L25-L31】
+  - Determinism: Deterministic.【F:src/math.js†L25-L31】
+  - Keep / change / delete: Keep; promotes reuse of easing when interpolating arbitrary values.【F:src/math.js†L25-L31】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L25-L31】
 - `easeLinear`
+  - Purpose: Interpolates between two values using the linear `[0,1]` easing, serving as a convenience wrapper around `lerp`.【F:src/math.js†L27-L27】
+  - Inputs: `start`, `end`, `t`.【F:src/math.js†L27-L27】
+  - Outputs: `lerp(start, end, clamp01(t))`.【F:src/math.js†L25-L27】
+  - Side effects: None.【F:src/math.js†L27-L27】
+  - Shared state touched and where it’s used: Exported for external modules via `MathUtil` though no in-repo callers currently reference it directly.【F:src/math.js†L63-L78】
+  - Dependencies: `createCurveEase` + `easeLinear01`.【F:src/math.js†L25-L36】
+  - Edge cases handled or missed: Clamps `t`; otherwise mirrors `lerp`.【F:src/math.js†L25-L27】
+  - Performance: Constant-time.【F:src/math.js†L27-L27】
+  - Units / spaces: Caller-defined units.【F:src/math.js†L27-L27】
+  - Determinism: Deterministic.【F:src/math.js†L27-L27】
+  - Keep / change / delete: Keep; part of public MathUtil API.【F:src/math.js†L63-L78】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L27-L27】
 - `easeInQuad`
+  - Purpose: Applies quadratic ease-in between values via `createCurveEase(easeInQuad01)`.【F:src/math.js†L28-L28】
+  - Inputs: `start`, `end`, `t`.【F:src/math.js†L28-L28】
+  - Outputs: Returns eased interpolation.【F:src/math.js†L25-L28】
+  - Side effects: None.【F:src/math.js†L28-L28】
+  - Shared state touched and where it’s used: Exported for potential animation code; no active callers yet.【F:src/math.js†L63-L78】
+  - Dependencies: `createCurveEase`, `easeInQuad01`.【F:src/math.js†L25-L36】
+  - Edge cases handled or missed: Clamps `t`; inherits easing behaviour.【F:src/math.js†L25-L28】
+  - Performance: Constant-time.【F:src/math.js†L28-L28】
+  - Units / spaces: Caller-defined.【F:src/math.js†L28-L28】
+  - Determinism: Deterministic.【F:src/math.js†L28-L28】
+  - Keep / change / delete: Keep; part of exported easing suite.【F:src/math.js†L63-L78】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L28-L28】
 - `easeOutQuad`
+  - Purpose: Quadratic ease-out interpolation helper.【F:src/math.js†L29-L29】
+  - Inputs: `start` and `end` values with easing factor `t` (clamped internally to `[0,1]`).【F:src/math.js†L25-L29】
+  - Outputs: Returns `createCurveEase(easeOutQuad01)(start, end, t)` for a fast-start/slow-end transition.【F:src/math.js†L25-L29】
+  - Side effects: None.【F:src/math.js†L29-L29】
+  - Shared state touched and where it’s used: Exported; no direct repo usage yet.【F:src/math.js†L63-L78】
+  - Dependencies: `createCurveEase`, `easeOutQuad01`.【F:src/math.js†L25-L36】
+  - Edge cases handled or missed: Same as other curve eases.【F:src/math.js†L25-L29】
+  - Performance: Constant-time.【F:src/math.js†L29-L29】
+  - Units / spaces: Caller-defined.【F:src/math.js†L29-L29】
+  - Determinism: Deterministic.【F:src/math.js†L29-L29】
+  - Keep / change / delete: Keep; ensures ease-out API parity.【F:src/math.js†L63-L78】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L29-L29】
 - `easeInCub`
+  - Purpose: Cubic ease-in interpolation between values.【F:src/math.js†L30-L30】
+  - Inputs: `start`, `end`, `t` easing factor (clamped to `[0,1]`).【F:src/math.js†L25-L30】
+  - Outputs: Returns `createCurveEase(easeInCub01)(start, end, t)` for sharper acceleration.【F:src/math.js†L25-L30】
+  - Side effects: None.【F:src/math.js†L30-L30】
+  - Shared state touched and where it’s used: Exported for potential callers; no current in-repo usage.【F:src/math.js†L63-L78】
+  - Dependencies: `createCurveEase`, `easeInCub01`.【F:src/math.js†L25-L36】
+  - Edge cases handled or missed: Same as other curves.【F:src/math.js†L25-L30】
+  - Performance: Constant-time.【F:src/math.js†L30-L30】
+  - Units / spaces: Caller-defined.【F:src/math.js†L30-L30】
+  - Determinism: Deterministic.【F:src/math.js†L30-L30】
+  - Keep / change / delete: Keep; completes cubic easing trio.【F:src/math.js†L63-L78】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L30-L30】
 - `easeOutCub`
+  - Purpose: Cubic ease-out interpolation helper.【F:src/math.js†L31-L31】
+  - Inputs: `start`, `end`, `t` easing factor clamped to `[0,1]`.【F:src/math.js†L25-L31】
+  - Outputs: Returns `createCurveEase(easeOutCub01)(start, end, t)` for easing to a stop.【F:src/math.js†L25-L31】
+  - Side effects: None.【F:src/math.js†L31-L31】
+  - Shared state touched and where it’s used: Exported but not currently referenced.【F:src/math.js†L63-L78】
+  - Dependencies: `createCurveEase`, `easeOutCub01`.【F:src/math.js†L25-L36】
+  - Edge cases handled or missed: Same as other curves.【F:src/math.js†L25-L31】
+  - Performance: Constant-time.【F:src/math.js†L31-L31】
+  - Units / spaces: Caller-defined.【F:src/math.js†L31-L31】
+  - Determinism: Deterministic.【F:src/math.js†L31-L31】
+  - Keep / change / delete: Keep; matches API of other easing helpers.【F:src/math.js†L63-L78】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L31-L31】
 - `getEase01`
+  - Purpose: Parses strings like `'smooth:io'` and returns the corresponding `[0,1]` easing function from `EASE_CURVES_01`, defaulting gracefully on unknown inputs.【F:src/math.js†L33-L42】
+  - Inputs: `spec` string (case-insensitive, expects `curve:mode`).【F:src/math.js†L39-L41】
+  - Outputs: Function reference (ease-in/out/linear).【F:src/math.js†L39-L42】
+  - Side effects: None; trims and lowercases the input.【F:src/math.js†L39-L41】
+  - Shared state touched and where it’s used: Used by world cliff processing to fetch easing curves for cliff offsets (`src/world.js:483-506`).【F:src/world.js†L483-L506】
+  - Dependencies: `EASE_CURVES_01` map, string methods.【F:src/math.js†L33-L42】
+  - Edge cases handled or missed: Defaults to `'smooth:io'` when parsing fails; unrecognised modes fall back to `io`.【F:src/math.js†L39-L42】
+  - Performance: Constant-time string parsing.【F:src/math.js†L39-L42】
+  - Units / spaces: Operates on normalised `[0,1]` curves returned from the map.【F:src/math.js†L33-L42】
+  - Determinism: Deterministic for a given spec.【F:src/math.js†L39-L42】
+  - Keep / change / delete: Keep; centralises easing selection logic.【F:src/math.js†L33-L42】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L39-L42】
 - `computeCurvature`
+  - Purpose: Calculates curvature κ from first and second derivatives (`dy`, `d2y`) for road profile analysis.【F:src/math.js†L51-L51】
+  - Inputs: `dy` slope, `d2y` second derivative.【F:src/math.js†L51-L51】
+  - Outputs: `d2y / (1 + dy^2)^(3/2)`.【F:src/math.js†L51-L51】
+  - Side effects: None.【F:src/math.js†L51-L51】
+  - Shared state touched and where it’s used: Used in HUD/debug displays and gameplay physics to gauge banking/airborne behaviour (`src/render.js:2015-2023`, `src/gameplay.js:2217-2227`).【F:src/render.js†L2015-L2023】【F:src/gameplay.js†L2217-L2227】
+  - Dependencies: Math.pow.【F:src/math.js†L51-L51】
+  - Edge cases handled or missed: When derivatives are zero curvature is zero; does not guard against overflow when slopes are huge.【F:src/math.js†L51-L51】
+  - Performance: Constant-time.【F:src/math.js†L51-L51】
+  - Units / spaces: Assumes consistent world units for derivatives (e.g., metres).【F:src/math.js†L51-L51】
+  - Determinism: Deterministic.【F:src/math.js†L51-L51】
+  - Keep / change / delete: Keep; critical for curvature-based logic.【F:src/math.js†L51-L51】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L51-L51】
 - `tangentNormalFromSlope`
+  - Purpose: Converts a slope `dy` into unit tangent (`tx`,`ty`) and normal (`nx`,`ny`) vectors for physics and rendering alignment.【F:src/math.js†L53-L60】
+  - Inputs: `dy` slope (Δy/Δx).【F:src/math.js†L53-L55】
+  - Outputs: Object containing tangent and normal components normalised to length 1.【F:src/math.js†L53-L60】
+  - Side effects: None.【F:src/math.js†L53-L60】
+  - Shared state touched and where it’s used: Gameplay uses it to orient hop/landing physics and determine support forces on slopes (`src/gameplay.js:1884-1901`, `src/gameplay.js:2217-2227`).【F:src/gameplay.js†L1884-L1901】【F:src/gameplay.js†L2217-L2227】
+  - Dependencies: `Math.sqrt`.【F:src/math.js†L53-L60】
+  - Edge cases handled or missed: Handles zero slope gracefully; does not guard against `dy` = `Infinity` (would yield zero due to `1/√(1+∞)`).【F:src/math.js†L53-L60】
+  - Performance: Constant-time.【F:src/math.js†L53-L60】
+  - Units / spaces: Produces unit vectors in world space matching the slope definition.【F:src/math.js†L53-L60】
+  - Determinism: Deterministic.【F:src/math.js†L53-L60】
+  - Keep / change / delete: Keep; fundamental for physics integration.【F:src/gameplay.js†L1884-L1901】【F:src/gameplay.js†L2217-L2227】
+  - Confidence / assumptions: High confidence.【F:src/math.js†L53-L60】
 
 ### 3.11 Testing Utilities (`test/glrenderer.resize.test.js`)
 - `assert`
+  - Purpose: Minimal assertion helper for the resize smoke test that throws an `Error` when a condition is false, stopping the test early with a readable message.【F:test/glrenderer.resize.test.js†L1-L5】
+  - Inputs: `condition` boolean-like, `message` string.【F:test/glrenderer.resize.test.js†L1-L5】
+  - Outputs: None; returns `undefined` on success.【F:test/glrenderer.resize.test.js†L1-L5】
+  - Side effects: Throws when the condition fails, aborting the script.【F:test/glrenderer.resize.test.js†L1-L5】
+  - Shared state touched and where it’s used: Called to validate uniform updates and cached canvas size during the resize checks (`test/glrenderer.resize.test.js:47-60`).【F:test/glrenderer.resize.test.js†L47-L60】
+  - Dependencies: Uses the built-in `Error` constructor.【F:test/glrenderer.resize.test.js†L1-L5】
+  - Edge cases handled or missed: Treats any truthy value as pass; does not provide deep comparison utilities.【F:test/glrenderer.resize.test.js†L1-L5】
+  - Performance: Constant-time; invoked a handful of times per test run.【F:test/glrenderer.resize.test.js†L47-L60】
+  - Units / spaces: N/A.【F:test/glrenderer.resize.test.js†L1-L5】
+  - Determinism: Deterministic for given inputs.【F:test/glrenderer.resize.test.js†L1-L5】
+  - Keep / change / delete: Keep; lightweight inline assertion avoids pulling external deps. Alternative is Node’s `assert` module, but the custom helper keeps output consistent.【F:test/glrenderer.resize.test.js†L1-L5】
+  - Confidence / assumptions: High confidence; trivial guard.【F:test/glrenderer.resize.test.js†L1-L5】
 - `makeRenderer`
+  - Purpose: Builds a partially mocked `GLRenderer` instance with stubbed GL calls so the test can run `begin()` without a browser context.【F:test/glrenderer.resize.test.js†L15-L41】
+  - Inputs: `width`, `height` numbers for the fake canvas.【F:test/glrenderer.resize.test.js†L15-L19】
+  - Outputs: Object `{ renderer, calls, gl }` where `renderer` mimics a configured GLRenderer instance, `calls` logs `uniform2f` invocations, and `gl` exposes stubbed WebGL functions.【F:test/glrenderer.resize.test.js†L17-L41】
+  - Side effects: Allocates arrays/objects and seeds renderer fields like `_canvasWidth`/`_canvasHeight` and fog caches.【F:test/glrenderer.resize.test.js†L29-L38】
+  - Shared state touched and where it’s used: Supplies the renderer under test and tracking state for subsequent assertions (`test/glrenderer.resize.test.js:43-60`).【F:test/glrenderer.resize.test.js†L29-L60】
+  - Dependencies: Relies on `GLRenderer.prototype` from the main module and the stubbed GL function implementations defined within.【F:test/glrenderer.resize.test.js†L11-L41】
+  - Edge cases handled or missed: Assumes numeric width/height; does not simulate other GL methods beyond those used by `begin`.【F:test/glrenderer.resize.test.js†L15-L41】
+  - Performance: Constant-time setup per test run.【F:test/glrenderer.resize.test.js†L15-L41】
+  - Units / spaces: Width/height in pixels matching canvas dimensions expected by renderer.【F:test/glrenderer.resize.test.js†L17-L38】
+  - Determinism: Deterministic; produces identical mocks for given inputs.【F:test/glrenderer.resize.test.js†L15-L41】
+  - Keep / change / delete: Keep; encapsulates boilerplate for GL renderer tests. Alternative is to duplicate stub setup within each test.【F:test/glrenderer.resize.test.js†L15-L60】
+  - Confidence / assumptions: High confidence; proven by existing smoke test.【F:test/glrenderer.resize.test.js†L15-L60】
 - `gl.viewport`
+  - Purpose: Stubbed no-op representing `gl.viewport` so the renderer can call it without throwing during tests.【F:test/glrenderer.resize.test.js†L18-L21】【F:src/gl/renderer.js†L149-L155】
+  - Inputs: Same signature as real WebGL (`x`, `y`, `width`, `height`), though the stub ignores them.【F:test/glrenderer.resize.test.js†L18-L21】
+  - Outputs: `undefined`.【F:test/glrenderer.resize.test.js†L19-L19】
+  - Side effects: None; intentionally inert.【F:test/glrenderer.resize.test.js†L19-L19】
+  - Shared state touched and where it’s used: Invoked by `renderer.begin()` when preparing each frame (`src/gl/renderer.js:149-155`).【F:src/gl/renderer.js†L149-L155】【F:test/glrenderer.resize.test.js†L45-L55】
+  - Dependencies: Defined inside `makeRenderer`; no external requirements.【F:test/glrenderer.resize.test.js†L15-L21】
+  - Edge cases handled or missed: Does not validate viewport parameters; adequate for the resize smoke test which only cares about uniform updates.【F:test/glrenderer.resize.test.js†L19-L19】
+  - Performance: Constant-time no-op.【F:test/glrenderer.resize.test.js†L19-L19】
+  - Units / spaces: Would normally operate in canvas pixels; ignored here.【F:src/gl/renderer.js†L149-L155】
+  - Determinism: Always no-op.【F:test/glrenderer.resize.test.js†L19-L19】
+  - Keep / change / delete: Keep; simplest stub needed for the test. Alternative is to track calls, but viewport changes aren’t asserted here.【F:test/glrenderer.resize.test.js†L18-L21】
+  - Confidence / assumptions: High confidence; fits test scope.【F:test/glrenderer.resize.test.js†L18-L21】
 - `gl.clearColor`
+  - Purpose: Stub placeholder for `gl.clearColor`, satisfying renderer expectations without touching real GL state.【F:test/glrenderer.resize.test.js†L18-L21】【F:src/gl/renderer.js†L149-L161】
+  - Inputs: RGBA floats; ignored by the stub.【F:test/glrenderer.resize.test.js†L20-L20】
+  - Outputs: `undefined`.【F:test/glrenderer.resize.test.js†L20-L20】
+  - Side effects: None.【F:test/glrenderer.resize.test.js†L20-L20】
+  - Shared state touched and where it’s used: Called during `begin()` before clearing the frame.【F:src/gl/renderer.js†L149-L161】【F:test/glrenderer.resize.test.js†L45-L55】
+  - Dependencies: Declared inside `makeRenderer`.【F:test/glrenderer.resize.test.js†L15-L21】
+  - Edge cases handled or missed: Does not capture parameters; acceptable because the test only inspects viewport uniform behaviour.【F:test/glrenderer.resize.test.js†L20-L20】
+  - Performance: Constant-time no-op.【F:test/glrenderer.resize.test.js†L20-L20】
+  - Units / spaces: Normally expects colour components in `[0,1]`; ignored here.【F:src/gl/renderer.js†L149-L161】
+  - Determinism: Always no-op.【F:test/glrenderer.resize.test.js†L20-L20】
+  - Keep / change / delete: Keep; lightweight stub sufficient for the test. Alternative is to record values if future assertions require it.【F:test/glrenderer.resize.test.js†L18-L58】
+  - Confidence / assumptions: High confidence.【F:test/glrenderer.resize.test.js†L20-L20】
 - `gl.clear`
+  - Purpose: No-op stub for `gl.clear`, allowing the renderer to invoke buffer clears without a real WebGL context.【F:test/glrenderer.resize.test.js†L18-L21】【F:src/gl/renderer.js†L149-L161】
+  - Inputs: Bitmask flags; ignored.【F:test/glrenderer.resize.test.js†L21-L21】
+  - Outputs: `undefined`.【F:test/glrenderer.resize.test.js†L21-L21】
+  - Side effects: None.【F:test/glrenderer.resize.test.js†L21-L21】
+  - Shared state touched and where it’s used: Executed by `begin()` immediately after setting the clear colour.【F:src/gl/renderer.js†L149-L161】【F:test/glrenderer.resize.test.js†L45-L55】
+  - Dependencies: Defined within `makeRenderer`.【F:test/glrenderer.resize.test.js†L15-L21】
+  - Edge cases handled or missed: Doesn’t emulate error handling or buffer state; adequate for verifying uniform updates.【F:test/glrenderer.resize.test.js†L21-L21】
+  - Performance: Constant-time no-op.【F:test/glrenderer.resize.test.js†L21-L21】
+  - Units / spaces: Would normally operate on framebuffer bits; ignored here.【F:src/gl/renderer.js†L149-L161】
+  - Determinism: Always no-op.【F:test/glrenderer.resize.test.js†L21-L21】
+  - Keep / change / delete: Keep; minimal stub. Alternative is to track invocation counts if tests need it later.【F:test/glrenderer.resize.test.js†L18-L58】
+  - Confidence / assumptions: High confidence.【F:test/glrenderer.resize.test.js†L21-L21】
 - `gl.uniform2f`
+  - Purpose: Test stub for `gl.uniform2f` that records calls so the test can assert whether the view-size uniform updates on resize.【F:test/glrenderer.resize.test.js†L22-L24】
+  - Inputs: `location`, `x`, `y` parameters mirroring WebGL’s API.【F:test/glrenderer.resize.test.js†L22-L24】
+  - Outputs: `undefined`; instead pushes into the shared `calls` log.【F:test/glrenderer.resize.test.js†L22-L24】
+  - Side effects: Appends `[ 'uniform2f', location, x, y ]` into the `calls` array captured outside the stub.【F:test/glrenderer.resize.test.js†L22-L24】
+  - Shared state touched and where it’s used: Enables assertions verifying that `u_viewSize` updates only when the canvas size changes (`test/glrenderer.resize.test.js:47-59`).【F:test/glrenderer.resize.test.js†L47-L59】
+  - Dependencies: Accesses the closure-scoped `calls` array established in `makeRenderer`.【F:test/glrenderer.resize.test.js†L16-L24】
+  - Edge cases handled or missed: Only logs calls; does not coerce inputs or filter by uniform location (test handles filtering).【F:test/glrenderer.resize.test.js†L22-L58】
+  - Performance: O(1) per invocation; used twice in the smoke test.【F:test/glrenderer.resize.test.js†L45-L59】
+  - Units / spaces: Captures canvas width/height in pixels to confirm resizing behaviour.【F:test/glrenderer.resize.test.js†L51-L59】
+  - Determinism: Deterministic; purely records provided arguments.【F:test/glrenderer.resize.test.js†L22-L59】
+  - Keep / change / delete: Keep; core to the resize verification. Alternative would be spying via a test framework, which is overkill here.【F:test/glrenderer.resize.test.js†L22-L59】
+  - Confidence / assumptions: High confidence.【F:test/glrenderer.resize.test.js†L22-L59】
 - `gl.uniform1i`
+  - Purpose: Stub for integer uniform updates; returns nothing because the test does not need to track fog toggles.【F:test/glrenderer.resize.test.js†L25-L26】【F:src/gl/renderer.js†L149-L169】
+  - Inputs: Uniform location and integer value; ignored.【F:test/glrenderer.resize.test.js†L25-L25】
+  - Outputs: `undefined`.【F:test/glrenderer.resize.test.js†L25-L25】
+  - Side effects: None.【F:test/glrenderer.resize.test.js†L25-L25】
+  - Shared state touched and where it’s used: Called when `begin()` updates fog enable flags based on config.【F:src/gl/renderer.js†L163-L169】【F:test/glrenderer.resize.test.js†L45-L55】
+  - Dependencies: Declared in `makeRenderer`.【F:test/glrenderer.resize.test.js†L15-L26】
+  - Edge cases handled or missed: Does not record values, so future assertions about fog enable toggling would require enhancements.【F:test/glrenderer.resize.test.js†L25-L25】
+  - Performance: Constant-time no-op.【F:test/glrenderer.resize.test.js†L25-L25】
+  - Units / spaces: Represents integer uniforms (e.g., booleans as 0/1).【F:src/gl/renderer.js†L163-L169】
+  - Determinism: Always no-op.【F:test/glrenderer.resize.test.js†L25-L25】
+  - Keep / change / delete: Keep; simplest stub satisfying renderer calls. Alternative is to push into `calls` if future tests need to inspect fog toggles.【F:test/glrenderer.resize.test.js†L25-L55】
+  - Confidence / assumptions: High confidence.【F:test/glrenderer.resize.test.js†L25-L25】
 - `gl.uniform3f`
+  - Purpose: Stub for 3-component uniform updates (fog colour) invoked during `begin()`.【F:test/glrenderer.resize.test.js†L26-L26】【F:src/gl/renderer.js†L163-L169】
+  - Inputs: Uniform location and three floats; ignored.【F:test/glrenderer.resize.test.js†L26-L26】
+  - Outputs: `undefined`.【F:test/glrenderer.resize.test.js†L26-L26】
+  - Side effects: None.【F:test/glrenderer.resize.test.js†L26-L26】
+  - Shared state touched and where it’s used: Supports fog colour updates inside `begin()` without needing a real GL context.【F:src/gl/renderer.js†L163-L169】【F:test/glrenderer.resize.test.js†L45-L55】
+  - Dependencies: Declared inside `makeRenderer`.【F:test/glrenderer.resize.test.js†L15-L26】
+  - Edge cases handled or missed: Does not record values; acceptable because the test focuses on canvas resize behaviour.【F:test/glrenderer.resize.test.js†L26-L26】
+  - Performance: Constant-time no-op.【F:test/glrenderer.resize.test.js†L26-L26】
+  - Units / spaces: Would normally carry RGB fog components in `[0,1]`; ignored here.【F:src/gl/renderer.js†L163-L169】
+  - Determinism: Always no-op.【F:test/glrenderer.resize.test.js†L26-L26】
+  - Keep / change / delete: Keep; minimal stub fulfilling renderer requirements. Alternative is to track colour changes if future assertions demand it.【F:test/glrenderer.resize.test.js†L26-L55】
+  - Confidence / assumptions: High confidence.【F:test/glrenderer.resize.test.js†L26-L26】
 
 ## 4. Cleanup Priorities Aligned to Our Goals
 
