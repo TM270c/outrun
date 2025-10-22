@@ -1,92 +1,92 @@
 # Outrun Codebase – Cleanup Roadmap (Pass 1 Overview)
 
 ## 1. Game Overview
-- **What it is**: A browser racing game with menus, vehicle selection, races, scoreboards, and bonus items.
-- **Where it runs**: In the browser, using WebGL helpers in `src/gl/` to draw the game and normal DOM code for menus.
-- **What it loads**: Settings from `src/config.js`, track data from `tracks/`, sprite info from `src/sprite-catalog.js`, and texture info from `src/world.js`.
+- What it is: A browser racing game with menus, vehicle selection, races, scoreboards, and bonus items.
+- Where it runs: In the browser, using WebGL helpers in `src/gl/` to draw the game and normal DOM code for menus.
+- What it loads: Settings from `src/config.js`, track data from `tracks/`, sprite info from `src/sprite-catalog.js`, and texture info from `src/world.js`.
 
 ## 2. Main Building Blocks
 
 ### 2.1 Starting the Game
-- **`src/bootstrap.js`** loads assets, sets up callbacks, and shares helpers across the rest of the code.
-- **`src/app.js`** is the overall game manager. It swaps between menus, races, pause screens, and the scoreboard. It also tracks button presses and animation timing.
+- `src/bootstrap.js` loads assets, sets up callbacks, and shares helpers across the rest of the code.
+- `src/app.js` is the overall game manager. It swaps between menus, races, pause screens, and the scoreboard. It also tracks button presses and animation timing.
 
 ### 2.2 Settings and Static Data
-- **`src/config.js`** stores constants such as physics values, track layout numbers, render sizes, and debug toggles.
-- **`tracks/`** holds the CSV files that describe the track layout, hills, and curves.
+- `src/config.js` stores constants such as physics values, track layout numbers, render sizes, and debug toggles.
+- `tracks/` holds the CSV files that describe the track layout, hills, and curves.
 
 ### 2.3 Math and Helpers
-- **`src/math.js`** is a grab bag of number helpers. It includes easing curves, random helpers, and small math utilities that many files use.
+- `src/math.js` is a grab bag of number helpers. It includes easing curves, random helpers, and small math utilities that many files use.
 
 ### 2.4 World and Assets
-- **`src/world.js`** creates the in-game world. It builds track segments, sets up cliff data, manages boost zones, and keeps track of textures.
+- `src/world.js` creates the in-game world. It builds track segments, sets up cliff data, manages boost zones, and keeps track of textures.
 
 ### 2.5 Racing Logic
-- **`src/gameplay.js`** runs the race. It updates car physics, handles collisions, spawns traffic, keeps time, and calls into rendering.
+- `src/gameplay.js` runs the race. It updates car physics, handles collisions, spawns traffic, keeps time, and calls into rendering.
 
 ### 2.6 Drawing the Game
-- **`src/render.js`** draws everything on screen. It prepares road geometry, sprites, overlays, and any debug panels each frame.
-- **`src/gl/`** contains the low-level WebGL code for shaders, buffers, and textured quads.
+- `src/render.js` draws everything on screen. It prepares road geometry, sprites, overlays, and any debug panels each frame.
+- `src/gl/` contains the low-level WebGL code for shaders, buffers, and textured quads.
 
 ### 2.7 Sprites and Animation
-- **`src/sprite-catalog.js`** defines every sprite sheet, animation frame, and scaling rule for vehicles, roadside props, and UI icons.
+- `src/sprite-catalog.js` defines every sprite sheet, animation frame, and scaling rule for vehicles, roadside props, and UI icons.
 
 ### 2.8 Menus and UI
-- **`src/ui/screens.js`** generates the HTML for each menu screen, such as the main menu, pause screen, vehicle select, settings, scoreboard, attract mode, and race complete screens.
+- `src/ui/screens.js` generates the HTML for each menu screen, such as the main menu, pause screen, vehicle select, settings, scoreboard, attract mode, and race complete screens.
 
 ### 2.9 Input Handling
 - Button handling lives partly in `app.js` (menus) and partly in `gameplay.js` (driving controls). Both listen for key events and update shared input state.
 
 ### 2.10 Other Files
-- **`docs/`, `tex/`, `video/`** contain written docs and art references.
-- **`index.mod.html`** is the main HTML shell for the game canvas and menus.
-- **`monolith-old.txt`** is an older architecture reference.
+- `docs/`, `tex/`, `video/` contain written docs and art references.
+- `index.mod.html` is the main HTML shell for the game canvas and menus.
+- `monolith-old.txt` is an older architecture reference.
 
 ## 3. Function Inventory by Category
 
 ### 3.1 Application & Menu Flow (`src/app.js`)
 - `createInitialRaceCompleteState`
-  - **Purpose**: Factory for a blank race-complete screen state so menus can start fresh when a race ends or restarts.
-  - **Inputs**: None.
-  - **Outputs**: Object with `active`, `timeMs`, `letters`, `confirmed`, `currentIndex`, `phase`, `timer`, `entryId`, `playerName`, `playerRank`.
-  - **Side effects**: None (pure data builder).
-  - **Shared state & call sites**: Assigned to `state.raceComplete` in `src/app.js:58`, `85`, `739`.
-  - **Dependencies**: No calls.
-  - **Edge cases**: Provides safe defaults (zero time, placeholder name); does not validate external inputs.
-  - **Performance**: Constant-time object creation when menus reset or a race finishes.
-  - **Units / spaces**: `timeMs` in milliseconds.
-  - **Determinism**: Yes—always returns identical data.
-  - **Keep / change / delete**: Keep; simplest alternative is inlining the literal where used.
-  - **Confidence / assumptions**: High confidence; assumes `letters` of `'AAA'` is intended default.
-  - **Notes**: Possible reductions: none spotted; placement in `src/app.js` matches usage via `resetRaceCompleteState`; consider renaming to shorter `inputNameState` for clarity.
+  - Purpose: Factory for a blank race-complete screen state so menus can start fresh when a race ends or restarts.
+  - Inputs: None.
+  - Outputs: Object with `active`, `timeMs`, `letters`, `confirmed`, `currentIndex`, `phase`, `timer`, `entryId`, `playerName`, `playerRank`.
+  - Side effects: None (pure data builder).
+  - Shared state & call sites: Assigned to `state.raceComplete` in `src/app.js:58`, `85`, `739`.
+  - Dependencies: No calls.
+  - Edge cases: Provides safe defaults (zero time, placeholder name); does not validate external inputs.
+  - Performance: Constant-time object creation when menus reset or a race finishes.
+  - Units / spaces: `timeMs` in milliseconds.
+  - Determinism: Yes—always returns identical data.
+  - Keep / change / delete: Keep; simplest alternative is inlining the literal where used.
+  - Confidence / assumptions: High confidence; assumes `letters` of `'AAA'` is intended default.
+  - Notes: Possible reductions: none spotted; placement in `src/app.js` matches usage via `resetRaceCompleteState`; consider renaming to shorter `inputNameState` for clarity.
 - `resetRaceCompleteState`
-  - **Purpose**: Resets the race-finish screen data back to a clean slate so the next race starts with blank initials and zeroed time.
-  - **Inputs**: None.
-  - **Outputs**: None; updates in-place.
-  - **Side effects**: Replaces `state.raceComplete` with fresh defaults, wiping any prior letters, timers, or entry IDs.
-  - **Shared state & call sites**: `state.raceComplete` reassigned; invoked at `src/app.js:232,724,1133`.
-  - **Dependencies**: Calls `createInitialRaceCompleteState`.
-  - **Edge cases**: Covers stale data by always cloning defaults; does not special-case DNF/DQ or preserve existing names.
-  - **Performance**: Constant-time object replacement when leaving the race-complete screen, starting a race, or booting.
-  - **Units / spaces**: Defaults include `timeMs` in milliseconds and name letters in uppercase strings.
-  - **Determinism**: Yes—same empty state every call.
-  - **Keep / change / delete**: Keep; simple helper prevents duplicated setup—alternative is to inline the factory call.
-  - **Confidence / assumptions**: High confidence; assumes no other module mutates `state.raceComplete` directly.
-  - **Notes**: Reviewer noted there were "no notes" and the helper already looks adequate; I concur and suggest only revisiting if future menu reset work reveals redundant copies or missed shared behavior.
+  - Purpose: Resets the race-finish screen data back to a clean slate so the next race starts with blank initials and zeroed time.
+  - Inputs: None.
+  - Outputs: None; updates in-place.
+  - Side effects: Replaces `state.raceComplete` with fresh defaults, wiping any prior letters, timers, or entry IDs.
+  - Shared state & call sites: `state.raceComplete` reassigned; invoked at `src/app.js:232,724,1133`.
+  - Dependencies: Calls `createInitialRaceCompleteState`.
+  - Edge cases: Covers stale data by always cloning defaults; does not special-case DNF/DQ or preserve existing names.
+  - Performance: Constant-time object replacement when leaving the race-complete screen, starting a race, or booting.
+  - Units / spaces: Defaults include `timeMs` in milliseconds and name letters in uppercase strings.
+  - Determinism: Yes—same empty state every call.
+  - Keep / change / delete: Keep; simple helper prevents duplicated setup—alternative is to inline the factory call.
+  - Confidence / assumptions: High confidence; assumes no other module mutates `state.raceComplete` directly.
+  - Notes: Reviewer noted there were "no notes" and the helper already looks adequate; I concur and suggest only revisiting if future menu reset work reveals redundant copies or missed shared behavior.
 - `now`
-  - **Purpose**: Helper that grabs the current timestamp so menu flow can compare idle time without repeating the built-in Date.now call.
-  - **Inputs**: None.
-  - **Outputs**: Number of milliseconds since January 1, 1970 returned from Date.now.
-  - **Side effects**: None; it only reads the system clock.
-  - **Shared state & call sites**: Updates and reads state.lastInteractionAt in src/app.js:93, 1119, 1132 when tracking menu idleness.
-  - **Dependencies**: JavaScript built-in Date.now.
-  - **Edge cases**: Does not guard against someone changing the computer clock or supplying mock timers.
-  - **Performance**: Single native call; negligible cost even when polled for idle checks.
-  - **Units / spaces**: Milliseconds of real-world time.
-  - **Determinism**: Returns whatever the system clock reports, so calls made moments apart differ.
-  - **Keep / change / delete**: Change—either inline Date.now, or keep the helper but rename it getTimeNow and allow injecting a test clock to cut indirection.
-  - **Confidence / assumptions**: High confidence; assumes there are no hidden callers outside this file.
-  - **Notes**: You felt the helper was fine and suggested renaming it to getTimeNow; I still recommend inlining Date.now or accepting an injected clock so tests stay predictable.
+  - Purpose: Helper that grabs the current timestamp so menu flow can compare idle time without repeating the built-in Date.now call.
+  - Inputs: None.
+  - Outputs: Number of milliseconds since January 1, 1970 returned from Date.now.
+  - Side effects: None; it only reads the system clock.
+  - Shared state & call sites: Updates and reads state.lastInteractionAt in src/app.js:93, 1119, 1132 when tracking menu idleness.
+  - Dependencies: JavaScript built-in Date.now.
+  - Edge cases: Does not guard against someone changing the computer clock or supplying mock timers.
+  - Performance: Single native call; negligible cost even when polled for idle checks.
+  - Units / spaces: Milliseconds of real-world time.
+  - Determinism: Returns whatever the system clock reports, so calls made moments apart differ.
+  - Keep / change / delete: Change—either inline Date.now, or keep the helper but rename it getTimeNow and allow injecting a test clock to cut indirection.
+  - Confidence / assumptions: High confidence; assumes there are no hidden callers outside this file.
+  - Notes: You felt the helper was fine and suggested renaming it to getTimeNow; I still recommend inlining Date.now or accepting an injected clock so tests stay predictable.
 - `markInteraction`
   - Purpose: Refreshes the menu idle timer whenever menus or settings detect user activity so attract mode does not trigger unexpectedly.
   - Inputs: None.
@@ -100,7 +100,7 @@
   - Determinism: No; each call captures the live clock so repeated calls differ.
   - Keep / change / delete: Keep; central helper prevents repeating the timestamp write.
   - Confidence / assumptions: High confidence; assumes Date.now is available and state was initialized.
-  - **Notes**: Previous helpers here all shape the attract-mode idle timer; reviewer noted we could inline to `Date.now()` or rename `now()` to `getTimeNow`, yet centralizing this clock write still makes the idle-timer maintenance easy if we tweak the attract flow.
+  - Notes: Previous helpers here all shape the attract-mode idle timer; reviewer noted we could inline to `Date.now()` or rename `now()` to `getTimeNow`, yet centralizing this clock write still makes the idle-timer maintenance easy if we tweak the attract flow.
 - `escapeHtml`
   - Purpose: Converts any incoming menu label or score text into safe HTML so UI templates cannot inject tags or break layout.
   - Inputs: `text` (any value; coerced to string; no length guard but intended for short UI snippets).
@@ -116,19 +116,19 @@
   - Confidence / assumptions: High confidence; assumes menu strings stay reasonably short and mostly plain-language characters.
   - Notes: Reviewer confirmed this helper simply keeps player score initials constrained to safe characters like "ABC" so the menu never sees risky markup, and I agree the current implementation is sound while noting we could later simplify by routing menu strings through shared DOM text-node helpers if we consolidate UI rendering.
 - `resolveAssetUrlSafe`
-  - **Purpose**: Wraps the world's asset resolver so menu templates can turn relative preview filenames into usable URLs without crashing if the resolver is missing.
-  - **Inputs**: `path` string; accepts falsy (`''`, `null`, `undefined`) and any other value, though only non-empty strings resolve meaningfully.
-  - **Outputs**: Returns the resolved string from `World.resolveAssetUrl(path)` or the original `path`; falls back to `''` when the input is falsy.
-  - **Side effects**: None—no writes to state, storage, or logs; only calls the global resolver when available.
-  - **Shared state & call sites**: Reads global `World` (`src/app.js:105-114`); passed to `AppScreens.vehicleSelect` as `resolveAssetUrl` helper (`src/app.js:331-341`).
-  - **Dependencies**: `World.resolveAssetUrl` when defined; otherwise none.
-  - **Edge cases**: Handles missing/falsey paths, missing resolver, and exceptions thrown by the resolver; does not validate URL format or strip whitespace.
-  - **Performance**: Constant time; called when building vehicle select screen renders.
-  - **Units / spaces**: Operates on raw URL/path strings; no coordinate spaces.
-  - **Determinism**: Deterministic for the same `World.resolveAssetUrl` implementation and input; returning input unchanged if resolver state changes between calls.
-  - **Keep / change / delete**: Keep; simplest tweak would be to inline a null-safe resolver but helper keeps template call clean.
-  - **Confidence / assumptions**: High confidence; assumes `World` global remains stable and resolver returns a string.
-  - **Notes**: Possible reductions include inlining the null-check if we ever centralize asset helpers or renaming to `safeResolveAssetUrl` so its guard role is clearer. Reviewer summary: “Uses `escapeHtml` so filenames render despite odd characters?” Clarification: this helper never touches HTML escaping and instead just delegates to `World.resolveAssetUrl`, so unusual characters flow through unchanged unless the resolver rewrites them. Future update could link it with a path sanitizer if we discover malformed inputs.
+  - Purpose: Wraps the world's asset resolver so menu templates can turn relative preview filenames into usable URLs without crashing if the resolver is missing.
+  - Inputs: `path` string; accepts falsy (`''`, `null`, `undefined`) and any other value, though only non-empty strings resolve meaningfully.
+  - Outputs: Returns the resolved string from `World.resolveAssetUrl(path)` or the original `path`; falls back to `''` when the input is falsy.
+  - Side effects: None—no writes to state, storage, or logs; only calls the global resolver when available.
+  - Shared state & call sites: Reads global `World` (`src/app.js:105-114`); passed to `AppScreens.vehicleSelect` as `resolveAssetUrl` helper (`src/app.js:331-341`).
+  - Dependencies: `World.resolveAssetUrl` when defined; otherwise none.
+  - Edge cases: Handles missing/falsey paths, missing resolver, and exceptions thrown by the resolver; does not validate URL format or strip whitespace.
+  - Performance: Constant time; called when building vehicle select screen renders.
+  - Units / spaces: Operates on raw URL/path strings; no coordinate spaces.
+  - Determinism: Deterministic for the same `World.resolveAssetUrl` implementation and input; returning input unchanged if resolver state changes between calls.
+  - Keep / change / delete: Keep; simplest tweak would be to inline a null-safe resolver but helper keeps template call clean.
+  - Confidence / assumptions: High confidence; assumes `World` global remains stable and resolver returns a string.
+  - Notes: Possible reductions include inlining the null-check if we ever centralize asset helpers or renaming to `safeResolveAssetUrl` so its guard role is clearer. Reviewer summary: “Uses `escapeHtml` so filenames render despite odd characters?” Clarification: this helper never touches HTML escaping and instead just delegates to `World.resolveAssetUrl`, so unusual characters flow through unchanged unless the resolver rewrites them. Future update could link it with a path sanitizer if we discover malformed inputs.
 - `normalizePreviewAtlas`
   - Purpose: Convert optional preview sprite sheet settings into a safe atlas description for the vehicle preview.
   - Inputs: `raw` object with `columns`, `rows`, `frameCount`, `frameRate`, `frameDuration`; expects positive numbers or empty.
@@ -144,19 +144,19 @@
   - Confidence / assumptions: High confidence; assumes preview atlas configs stay small and numeric.
   - Notes: Reviewer summarized this as the helper that lets `renderVehicleSelect` slice the preview atlas, then asked whether it should merge with the atlas animation handler used by player vehicles and animated billboards; keep it separate for now because the preview path needs unique defaults, null returns, and timing fallbacks, but queue a follow-up to lift the shared frame math if those pipelines ever align.
 - `formatTimeMs`
-  - **Purpose**: Converts a raw millisecond count into a friendly label for menus and scoreboards so players see human-readable times.
-  - **Inputs**: `value` (number in milliseconds; accepts any finite number, clamps negatives to zero, ignores non-finite values).
-  - **Outputs**: String like `'12,345 ms'` or `'--'` when the input is not a usable number.
-  - **Side effects**: None; computes and returns a string without mutating data or logging.
-  - **Shared state & call sites**: Used for leaderboard entries at `src/app.js:182` and race-complete label at `src/app.js:353`.
-  - **Dependencies**: Built-ins `Number.isFinite`, `Math.round`, `Math.max`, `toLocaleString`.
-  - **Edge cases**: Handles non-finite values by returning `'--'` and clamps negatives to zero; does not distinguish DNF/DQ or preserve fractional milliseconds.
-  - **Performance**: Constant-time number formatting when leaderboard rows build or race results render.
-  - **Units / spaces**: Treats input as milliseconds and formats a locale-aware millisecond string.
-  - **Determinism**: Pure for a fixed locale—same input yields the same formatted string; running again has no extra effects.
-  - **Keep / change / delete**: Keep; smallest alternative would be inlining the formatting string where used.
-  - **Confidence / assumptions**: High confidence; assumes default locale formatting is acceptable for all displays.
-  - **Notes**: Reviewer praised the explanation and restated that the helper simply turns raw milliseconds into something readable while asking if we duplicate this logic elsewhere, and my follow-up confirmed the formatter appears only in `src/app.js` today. Should another menu or HUD pathway need the same presentation, we can lift this helper into a shared time-formatting module so we do not drift on style.
+  - Purpose: Converts a raw millisecond count into a friendly label for menus and scoreboards so players see human-readable times.
+  - Inputs: `value` (number in milliseconds; accepts any finite number, clamps negatives to zero, ignores non-finite values).
+  - Outputs: String like `'12,345 ms'` or `'--'` when the input is not a usable number.
+  - Side effects: None; computes and returns a string without mutating data or logging.
+  - Shared state & call sites: Used for leaderboard entries at `src/app.js:182` and race-complete label at `src/app.js:353`.
+  - Dependencies: Built-ins `Number.isFinite`, `Math.round`, `Math.max`, `toLocaleString`.
+  - Edge cases: Handles non-finite values by returning `'--'` and clamps negatives to zero; does not distinguish DNF/DQ or preserve fractional milliseconds.
+  - Performance: Constant-time number formatting when leaderboard rows build or race results render.
+  - Units / spaces: Treats input as milliseconds and formats a locale-aware millisecond string.
+  - Determinism: Pure for a fixed locale—same input yields the same formatted string; running again has no extra effects.
+  - Keep / change / delete: Keep; smallest alternative would be inlining the formatting string where used.
+  - Confidence / assumptions: High confidence; assumes default locale formatting is acceptable for all displays.
+  - Notes: Reviewer praised the explanation and restated that the helper simply turns raw milliseconds into something readable while asking if we duplicate this logic elsewhere, and my follow-up confirmed the formatter appears only in `src/app.js` today. Should another menu or HUD pathway need the same presentation, we can lift this helper into a shared time-formatting module so we do not drift on style.
 - `createLeaderboardEntry`
   - Purpose: Builds a leaderboard row with cleaned initials, numeric time, formatted label, saved date, and empty rank.
   - Inputs: Name text trimmed to three uppercase letters, scoreMs finish time in milliseconds with non-numbers treated as 0, optional date string defaulting to blank.
@@ -172,33 +172,33 @@
   - Confidence / assumptions: High confidence; assumes the board expects three-letter uppercase initials and millisecond scores.
   - Notes: Reviewer asked, “What actually updates the entry in the .csv file?”—right now nothing writes back, because entries only live in memory while `fetch('data/leaderboard.csv')` seeds the list; if persistence ever arrives we could fold this helper into a loader/saver module or attach a dedicated save routine, but until then the clearest update is to document that gap.
 - `recomputeLeaderboardRanks`
-  - **Purpose**: Walks the current leaderboard list and stamps each non-empty entry with its 1-based place so the menu can show accurate ranks after sorting or CSV import.
-  - **Inputs**: `entries` array (defaults to `state.leaderboard.entries`); expects objects shaped like `createLeaderboardEntry`; ignores falsy slots.
-  - **Outputs**: None returned; updates each entry's `rank` property in place.
-  - **Side effects**: Mutates the provided entries; when called with the default, writes directly into shared leaderboard state.
-  - **Shared state & call sites**: Touches `state.leaderboard.entries`; invoked after sorting in `src/app.js:203` and after CSV parsing in `src/app.js:863`.
-  - **Dependencies**: No subordinate calls.
-  - **Edge cases**: Skips holes/nulls but still leaves prior rank on those slots; does not adjust for tied scores beyond list order.
-  - **Performance**: Linear pass over the array whenever leaderboard data changes; trivial cost compared with sorting/loading frequency.
-  - **Units / spaces**: Ranks are simple 1-based integers.
-  - **Determinism**: Deterministic for a fixed input order; repeating without changes is idempotent.
-  - **Keep / change / delete**: Keep; could fold into `sortLeaderboardEntries` but shared reuse by CSV import makes the helper worthwhile.
-  - **Confidence / assumptions**: High confidence; assumes callers already sorted entries and that sparse arrays are rare.
-  - **Notes**: Reviewer summary: "looks good, no notes, likely no need to fold"; I concur and would only revisit consolidation if future refactors merge leaderboard sorting and ranking into a single pass, so keep monitoring but no action required now.
+  - Purpose: Walks the current leaderboard list and stamps each non-empty entry with its 1-based place so the menu can show accurate ranks after sorting or CSV import.
+  - Inputs: `entries` array (defaults to `state.leaderboard.entries`); expects objects shaped like `createLeaderboardEntry`; ignores falsy slots.
+  - Outputs: None returned; updates each entry's `rank` property in place.
+  - Side effects: Mutates the provided entries; when called with the default, writes directly into shared leaderboard state.
+  - Shared state & call sites: Touches `state.leaderboard.entries`; invoked after sorting in `src/app.js:203` and after CSV parsing in `src/app.js:863`.
+  - Dependencies: No subordinate calls.
+  - Edge cases: Skips holes/nulls but still leaves prior rank on those slots; does not adjust for tied scores beyond list order.
+  - Performance: Linear pass over the array whenever leaderboard data changes; trivial cost compared with sorting/loading frequency.
+  - Units / spaces: Ranks are simple 1-based integers.
+  - Determinism: Deterministic for a fixed input order; repeating without changes is idempotent.
+  - Keep / change / delete: Keep; could fold into `sortLeaderboardEntries` but shared reuse by CSV import makes the helper worthwhile.
+  - Confidence / assumptions: High confidence; assumes callers already sorted entries and that sparse arrays are rare.
+  - Notes: Reviewer summary: "looks good, no notes, likely no need to fold"; I concur and would only revisit consolidation if future refactors merge leaderboard sorting and ranking into a single pass, so keep monitoring but no action required now.
 - `sortLeaderboardEntries`
-  - **Purpose**: Keeps the leaderboard ordered so faster times float to the top, currently breaking ties alphabetically for display.
-  - **Inputs**: None explicitly; reads `state.leaderboard.entries` which should contain objects with `score` numbers and `name` strings.
-  - **Outputs**: None; entries end up sorted and re-ranked in place.
-  - **Side effects**: Mutates `state.leaderboard.entries`, updates each entry’s `rank`, and drives highlight behavior after sorting.
-  - **Shared state & call sites**: Touches `state.leaderboard.entries`/`rank`; invoked from `src/app.js:215` after adding a local score and `src/app.js:815` after loading remote scores.
-  - **Dependencies**: Uses Array sort plus `recomputeLeaderboardRanks` to refresh rank numbers.
-  - **Edge cases**: Skips over missing entries, pushes null/undefined records to the end, and resolves equal scores with a name comparison despite not honoring play date order; does not special-case DNFs or impossible scores.
-  - **Performance**: Native Array sort over the current entries list; only runs on leaderboard updates, not every frame.
-  - **Units / spaces**: Compares `score` values measured in milliseconds.
-  - **Determinism**: Yes—same entry data yields the same order and ranks.
-  - **Keep / change / delete**: Keep; could only be inlined alongside the rank refresh at each call site.
-  - **Confidence / assumptions**: High confidence; assumes entries always provide numeric `score` and uppercase `name`.
-  - **Notes**: Reviewer: "Alphabetical ordering on equal scores feels wrong; should favor newer runs so the recent score rises above." Response: Capture a precise play timestamp on each entry and update the comparator to sort by score then newest-first, keeping name as a final fallback so expectations and ranking stay aligned.
+  - Purpose: Keeps the leaderboard ordered so faster times float to the top, currently breaking ties alphabetically for display.
+  - Inputs: None explicitly; reads `state.leaderboard.entries` which should contain objects with `score` numbers and `name` strings.
+  - Outputs: None; entries end up sorted and re-ranked in place.
+  - Side effects: Mutates `state.leaderboard.entries`, updates each entry’s `rank`, and drives highlight behavior after sorting.
+  - Shared state & call sites: Touches `state.leaderboard.entries`/`rank`; invoked from `src/app.js:215` after adding a local score and `src/app.js:815` after loading remote scores.
+  - Dependencies: Uses Array sort plus `recomputeLeaderboardRanks` to refresh rank numbers.
+  - Edge cases: Skips over missing entries, pushes null/undefined records to the end, and resolves equal scores with a name comparison despite not honoring play date order; does not special-case DNFs or impossible scores.
+  - Performance: Native Array sort over the current entries list; only runs on leaderboard updates, not every frame.
+  - Units / spaces: Compares `score` values measured in milliseconds.
+  - Determinism: Yes—same entry data yields the same order and ranks.
+  - Keep / change / delete: Keep; could only be inlined alongside the rank refresh at each call site.
+  - Confidence / assumptions: High confidence; assumes entries always provide numeric `score` and uppercase `name`.
+  - Notes: Reviewer: "Alphabetical ordering on equal scores feels wrong; should favor newer runs so the recent score rises above." Response: Capture a precise play timestamp on each entry and update the comparator to sort by score then newest-first, keeping name as a final fallback so expectations and ranking stay aligned.
 - `findLeaderboardEntryIndexById`
   - Purpose: Finds where a saved leaderboard entry sits in the current list so menus can highlight the right racer.
   - Inputs: id (stored entry identifier, usually created when adding to the leaderboard; must be provided).
@@ -226,18 +226,18 @@
   - Determinism: Given the same starting state and nextMode, the resulting state changes are predictable; repeated calls with the current mode exit immediately.
   - Keep / change / delete: Keep; central gateway for screen changes, simplest alternative would be splitting into separate per-mode helpers and duplicating logic.
   - Confidence / assumptions: High confidence; assumes updateMenuLayer keeps menus in sync and that callers pass the supported mode names.
-  - **Purpose**: Records a just-finished run on the high-score board by packaging the player initials, time, and today’s date, then reorders the list so the new result appears in place immediately.
-  - **Inputs**: `name` (player-entered initials; trimmed, uppercased, limited to three characters, defaults to `---`); `scoreMs` (finish time in milliseconds; non-finite values fall back to 0).
-  - **Outputs**: Returns the newly minted entry object containing a unique `id` symbol, normalized `name`, numeric `score`, formatted `displayValue`, ISO date stamp, and updated `rank` once sorted.
-  - **Side effects**: Appends to `state.leaderboard.entries` and `.localEntries`, re-sorts the leaderboard (which mutates ranks), stamps the current date, and points `state.leaderboard.highlightId` at the new entry for UI emphasis.
-  - **Shared state & call sites**: Touches `state.leaderboard.entries`, `.localEntries`, and `.highlightId` defined in `src/app.js:55-57`; invoked from `src/app.js:638` when a race completion is finalized.
-  - **Dependencies**: Calls `createLeaderboardEntry` for normalization/formatting, `sortLeaderboardEntries` to reorder ranks, and uses `new Date().toISOString()` for the daily stamp.
-  - **Edge cases**: Handles blank names and invalid times via defaults; does not prevent duplicate submissions, oversized leaderboards, or special cases like DNFs/ties beyond alphabetical ordering.
-  - **Performance**: Triggers an array push plus an `Array.sort` (O(n log n)); runs only upon recording a new local result, not every frame.
-  - **Units / spaces**: Works with times measured in milliseconds and stores dates as `YYYY-MM-DD` strings; positions correspond to leaderboard rank order.
-  - **Determinism**: Non-deterministic because it stamps the current date and creates a fresh `Symbol` id; calling twice with the same input produces distinct entries.
-  - **Keep / change / delete**: Keep; consider renaming to `recordLocalLeaderboardEntry` to clarify that it mutates local state.
-  - **Confidence / assumptions**: High confidence; assumes `state.leaderboard` exists with initialized `entries` and `localEntries` arrays and that sorting stays consistent.
+  - Purpose: Records a just-finished run on the high-score board by packaging the player initials, time, and today’s date, then reorders the list so the new result appears in place immediately.
+  - Inputs: `name` (player-entered initials; trimmed, uppercased, limited to three characters, defaults to `---`); `scoreMs` (finish time in milliseconds; non-finite values fall back to 0).
+  - Outputs: Returns the newly minted entry object containing a unique `id` symbol, normalized `name`, numeric `score`, formatted `displayValue`, ISO date stamp, and updated `rank` once sorted.
+  - Side effects: Appends to `state.leaderboard.entries` and `.localEntries`, re-sorts the leaderboard (which mutates ranks), stamps the current date, and points `state.leaderboard.highlightId` at the new entry for UI emphasis.
+  - Shared state & call sites: Touches `state.leaderboard.entries`, `.localEntries`, and `.highlightId` defined in `src/app.js:55-57`; invoked from `src/app.js:638` when a race completion is finalized.
+  - Dependencies: Calls `createLeaderboardEntry` for normalization/formatting, `sortLeaderboardEntries` to reorder ranks, and uses `new Date().toISOString()` for the daily stamp.
+  - Edge cases: Handles blank names and invalid times via defaults; does not prevent duplicate submissions, oversized leaderboards, or special cases like DNFs/ties beyond alphabetical ordering.
+  - Performance: Triggers an array push plus an `Array.sort` (O(n log n)); runs only upon recording a new local result, not every frame.
+  - Units / spaces: Works with times measured in milliseconds and stores dates as `YYYY-MM-DD` strings; positions correspond to leaderboard rank order.
+  - Determinism: Non-deterministic because it stamps the current date and creates a fresh `Symbol` id; calling twice with the same input produces distinct entries.
+  - Keep / change / delete: Keep; consider renaming to `recordLocalLeaderboardEntry` to clarify that it mutates local state.
+  - Confidence / assumptions: High confidence; assumes `state.leaderboard` exists with initialized `entries` and `localEntries` arrays and that sorting stays consistent.
 - `setMode`
 - `ensureDom`
   - Purpose: Verifies the menu layer elements exist on the page and saves quick references so later menu updates do not crash.
@@ -266,18 +266,18 @@
   - Keep / change / delete: Keep; thin wrapper keeps updateMenuLayer tidy and could be merged there only if menus are restructured.【F:src/app.js†L251-L261】【F:src/app.js†L401-L404】
   - Confidence / assumptions: High confidence; assumes AppScreens.mainMenu synchronously returns a renderable string.【F:src/app.js†L251-L261】
 - `renderLeaderboard`
-  - **Purpose**: Builds the leaderboard screen markup so players can see the top race times and any highlighted recent run.
-  - **Inputs**: No arguments; reads `state.leaderboard.loading`, `error`, `entries`, and `highlightId` (highlight id may be null).
-  - **Outputs**: Returns an HTML string via `AppScreens.leaderboard`, feeding it an array of up to ten `{ rank, name, score, isHighlight }` rows.
-  - **Side effects**: None; it only derives data for rendering.
-  - **Shared state & call sites**: Reads the leaderboard slice of `state`; called by `updateMenuLayer` when `state.mode === 'leaderboard'` (`src/app.js:404`).
-  - **Dependencies**: Delegates to `AppScreens.leaderboard` and passes the local `escapeHtml` helper for safe text output.
-  - **Edge cases**: Falls back to an empty string if the template is missing, keeps blank placeholder rows for null entries, but still ignores DNFs, ties beyond ordering, or runs past the top ten.
-  - **Performance**: Copies and maps at most ten entries per render; only invoked when the menu swaps into leaderboard mode.
-  - **Units / spaces**: Displays `entry.displayValue` strings already formatted in milliseconds and flags highlights with booleans.
-  - **Determinism**: Yes—given the same leaderboard state it produces the same HTML.
-  - **Keep / change / delete**: Keep; simplest tweak would be to share the top-ten limit as a named constant if reuse expands.
-  - **Confidence / assumptions**: High confidence; assumes upstream code keeps `displayValue` current and entries sorted.
+  - Purpose: Builds the leaderboard screen markup so players can see the top race times and any highlighted recent run.
+  - Inputs: No arguments; reads `state.leaderboard.loading`, `error`, `entries`, and `highlightId` (highlight id may be null).
+  - Outputs: Returns an HTML string via `AppScreens.leaderboard`, feeding it an array of up to ten `{ rank, name, score, isHighlight }` rows.
+  - Side effects: None; it only derives data for rendering.
+  - Shared state & call sites: Reads the leaderboard slice of `state`; called by `updateMenuLayer` when `state.mode === 'leaderboard'` (`src/app.js:404`).
+  - Dependencies: Delegates to `AppScreens.leaderboard` and passes the local `escapeHtml` helper for safe text output.
+  - Edge cases: Falls back to an empty string if the template is missing, keeps blank placeholder rows for null entries, but still ignores DNFs, ties beyond ordering, or runs past the top ten.
+  - Performance: Copies and maps at most ten entries per render; only invoked when the menu swaps into leaderboard mode.
+  - Units / spaces: Displays `entry.displayValue` strings already formatted in milliseconds and flags highlights with booleans.
+  - Determinism: Yes—given the same leaderboard state it produces the same HTML.
+  - Keep / change / delete: Keep; simplest tweak would be to share the top-ten limit as a named constant if reuse expands.
+  - Confidence / assumptions: High confidence; assumes upstream code keeps `displayValue` current and entries sorted.
 - `renderSettings`
   - Purpose: Builds the settings menu text so players see the snow toggle and the back option.
   - Inputs: None directly; reads snowEnabled (expected boolean) and settingsMenuIndex (expected 0–1) from shared state when called.
