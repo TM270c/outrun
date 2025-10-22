@@ -1154,39 +1154,426 @@
   - Keep / change / delete: Keep; encapsulates complex preview markup separate from logic.【F:src/ui/screens.js†L65-L175】【F:src/app.js†L325-L342】
   - Confidence / assumptions: High confidence; assumes atlas metadata follows expected structure when provided.【F:src/ui/screens.js†L81-L110】
 - `settingsMenuScreen`
+  - Purpose: Generates the Settings menu HTML, listing each configurable option and highlighting the current selection so the UI can be rendered without manual DOM manipulation.【F:src/ui/screens.js†L147-L175】
+  - Inputs: `ctx` — expects `{ options, selectedIndex }` where `options` is an array of menu option objects (falls back to `[]`) and `selectedIndex` is the zero-based highlighted entry; `helpers` — optional object supplying `escapeHtml` for sanitization.【F:src/ui/screens.js†L147-L165】
+  - Outputs: Returns an HTML string containing the Settings menu wrapper, option list, and control hint.【F:src/ui/screens.js†L168-L174】
+  - Side effects: None; pure string builder.【F:src/ui/screens.js†L147-L174】
+  - Shared state touched and where it’s used: None; invoked by `renderSettings()` when the app is in the settings mode to populate the overlay.【F:src/app.js†L291-L311】
+  - Dependencies: Uses `ensureEscapeHtml` to obtain a safe text encoder before interpolating labels and values.【F:src/ui/screens.js†L149-L157】
+  - Edge cases handled or missed: Safely handles missing options, blank keys, or values by defaulting to empty strings and omitting value spans; does not guard against duplicate option keys or non-string labels.【F:src/ui/screens.js†L151-L166】
+  - Performance: Iterates once over the provided options to assemble list items; runs on demand when the settings screen renders.【F:src/ui/screens.js†L151-L166】
+  - Units / spaces: Outputs semantic HTML using CSS classes for layout; no numeric unit conversions occur.【F:src/ui/screens.js†L168-L173】
+  - Determinism: Deterministic given the same `ctx` and helper inputs, since it only formats provided data.【F:src/ui/screens.js†L147-L174】
+  - Keep / change / delete: Keep; consolidates settings menu markup instead of duplicating template code elsewhere.
+  - Confidence / assumptions: High confidence; assumes callers pass option objects with `key`, `label`, and optional `value` fields.
+
 - `leaderboardScreen`
+  - Purpose: Renders the leaderboard screen with loading/error/empty states so the UI communicates progress and results.【F:src/ui/screens.js†L177-L214】
+  - Inputs: `ctx` — expects `{ loading, error, entries }` where `entries` is an array of objects with `rank`, `name`, `score`, and optional `isHighlight`; `helpers` — optional `escapeHtml` provider.【F:src/ui/screens.js†L177-L205】
+  - Outputs: Returns an HTML string with a leaderboard title, message or list, and navigation hint.【F:src/ui/screens.js†L207-L213】
+  - Side effects: None; purely formats strings.【F:src/ui/screens.js†L177-L213】
+  - Shared state touched and where it’s used: None; consumed by `renderLeaderboard()` to fill the menu panel during leaderboard mode.【F:src/app.js†L281-L288】
+  - Dependencies: Relies on `ensureEscapeHtml` to sanitize interpolated fields before embedding them in the markup.【F:src/ui/screens.js†L179-L203】
+  - Edge cases handled or missed: Provides fallback messages for loading, fetch errors, and empty datasets; highlights entries via `isHighlight`; does not paginate long leaderboards.【F:src/ui/screens.js†L181-L205】
+  - Performance: Maps over the supplied entry list once; invoked when the leaderboard is displayed.【F:src/ui/screens.js†L188-L205】
+  - Units / spaces: Outputs HTML structure and CSS classes only; no numeric unit conversions.【F:src/ui/screens.js†L207-L213】
+  - Determinism: Deterministic for a given input context and helper functions.【F:src/ui/screens.js†L177-L213】
+  - Keep / change / delete: Keep; centralizes leaderboard templating rather than scattering markup across the app.
+  - Confidence / assumptions: High confidence; assumes entries provide stringifiable ranks, names, and scores.
+
 - `attractScreen`
+  - Purpose: Produces the attract-mode video container so the game can loop a promotional clip when idle.【F:src/ui/screens.js†L216-L229】
+  - Inputs: `ctx` — optional object with `videoSrc`, defaulting to the bundled attract-loop MP4.【F:src/ui/screens.js†L216-L224】
+  - Outputs: Returns HTML for a full-screen video element with the configured source.【F:src/ui/screens.js†L222-L227】
+  - Side effects: None; returns a string only.【F:src/ui/screens.js†L216-L228】
+  - Shared state touched and where it’s used: None; rendered by `renderAttract()` when the application enters attract mode.【F:src/app.js†L346-L347】
+  - Dependencies: No helper dependencies beyond template literals.【F:src/ui/screens.js†L216-L228】
+  - Edge cases handled or missed: Omits the `<source>` tag when `videoSrc` is falsy; assumes MP4 encoding and does not expose playback controls.【F:src/ui/screens.js†L216-L226】
+  - Performance: Constant work—only string interpolation; called when entering attract mode.【F:src/ui/screens.js†L216-L228】
+  - Units / spaces: Generates HTML with CSS classes for layout; no numeric units handled.【F:src/ui/screens.js†L222-L227】
+  - Determinism: Deterministic given the same `videoSrc` input.【F:src/ui/screens.js†L216-L228】
+  - Keep / change / delete: Keep; isolates attract-mode markup from the controller logic.
+  - Confidence / assumptions: High confidence; assumes the provided video path is valid and autoplay is acceptable.
+
 - `raceCompleteScreen`
+  - Purpose: Builds the race-complete UI, covering the preparation, name-entry, and results phases so players understand post-race flow.【F:src/ui/screens.js†L231-L296】
+  - Inputs: `ctx` — object with `active`, `phase`, `timeLabel`, `letters`, `confirmed`, `currentIndex`, and `playerRank`; `helpers` — optional `escapeHtml` provider.【F:src/ui/screens.js†L231-L288】
+  - Outputs: Returns HTML for the active race-complete screen, including prompts, timers, and rank readouts.【F:src/ui/screens.js†L244-L294】
+  - Side effects: None; string generation only.【F:src/ui/screens.js†L231-L296】
+  - Shared state touched and where it’s used: None; invoked by `renderRaceComplete()` whenever the app is in the race-complete mode to display status.【F:src/app.js†L351-L359】
+  - Dependencies: Uses `ensureEscapeHtml` to sanitize user-entered letters and labels.【F:src/ui/screens.js†L241-L288】
+  - Edge cases handled or missed: Displays a waiting message while inactive, highlights the current name-entry slot, and copes with missing rank/time strings; does not enforce character limits beyond the provided `letters` array.【F:src/ui/screens.js†L243-L287】
+  - Performance: Maps over the `letters` array once per render; otherwise constant time and used only when the race-complete overlay is visible.【F:src/ui/screens.js†L252-L268】
+  - Units / spaces: Renders HTML markup and CSS classes; no numeric units beyond textual rank/time labels.【F:src/ui/screens.js†L244-L294】
+  - Determinism: Deterministic for a given context and helper set.【F:src/ui/screens.js†L231-L296】
+  - Keep / change / delete: Keep; encapsulates nuanced race completion states without complicating controller logic.
+  - Confidence / assumptions: High confidence; assumes controller supplies consistent `phase` strings and letter arrays.
 
 ### 3.3 Asset Loading & Bootstrapping (`src/bootstrap.js`)
 - `loadManifestTextures`
+  - Purpose: Asynchronously loads every texture listed in a manifest and registers it with the renderer so later systems can reference GPU resources by key.【F:src/bootstrap.js†L18-L27】
+  - Inputs: `manifest` — object mapping texture keys to relative URLs; accepts `null`/`undefined` by treating them as an empty manifest.【F:src/bootstrap.js†L18-L24】
+  - Outputs: Returns a promise that resolves once all textures are queued and stored; no direct return data on completion.【F:src/bootstrap.js†L18-L27】
+  - Side effects: Populates `World.assets.textures` with loaded WebGL textures, enabling lookups by other modules.【F:src/bootstrap.js†L24-L27】
+  - Shared state touched and where it’s used: Writes into `World.assets.textures`, which sprite metadata resolvers use to fetch materials when spawning sprites.【F:src/gameplay.js†L388-L399】
+  - Dependencies: Uses `World.resolveAssetUrl` for path resolution when available and `glr.loadTexture` to fetch GPU-ready textures in parallel via `Promise.all`.【F:src/bootstrap.js†L21-L26】
+  - Edge cases handled or missed: Skips work when the manifest is empty; does not retry or catch failed texture loads, so rejections propagate to callers.【F:src/bootstrap.js†L19-L27】
+  - Performance: Issues concurrent loads for every manifest entry; invoked during startup so cost scales with manifest size.【F:src/bootstrap.js†L19-L27】
+  - Units / spaces: Handles URL strings and WebGL texture objects; no numeric unit translation.【F:src/bootstrap.js†L21-L26】
+  - Determinism: Deterministic for identical manifests and asset servers, though outcomes depend on network availability.
+  - Keep / change / delete: Keep; isolates manifest loading logic and parallelization from higher-level bootstrap code.
+  - Confidence / assumptions: High confidence; assumes manifests map to valid URLs and `glr.loadTexture` rejects on failure.
+
 - `loadAssets`
+  - Purpose: Coordinates startup asset loading by processing the core manifest and any sprite-catalog textures so rendering has everything it needs before the game starts.【F:src/bootstrap.js†L30-L35】
+  - Inputs: None; reads manifests from global `World.assets` and optional `SpriteCatalog`.【F:src/bootstrap.js†L31-L34】
+  - Outputs: Returns a promise that resolves after all manifest textures finish loading.【F:src/bootstrap.js†L30-L35】
+  - Side effects: Triggers `loadManifestTextures`, thereby filling `World.assets.textures` for use by gameplay and rendering systems.【F:src/bootstrap.js†L31-L35】
+  - Shared state touched and where it’s used: Ensures textures referenced by sprite metadata (e.g., vehicle and signage materials) are present before scene reset occurs.【F:src/gameplay.js†L388-L399】【F:src/bootstrap.js†L57-L65】
+  - Dependencies: Calls `loadManifestTextures` twice—once for the world manifest and again for any sprite-catalog-defined textures.【F:src/bootstrap.js†L31-L34】
+  - Edge cases handled or missed: Safely skips sprite-catalog loading when the API is unavailable; does not debounce duplicate keys across manifests.【F:src/bootstrap.js†L31-L35】
+  - Performance: Sequentially awaits each manifest load; runs only during bootstrap.【F:src/bootstrap.js†L30-L35】
+  - Units / spaces: Deals with manifest objects and promises only.【F:src/bootstrap.js†L30-L35】
+  - Determinism: Deterministic given the same manifests and network conditions.
+  - Keep / change / delete: Keep; provides a single entry point for boot-time asset fetching.
+  - Confidence / assumptions: High confidence; assumes manifests remain relatively small and `SpriteCatalog` exposes `getTextureManifest` when present.
+
 - `setupCallbacks`
+  - Purpose: Hooks gameplay lifecycle callbacks into renderer and app handlers so UI elements respond to resets, respawns, and race finishes automatically.【F:src/bootstrap.js†L38-L55】
+  - Inputs: None; operates on global `Gameplay`, `Renderer`, and optional `App` objects.【F:src/bootstrap.js†L38-L55】
+  - Outputs: None; configures callbacks in place.【F:src/bootstrap.js†L38-L55】
+  - Side effects: Assigns functions to `Gameplay.state.callbacks` entries that trigger renderer matte transitions, scene resets, and app race-finish handlers.【F:src/bootstrap.js†L39-L53】
+  - Shared state touched and where it’s used: Sets callback hooks consumed when gameplay queues resets, respawns, or race completion events during the simulation loop.【F:src/gameplay.js†L2757-L2771】【F:src/gameplay.js†L2323-L2325】
+  - Dependencies: Calls renderer matte helpers, `Gameplay.resetScene`, and optional `App.handleRaceFinish` when those callbacks fire.【F:src/bootstrap.js†L39-L53】
+  - Edge cases handled or missed: Guards against missing respawn payloads and absent app handlers; does not reapply callbacks if `Gameplay.state.callbacks` is replaced later.【F:src/bootstrap.js†L42-L53】
+  - Performance: Constant-time assignments executed once at startup.【F:src/bootstrap.js†L38-L55】
+  - Units / spaces: Deals with callback references and time values passed in milliseconds for race finishes.【F:src/bootstrap.js†L50-L53】
+  - Determinism: Deterministic, though effects depend on runtime gameplay events triggering the callbacks.【F:src/bootstrap.js†L38-L55】
+  - Keep / change / delete: Keep; cleanly centralizes wiring between gameplay events and presentation layers.
+  - Confidence / assumptions: High confidence; assumes `Gameplay.state.callbacks` remains mutable and renderer/app functions exist when needed.
 
 ### 3.4 Vehicle Control & Physics (`src/gameplay.js`)
 - `trackLengthRef`
+  - Purpose: Provides the current total track length so wrap calculations can stay in sync with dynamic track data.【F:src/gameplay.js†L73-L76】
+  - Inputs: None; reads `World.data.trackLength` from the captured `data` object.【F:src/gameplay.js†L58-L76】
+  - Outputs: Returns the track length in world-distance units (or `0` if unset).【F:src/gameplay.js†L74-L76】
+  - Side effects: None; read-only accessor.【F:src/gameplay.js†L74-L76】
+  - Shared state touched and where it’s used: Supplies length values to wrap helpers when spawning sprites and advancing effects, ensuring positions stay within track bounds.【F:src/gameplay.js†L841-L845】【F:src/gameplay.js†L1225-L1233】
+  - Dependencies: Relies on the `data` object populated by the world builder; no function calls.【F:src/gameplay.js†L58-L76】
+  - Edge cases handled or missed: Returns `0` when `trackLength` is falsy, which can disable wrapping logic but may hide configuration mistakes.【F:src/gameplay.js†L74-L76】
+  - Performance: Constant-time property access; called frequently whenever `s` positions need wrapping.【F:src/gameplay.js†L74-L1233】
+  - Units / spaces: Track length shares the same `s` coordinate space as segment positions (meters along the road).【F:src/gameplay.js†L74-L842】
+  - Determinism: Deterministic for a given `World.data` state.【F:src/gameplay.js†L74-L76】
+  - Keep / change / delete: Keep; lightweight accessor avoids hard-coding property lookups throughout the module.
+  - Confidence / assumptions: High confidence; assumes `World.data.trackLength` is maintained by track-building routines.
+
 - `hasSegments`
+  - Purpose: Quickly reports whether the track has any segments so systems can bail out before doing segment-dependent work.【F:src/gameplay.js†L73-L78】
+  - Inputs: None; inspects the captured `segments` array.【F:src/gameplay.js†L73-L78】
+  - Outputs: Boolean indicating whether at least one segment exists.【F:src/gameplay.js†L77-L78】
+  - Side effects: None.【F:src/gameplay.js†L77-L78】
+  - Shared state touched and where it’s used: Governs early exits throughout gameplay—for example, wrapping segment indices and spawning drift effects both guard on `hasSegments()` before proceeding.【F:src/gameplay.js†L85-L90】【F:src/gameplay.js†L1213-L1236】
+  - Dependencies: None beyond the `segments` closure array.【F:src/gameplay.js†L73-L78】
+  - Edge cases handled or missed: Returns `false` during bootstrap before track data loads; does not validate segment integrity when count > 0.【F:src/gameplay.js†L73-L78】
+  - Performance: Constant; called frequently in per-frame code paths.【F:src/gameplay.js†L77-L1236】
+  - Units / spaces: N/A—boolean flag only.【F:src/gameplay.js†L77-L78】
+  - Determinism: Deterministic for a given `segments` array state.【F:src/gameplay.js†L73-L78】
+  - Keep / change / delete: Keep; tiny helper improves readability of guard clauses.
+  - Confidence / assumptions: High confidence; assumes `segments` accurately reflects the loaded track.
+
 - `wrapByLength`
+  - Purpose: Wraps a longitudinal `s` value into the `[0, length)` track range so repeated laps stay numerically bounded.【F:src/gameplay.js†L79-L83】
+  - Inputs: `value` — distance or coordinate to wrap; `length` — positive track length controlling the wrap window (no wrapping when `length <= 0`).【F:src/gameplay.js†L79-L83】
+  - Outputs: Wrapped numeric position, preserving negative offsets by adding `length` when needed.【F:src/gameplay.js†L79-L83】
+  - Side effects: None.【F:src/gameplay.js†L79-L83】
+  - Shared state touched and where it’s used: Underpins segment lookups such as `segmentAtS`, ensuring player sampling stays inside the track loop.【F:src/gameplay.js†L1121-L1123】
+  - Dependencies: None.【F:src/gameplay.js†L79-L83】
+  - Edge cases handled or missed: Treats non-positive `length` as a no-op, which prevents NaNs but leaves callers responsible for zero-length tracks.【F:src/gameplay.js†L79-L83】
+  - Performance: Constant arithmetic; often executed per frame for physics and spawning.【F:src/gameplay.js†L79-L1231】
+  - Units / spaces: Works in the same `s` distance units as the rest of the track system.【F:src/gameplay.js†L79-L1123】
+  - Determinism: Deterministic for numeric inputs.【F:src/gameplay.js†L79-L83】
+  - Keep / change / delete: Keep; concise helper avoids duplicating modular arithmetic around the codebase.
+  - Confidence / assumptions: High confidence; assumes callers pass finite numbers.
+
 - `wrapSegmentIndex`
+  - Purpose: Normalizes a segment index so lookups stay within bounds even when callers traverse past the ends of the segment array.【F:src/gameplay.js†L85-L90】
+  - Inputs: `idx` — integer (or float) index to wrap into the valid `[0, segments.length)` range.【F:src/gameplay.js†L85-L90】
+  - Outputs: Returns a wrapped non-negative integer index; passes through the original value when no segments are loaded.【F:src/gameplay.js†L85-L90】
+  - Side effects: None.【F:src/gameplay.js†L85-L90】
+  - Shared state touched and where it’s used: Enables `segmentAtIndex` and sprite placement logic to traverse the looped track safely.【F:src/gameplay.js†L1127-L1129】【F:src/gameplay.js†L2116-L2124】
+  - Dependencies: Depends on the captured `segments` array and `hasSegments()` guard.【F:src/gameplay.js†L73-L90】
+  - Edge cases handled or missed: Wraps negative indices by adding the segment count; when `segments.length` is zero it simply returns the input, leaving upstream code to handle emptiness.【F:src/gameplay.js†L85-L90】
+  - Performance: Constant; frequently executed while generating sprite instances or iterating the track.【F:src/gameplay.js†L85-L2119】
+  - Units / spaces: Operates on index positions only.【F:src/gameplay.js†L85-L1129】
+  - Determinism: Deterministic for given inputs and segment count.【F:src/gameplay.js†L85-L90】
+  - Keep / change / delete: Keep; prevents repeated modulus boilerplate in callers.
+  - Confidence / assumptions: High confidence; assumes `segments.length` fits within standard number precision.
+
 - `ensureArray`
+  - Purpose: Guarantees that an object owns an array under the requested key, creating one when absent, so callers can push into it without guards.【F:src/gameplay.js†L92-L96】
+  - Inputs: `obj` — target object (can be falsy); `key` — property name to ensure as an array.【F:src/gameplay.js†L92-L96】
+  - Outputs: Returns the existing or newly created array; falls back to an empty array when `obj` is falsy.【F:src/gameplay.js†L92-L96】
+  - Side effects: Initializes `obj[key]` to `[]` when missing, mutating the supplied object.【F:src/gameplay.js†L92-L96】
+  - Shared state touched and where it’s used: Populates per-segment sprite and car collections during gameplay and spawning routines.【F:src/gameplay.js†L863-L865】【F:src/gameplay.js†L1213-L1236】
+  - Dependencies: None.【F:src/gameplay.js†L92-L96】
+  - Edge cases handled or missed: Safely handles falsy objects by returning a new array, though callers must recognize that pushes into the returned array won't persist when `obj` is null.【F:src/gameplay.js†L92-L96】
+  - Performance: Constant-time check; invoked frequently while managing per-segment entities.【F:src/gameplay.js†L92-L1236】
+  - Units / spaces: N/A—creates arrays only.【F:src/gameplay.js†L92-L96】
+  - Determinism: Deterministic for the same object and key.【F:src/gameplay.js†L92-L96】
+  - Keep / change / delete: Keep; reduces repetitive `if (!obj[key]) obj[key] = []` patterns.
+  - Confidence / assumptions: High confidence; assumes callers respect the returned array semantics.
+
 - `atlasFrameUv`
+  - Purpose: Converts a frame index within a sprite atlas into normalized UV coordinates for rendering.【F:src/gameplay.js†L98-L112】
+  - Inputs: `frameIndex` — desired frame number; `columns` — number of columns in the atlas; `totalFrames` — total frames available (clamped to ≥1).【F:src/gameplay.js†L98-L111】
+  - Outputs: Returns an object with the four UV corners (`u1`…`v4`) covering the frame tile.【F:src/gameplay.js†L108-L111】
+  - Side effects: None.【F:src/gameplay.js†L98-L111】
+  - Shared state touched and where it’s used: Supplies UVs when updating sprite frames and when fallback atlas metadata computes frame coordinates.【F:src/gameplay.js†L198-L205】【F:src/gameplay.js†L356-L363】
+  - Dependencies: Pure math helper; no external calls beyond `Math` functions.【F:src/gameplay.js†L98-L111】
+  - Edge cases handled or missed: Clamps frame indices into the valid range and enforces at least one column/row; does not handle atlases with irregular layouts or padding.【F:src/gameplay.js†L98-L111】
+  - Performance: Constant arithmetic invoked per frame update for animated sprites.【F:src/gameplay.js†L98-L205】
+  - Units / spaces: UV coordinates in normalized [0,1] texture space.【F:src/gameplay.js†L108-L111】
+  - Determinism: Deterministic for identical numeric inputs.【F:src/gameplay.js†L98-L111】
+  - Keep / change / delete: Keep; encapsulates atlas math that would otherwise be error-prone when repeated.
+  - Confidence / assumptions: High confidence; assumes uniform grids without per-frame offsets.
+
 - `normalizeAnimClip`
+  - Purpose: Sanitizes raw animation clip definitions into a canonical shape with validated frame lists and playback mode.【F:src/gameplay.js†L114-L124】
+  - Inputs: `rawClip` — potentially sparse clip object; `fallbackFrame` — numeric frame to insert when no frames exist; `useFallback` — boolean controlling fallback insertion.【F:src/gameplay.js†L114-L123】
+  - Outputs: Returns `{ frames, playback }` where frames is a filtered array of finite numbers and playback is one of `loop`, `pingpong`, `once`, or `none`.【F:src/gameplay.js†L114-L123】
+  - Side effects: None.【F:src/gameplay.js†L114-L123】
+  - Shared state touched and where it’s used: Feeds into `createSpriteAnimationState` so sprite instances can initialize consistent animation state.【F:src/gameplay.js†L126-L140】
+  - Dependencies: Uses local `Number.isFinite` filtering and lowercase string comparisons; no external modules.【F:src/gameplay.js†L114-L123】
+  - Edge cases handled or missed: Filters out non-numeric frames and provides a fallback when desired; treats unrecognized playback strings as `none` but does not deduplicate frames.【F:src/gameplay.js†L114-L123】
+  - Performance: Clones the frame array once; invoked during sprite instantiation, not per frame.【F:src/gameplay.js†L117-L140】
+  - Units / spaces: Works with animation frame indices; no time units until playback occurs.【F:src/gameplay.js†L114-L123】
+  - Determinism: Deterministic for the same input clip and fallback options.【F:src/gameplay.js†L114-L123】
+  - Keep / change / delete: Keep; centralizes clip sanitization logic that would otherwise be duplicated wherever clips are loaded.
+  - Confidence / assumptions: High confidence; assumes clips, when provided, already follow general structure (e.g., `frames` array).
+
 - `createSpriteAnimationState`
+  - Purpose: Combines base and interaction clips into a runtime animation state object that tracks frame progression, playback rules, and defaults.【F:src/gameplay.js†L126-L150】
+  - Inputs: `baseClipRaw`, `interactClipRaw` — clip definitions; `frameDuration` — seconds per frame (defaults to 1/60 when invalid); `fallbackFrame` — frame to use when clips are empty.【F:src/gameplay.js†L126-L148】
+  - Outputs: Returns an animation state object with clip references, frame indices, timers, and flags, or `null` when no usable frames exist.【F:src/gameplay.js†L131-L149】
+  - Side effects: None; constructs a new object.【F:src/gameplay.js†L126-L149】
+  - Shared state touched and where it’s used: Used when instantiating sprites so each sprite tracks its own playback state.【F:src/gameplay.js†L848-L855】
+  - Dependencies: Calls `normalizeAnimClip` for each clip before assembling the state.【F:src/gameplay.js†L127-L130】
+  - Edge cases handled or missed: Returns `null` when both clips lack frames, ensures fallback frames populate static animations, and configures playback flags based on clip modes; does not validate that fallback frames exist within atlas ranges.【F:src/gameplay.js†L126-L149】
+  - Performance: Constant work per sprite instantiation.【F:src/gameplay.js†L126-L149】
+  - Units / spaces: Uses frame indices and seconds for duration/accumulator values.【F:src/gameplay.js†L138-L147】
+  - Determinism: Deterministic for given clip inputs.【F:src/gameplay.js†L126-L149】
+  - Keep / change / delete: Keep; encapsulates animation state initialization logic for reuse.
+  - Confidence / assumptions: High confidence; assumes clips are relatively small arrays.
+
 - `currentAnimationClip`
+  - Purpose: Returns the clip currently designated as active so frame advancement code knows which frame list to use.【F:src/gameplay.js†L153-L157】
+  - Inputs: `anim` — animation state object with `active` and `clips` fields.【F:src/gameplay.js†L153-L157】
+  - Outputs: The active clip object or `null` when unavailable.【F:src/gameplay.js†L153-L157】
+  - Side effects: None.【F:src/gameplay.js†L153-L157】
+  - Shared state touched and where it’s used: Consulted by `advanceSpriteAnimation` on every frame tick before updating frame indices.【F:src/gameplay.js†L207-L214】
+  - Dependencies: None beyond reading the `anim` object.【F:src/gameplay.js†L153-L157】
+  - Edge cases handled or missed: Falls back to the base clip when the active mode is not `interact` or the interaction clip is missing; returns `null` when the state object is malformed.【F:src/gameplay.js†L153-L157】
+  - Performance: Constant; executed per sprite per frame.【F:src/gameplay.js†L207-L214】
+  - Units / spaces: N/A—returns clip objects only.【F:src/gameplay.js†L153-L157】
+  - Determinism: Deterministic for identical animation state input.【F:src/gameplay.js†L153-L157】
+  - Keep / change / delete: Keep; isolates clip-selection logic for clarity.
+  - Confidence / assumptions: High confidence; assumes animation states follow the structure produced by `createSpriteAnimationState`.
+
 - `clampFrameIndex`
+  - Purpose: Constrains a frame index to the valid range for a clip, preventing out-of-bounds access when switching or advancing animations.【F:src/gameplay.js†L159-L166】
+  - Inputs: `idx` — desired frame index; `length` — number of frames available.【F:src/gameplay.js†L159-L165】
+  - Outputs: Returns a non-negative integer within `[0, length - 1]`, or `0` when inputs are invalid.【F:src/gameplay.js†L159-L165】
+  - Side effects: None.【F:src/gameplay.js†L159-L165】
+  - Shared state touched and where it’s used: Used by clip switching and playback updates to keep `frameIndex` and `currentFrame` in bounds.【F:src/gameplay.js†L168-L195】【F:src/gameplay.js†L226-L283】
+  - Dependencies: Relies on `Math.floor` and local logic only.【F:src/gameplay.js†L159-L165】
+  - Edge cases handled or missed: Handles NaN indices and non-positive lengths by returning `0`; does not clamp to wrap-around behavior (callers handle looping separately).【F:src/gameplay.js†L159-L165】
+  - Performance: Constant, invoked frequently during animation updates.【F:src/gameplay.js†L159-L283】
+  - Units / spaces: Index positions only.【F:src/gameplay.js†L159-L165】
+  - Determinism: Deterministic for numeric inputs.【F:src/gameplay.js†L159-L165】
+  - Keep / change / delete: Keep; essential safeguard against array bounds errors.
+  - Confidence / assumptions: High confidence; assumes callers pass finite lengths.
+
 - `switchSpriteAnimationClip`
+  - Purpose: Activates a different clip on an animation state, optionally restarting timing so sprites can transition between base and interaction animations.【F:src/gameplay.js†L168-L196】
+  - Inputs: `anim` — animation state to mutate; `clipName` — `'base'` or `'interact'`; `restart` — boolean indicating whether to reset timers and indices.【F:src/gameplay.js†L168-L188】
+  - Outputs: None; mutates the animation state in place.【F:src/gameplay.js†L168-L195】
+  - Side effects: Updates `anim.active`, `frameIndex`, `direction`, `accumulator`, and playback flags; may update `currentFrame`.【F:src/gameplay.js†L172-L195】
+  - Shared state touched and where it’s used: Called when interactive sprites finish interacting to return to the base clip, and when gameplay triggers interaction animations.【F:src/gameplay.js†L274-L283】【F:src/gameplay.js†L1934-L1944】
+  - Dependencies: Uses `clampFrameIndex` to keep indices valid before sampling frames.【F:src/gameplay.js†L177-L194】
+  - Edge cases handled or missed: Ignores requests when the desired clip is absent, and supports non-restarting transitions; does not provide blended transitions between clips.【F:src/gameplay.js†L168-L195】
+  - Performance: Constant per invocation, typically triggered on discrete events rather than every frame.【F:src/gameplay.js†L168-L195】
+  - Units / spaces: Operates on frame indices and seconds stored in the animation state.【F:src/gameplay.js†L168-L195】
+  - Determinism: Deterministic given the same animation state and parameters.【F:src/gameplay.js†L168-L195】
+  - Keep / change / delete: Keep; encapsulates clip-toggle logic that would be verbose inline.
+  - Confidence / assumptions: High confidence; assumes animation states follow the structure from `createSpriteAnimationState`.
+
 - `updateSpriteUv`
+  - Purpose: Recomputes a sprite’s UV coordinates whenever its animation frame changes so rendering samples the correct atlas tile.【F:src/gameplay.js†L198-L205】
+  - Inputs: `sprite` — object expected to contain `atlasInfo` metadata and the current `animFrame` index.【F:src/gameplay.js†L198-L204】
+  - Outputs: None directly; assigns a `uv` object onto the sprite when data is valid.【F:src/gameplay.js†L198-L205】
+  - Side effects: Mutates `sprite.uv` in place after validating atlas info.【F:src/gameplay.js†L198-L205】
+  - Shared state touched and where it’s used: Called immediately after sprite creation and every time animation advances to keep GPU buffers in sync.【F:src/gameplay.js†L862-L865】【F:src/gameplay.js†L268-L283】
+  - Dependencies: Uses `atlasFrameUv` to compute the coordinate data.【F:src/gameplay.js†L202-L205】
+  - Edge cases handled or missed: Exits early when atlas metadata or frame index is missing, preventing crashes but leaving `sprite.uv` unchanged; does not fallback to default UVs when atlas info is absent.【F:src/gameplay.js†L198-L204】
+  - Performance: Constant per invocation; runs each frame for animated sprites and on spawn for static sprites.【F:src/gameplay.js†L198-L205】【F:src/gameplay.js†L862-L865】
+  - Units / spaces: Produces normalized [0,1] UV coordinates compatible with WebGL buffers.【F:src/gameplay.js†L202-L205】
+  - Determinism: Deterministic with identical sprite metadata.【F:src/gameplay.js†L198-L205】
+  - Keep / change / delete: Keep; central utility avoids duplicating atlas logic across render paths.
+  - Confidence / assumptions: High confidence; assumes sprites that require UVs provide valid `atlasInfo`.
+
 - `advanceSpriteAnimation`
+  - Purpose: Steps a sprite’s animation forward based on elapsed time, handling looping, once, and ping-pong playback while updating sprite frames and UVs.【F:src/gameplay.js†L207-L285】
+  - Inputs: `sprite` — expects an `animation` state from `createSpriteAnimationState`; `dt` — delta time in seconds since the last update.【F:src/gameplay.js†L207-L285】
+  - Outputs: None; mutates the sprite’s animation state and `animFrame`/`uv` properties.【F:src/gameplay.js†L207-L285】
+  - Side effects: Updates frame indices, accumulators, playback flags, current frame, and triggers clip switches back to the base animation when interaction clips finish.【F:src/gameplay.js†L220-L283】
+  - Shared state touched and where it’s used: Invoked during gameplay updates to animate active sprites each frame.【F:src/gameplay.js†L2067-L2069】
+  - Dependencies: Leverages `currentAnimationClip`, `clampFrameIndex`, `updateSpriteUv`, and `switchSpriteAnimationClip` to manage playback safely.【F:src/gameplay.js†L210-L283】
+  - Edge cases handled or missed: Handles missing animation data, empty frame lists, and ensures playback stops at ends for `once` clips; ping-pong mode reverses direction; does not account for variable frame durations per frame.【F:src/gameplay.js†L210-L283】
+  - Performance: While-loop can iterate multiple frames if `dt` is large, but otherwise runs in constant time per sprite per frame; frequency equals the sprite update cadence.【F:src/gameplay.js†L233-L266】【F:src/gameplay.js†L2067-L2072】
+  - Units / spaces: Uses seconds for `dt` and frame durations, and frame indices for atlas lookups.【F:src/gameplay.js†L222-L283】
+  - Determinism: Deterministic for the same sprite state and `dt`; dependent on floating-point accumulation order.【F:src/gameplay.js†L207-L285】
+  - Keep / change / delete: Keep; consolidates complex playback behavior in one tested routine.
+  - Confidence / assumptions: High confidence; assumes `dt` is non-negative and relatively small (per-frame timestep).
+
 - `createSpriteMetaEntry`
+  - Purpose: Produces a sprite metadata descriptor by merging defaults with catalog-provided metrics so runtime systems know scale, tint, textures, and atlas layout.【F:src/gameplay.js†L378-L409】
+  - Inputs: `metrics` — optional object supplying overrides such as `wN`, `aspect`, `tint`, `textureKey`, and `atlas` data; defaults to `SPRITE_METRIC_FALLBACK`.【F:src/gameplay.js†L378-L406】
+  - Outputs: Returns a new metadata object with scalar fields plus `tex` and `frameUv` helper functions tailored to the sprite.【F:src/gameplay.js†L384-L407】
+  - Side effects: None; creates and returns a new object each call.【F:src/gameplay.js†L378-L407】
+  - Shared state touched and where it’s used: Catalog building code calls this when converting sprite definitions into runtime metadata used during sprite instantiation.【F:src/gameplay.js†L732-L738】
+  - Dependencies: Reads `World.assets.textures` when resolving textures and reuses `atlasFrameUv` for atlas frame lookups.【F:src/gameplay.js†L388-L407】
+  - Edge cases handled or missed: Provides cloned tint arrays to avoid shared mutation, falls back to default texture lookups, and handles missing atlas info by returning `null`; does not deep-clone nested atlas objects beyond spread syntax.【F:src/gameplay.js†L384-L407】
+  - Performance: Constant-time object construction per catalog entry.【F:src/gameplay.js†L378-L407】
+  - Units / spaces: Encapsulates normalized width (`wN`) and aspect ratios, which correspond to world-space scaling parameters.【F:src/gameplay.js†L384-L399】
+  - Determinism: Deterministic for the same metrics input and current world texture map.【F:src/gameplay.js†L384-L407】
+  - Keep / change / delete: Keep; centralizes sprite metadata normalization across catalogs.
+  - Confidence / assumptions: High confidence; assumes metrics resemble SpriteCatalog definitions and that textures may be missing during early bootstrap.
+
 - `createInitialMetrics`
+  - Purpose: Initializes the player metrics tracker with zeroed counters and timers so race statistics start from a clean slate.【F:src/gameplay.js†L1043-L1057】
+  - Inputs: None.【F:src/gameplay.js†L1043-L1057】
+  - Outputs: Returns a fresh metrics object containing counters for hits, boosts, air time, and other race stats.【F:src/gameplay.js†L1043-L1057】
+  - Side effects: None; creates a new object.【F:src/gameplay.js†L1043-L1057】
+  - Shared state touched and where it’s used: Assigned to `state.metrics` on initialization and whenever stats reset after a race.【F:src/gameplay.js†L1108-L1110】【F:src/gameplay.js†L2738-L2739】
+  - Dependencies: None.【F:src/gameplay.js†L1043-L1057】
+  - Edge cases handled or missed: Sets guard-rail cooldown and boolean flags to sensible defaults; does not include derived metrics like average speed (calculated elsewhere).【F:src/gameplay.js†L1043-L1057】
+  - Performance: Constant; invoked on startup and resets only.【F:src/gameplay.js†L1043-L1057】
+  - Units / spaces: Fields represent counts, seconds, or booleans depending on metric (e.g., `airTime` in seconds).【F:src/gameplay.js†L1043-L1057】
+  - Determinism: Deterministic—always returns identical baseline data.【F:src/gameplay.js†L1043-L1057】
+  - Keep / change / delete: Keep; provides a single source of truth for metric defaults.
+  - Confidence / assumptions: High confidence; assumes downstream code increments these properties directly.
+
 - `getSpriteMeta`
+  - Purpose: Retrieves the sprite metadata definition for a given kind, falling back to defaults when overrides are absent.【F:src/gameplay.js†L1112-L1117】
+  - Inputs: `kind` — sprite kind identifier string.【F:src/gameplay.js†L1112-L1117】
+  - Outputs: Returns a metadata object describing size, tint, texture resolver, and atlas info.【F:src/gameplay.js†L1112-L1117】
+  - Side effects: None; returns references without modifying state.【F:src/gameplay.js†L1112-L1117】
+  - Shared state touched and where it’s used: Consulted whenever gameplay needs sprite dimensions—for example, to compute the player hitbox or spawn interactions.【F:src/gameplay.js†L1209-L1210】【F:src/gameplay.js†L1926-L1934】
+  - Dependencies: Reads from `state.spriteMeta` (runtime overrides) and `DEFAULT_SPRITE_META` constants.【F:src/gameplay.js†L1102-L1117】
+  - Edge cases handled or missed: Falls back to a generic default when neither overrides nor built-ins cover the requested kind, ensuring callers still receive reasonable metrics.【F:src/gameplay.js†L1112-L1117】
+  - Performance: Constant lookup; executed frequently during gameplay loops.【F:src/gameplay.js†L1112-L1934】
+  - Units / spaces: Metadata fields (e.g., `wN`, `aspect`) correspond to normalized world width and scaling ratios.【F:src/gameplay.js†L1112-L1117】
+  - Determinism: Deterministic for the same state configuration.【F:src/gameplay.js†L1112-L1117】
+  - Keep / change / delete: Keep; central accessor prevents scattering fallback logic.
+  - Confidence / assumptions: High confidence; assumes `state.spriteMeta` is kept up to date with overrides from sprite data.
+
 - `defaultGetKindScale`
+  - Purpose: Supplies the default scaling rule for sprite kinds, scaling the player sprite while leaving others unchanged.【F:src/gameplay.js†L1041-L1093】
+  - Inputs: `kind` — sprite kind identifier (string).【F:src/gameplay.js†L1041-L1042】
+  - Outputs: Returns `player.scale` when the kind is `'PLAYER'`, otherwise `1`.【F:src/gameplay.js†L1041-L1042】
+  - Side effects: None.【F:src/gameplay.js†L1041-L1042】
+  - Shared state touched and where it’s used: Assigned to `state.getKindScale` so width calculations and hitboxes can scale sprites appropriately by kind.【F:src/gameplay.js†L1092-L1093】
+  - Dependencies: Reads `player.scale` from configuration captured earlier in the module.【F:src/gameplay.js†L9-L22】【F:src/gameplay.js†L1041-L1042】
+  - Edge cases handled or missed: Provides a simple fallback when no specialized scaler is injected; does not handle other kinds needing non-unit scale without overrides.【F:src/gameplay.js†L1041-L1093】
+  - Performance: Constant; invoked whenever width calculations run.【F:src/gameplay.js†L1041-L1210】
+  - Units / spaces: Returns scalar multipliers applied to normalized sprite widths.【F:src/gameplay.js†L1041-L1210】
+  - Determinism: Deterministic for a given config.【F:src/gameplay.js†L1041-L1042】
+  - Keep / change / delete: Keep; provides a safe default when no dynamic scaling strategy is supplied.
+  - Confidence / assumptions: High confidence; assumes player scale is defined in configuration.
+
 - `segmentAtS`
+  - Purpose: Finds the track segment that covers a given longitudinal `s` position, wrapping around the track length as needed.【F:src/gameplay.js†L1119-L1123】
+  - Inputs: `s` — world distance along the track (can be outside `[0, trackLength)`).【F:src/gameplay.js†L1119-L1123】
+  - Outputs: Returns the corresponding segment object or `null` if no segments exist.【F:src/gameplay.js†L1119-L1123】
+  - Side effects: None.【F:src/gameplay.js†L1119-L1123】
+  - Shared state touched and where it’s used: Drives numerous gameplay queries—e.g., boost detection and effects rely on it to inspect the player’s current segment.【F:src/gameplay.js†L1188-L1191】【F:src/gameplay.js†L1213-L1236】
+  - Dependencies: Depends on `trackLengthRef`, `wrapByLength`, `segmentLength`, and the `segments` array.【F:src/gameplay.js†L73-L1133】
+  - Edge cases handled or missed: Returns `null` when no segments are available or track length is non-positive; uses floor division to select a segment but assumes evenly sized segments.【F:src/gameplay.js†L1119-L1133】
+  - Performance: Constant time; executed frequently each frame for physics and rendering.【F:src/gameplay.js†L1119-L1236】
+  - Units / spaces: Operates in the track’s `s` distance space; segment length derived from configuration.【F:src/gameplay.js†L73-L1133】
+  - Determinism: Deterministic for given `s` and current track state.【F:src/gameplay.js†L1119-L1123】
+  - Keep / change / delete: Keep; core utility for spatial queries along the track.
+  - Confidence / assumptions: High confidence; assumes segment data is continuous and segment lengths are consistent.
+
 - `segmentAtIndex`
+  - Purpose: Retrieves a segment by index with automatic wrapping so callers can iterate forwards or backwards around the loop safely.【F:src/gameplay.js†L1125-L1129】
+  - Inputs: `idx` — integer index (may be negative or beyond the segment count).【F:src/gameplay.js†L1125-L1129】
+  - Outputs: Returns the wrapped segment or `null` when no segments exist.【F:src/gameplay.js†L1125-L1129】
+  - Side effects: None.【F:src/gameplay.js†L1125-L1129】
+  - Shared state touched and where it’s used: Used extensively when generating sprite placements and when computing neighbor segments for effects.【F:src/gameplay.js†L742-L783】【F:src/gameplay.js†L2116-L2124】
+  - Dependencies: Utilizes `hasSegments()` and `wrapSegmentIndex` to ensure safe access.【F:src/gameplay.js†L77-L90】【F:src/gameplay.js†L1125-L1129】
+  - Edge cases handled or missed: Returns `null` when the segment list is empty; does not validate that the returned segment is fully populated (assumes data integrity).【F:src/gameplay.js†L1125-L1129】
+  - Performance: Constant lookup; used frequently during placement loops.【F:src/gameplay.js†L742-L2124】
+  - Units / spaces: Works with zero-based segment indices.【F:src/gameplay.js†L1125-L1129】
+  - Determinism: Deterministic for a given index and segment list.【F:src/gameplay.js†L1125-L1129】
+  - Keep / change / delete: Keep; wrapper simplifies repetitive modulo logic.
+  - Confidence / assumptions: High confidence; assumes `segments` array remains stable during iteration.
+
 - `elevationAt`
+  - Purpose: Computes the interpolated road height at a longitudinal position using the current segment geometry.【F:src/gameplay.js†L1131-L1137】
+  - Inputs: `s` — world distance along the track.【F:src/gameplay.js†L1131-L1137】
+  - Outputs: Returns the vertical world coordinate at that `s`, defaulting to `0` when no segments exist.【F:src/gameplay.js†L1131-L1137】
+  - Side effects: None.【F:src/gameplay.js†L1131-L1137】
+  - Shared state touched and where it’s used: Feeds into ground-profile calculations and physics routines when determining vehicle height and camera tilt.【F:src/gameplay.js†L1139-L1148】【F:src/gameplay.js†L2412-L2416】
+  - Dependencies: Uses `trackLengthRef`, `wrapByLength`, `segmentLength`, and `lerp` to blend between segment endpoints.【F:src/gameplay.js†L52-L1137】
+  - Edge cases handled or missed: Safely handles empty track or zero length by returning `0`; assumes segments provide `p1.world`/`p2.world` coordinates.【F:src/gameplay.js†L1131-L1137】
+  - Performance: Constant; invoked frequently each frame during physics and rendering.【F:src/gameplay.js†L1131-L2416】
+  - Units / spaces: Works in world height units consistent with segment `y` values.【F:src/gameplay.js†L1131-L1137】
+  - Determinism: Deterministic for a given `s` and track data.【F:src/gameplay.js†L1131-L1137】
+  - Keep / change / delete: Keep; central interpolation helper for vertical sampling.
+  - Confidence / assumptions: High confidence; assumes segment endpoints are valid and ordered along `s`.
+
 - `groundProfileAt`
+  - Purpose: Estimates the road’s slope and curvature around a position so physics and rendering can react to elevation changes smoothly.【F:src/gameplay.js†L1139-L1148】
+  - Inputs: `s` — world distance along the track.【F:src/gameplay.js†L1139-L1148】
+  - Outputs: Returns `{ y, dy, d2y }` containing elevation, first derivative, and second derivative.【F:src/gameplay.js†L1139-L1148】
+  - Side effects: None.【F:src/gameplay.js†L1139-L1148】
+  - Shared state touched and where it’s used: Supplies height data to player floor calculations and other slope-aware systems.【F:src/gameplay.js†L1153-L1160】【F:src/gameplay.js†L1888-L1897】
+  - Dependencies: Relies on `elevationAt` sampled slightly ahead and behind the target point, using a step based on segment length.【F:src/gameplay.js†L1139-L1148】
+  - Edge cases handled or missed: Provides zero derivatives when segments are missing; uses a minimum sampling distance to avoid division by zero but may underrepresent very sharp transitions.【F:src/gameplay.js†L1139-L1148】
+  - Performance: Calls `elevationAt` three times per invocation; used repeatedly in physics updates.【F:src/gameplay.js†L1139-L1897】
+  - Units / spaces: Elevation (`y`) in world units, slopes (`dy`, `d2y`) per unit `s`.【F:src/gameplay.js†L1139-L1148】
+  - Determinism: Deterministic given current track geometry.【F:src/gameplay.js†L1139-L1148】
+  - Keep / change / delete: Keep; encapsulates derivative sampling needed for physics smoothing.
+  - Confidence / assumptions: High confidence; assumes segment spacing is fine-grained enough for finite difference approximation.
+
 - `playerFloorHeightAt`
+  - Purpose: Determines the player vehicle’s floor height at a given `s` and lateral position, respecting custom floor overrides when available.【F:src/gameplay.js†L1150-L1159】
+  - Inputs: `s` — longitudinal position (defaults to current player `s`); `nNorm` — normalized lateral offset (defaults to player N); `groundProfile` — optional precomputed `{ y, dy, d2y }` to reuse.【F:src/gameplay.js†L1150-L1159】
+  - Outputs: Returns the height value the player should rest on.【F:src/gameplay.js†L1150-L1159】
+  - Side effects: None.【F:src/gameplay.js†L1150-L1159】
+  - Shared state touched and where it’s used: Called throughout physics updates to keep the player aligned with the road surface during movement and landings.【F:src/gameplay.js†L1897-L1903】【F:src/gameplay.js†L2215-L2221】
+  - Dependencies: Prefers `World.floorElevationAt` when defined, falling back to `groundProfileAt` otherwise.【F:src/gameplay.js†L1151-L1160】
+  - Edge cases handled or missed: Handles missing floor samplers by using the road profile; assumes provided `groundProfile` matches the same `s`/`nNorm`.【F:src/gameplay.js†L1150-L1160】
+  - Performance: Constant after optional profile reuse; invoked every frame for player physics.【F:src/gameplay.js†L1150-L2221】
+  - Units / spaces: Returns height in world units (same scale as elevation samples).【F:src/gameplay.js†L1150-L1159】
+  - Determinism: Deterministic for the same track state and inputs.【F:src/gameplay.js†L1150-L1159】
+  - Keep / change / delete: Keep; consolidates multi-source floor sampling logic.
+  - Confidence / assumptions: High confidence; assumes `floorElevationAt` (when provided) returns finite values.
+
 - `boostZonesOnSegment`
+  - Purpose: Retrieves the list of boost zones attached to a segment so gameplay and rendering can highlight or process them.【F:src/gameplay.js†L1162-L1165】
+  - Inputs: `seg` — segment object, expected to carry a `features.boostZones` array.【F:src/gameplay.js†L1162-L1165】
+  - Outputs: Returns the boost-zone array or an empty list when absent.【F:src/gameplay.js†L1162-L1165】
+  - Side effects: None.【F:src/gameplay.js†L1162-L1165】
+  - Shared state touched and where it’s used: Used to detect player boost interactions and to render boost indicators on the road.【F:src/gameplay.js†L1180-L1184】【F:src/render.js†L1092-L1098】
+  - Dependencies: None; simple property accessor.【F:src/gameplay.js†L1162-L1165】
+  - Edge cases handled or missed: Returns an empty array when the property is missing or not an array; does not deep-copy results, so callers should avoid mutating shared zone definitions.【F:src/gameplay.js†L1162-L1165】
+  - Performance: Constant; invoked every frame for the active segment during boost checks and drawing.【F:src/gameplay.js†L1180-L1184】【F:src/render.js†L1092-L1098】
+  - Units / spaces: Boost zones encode normalized lateral bounds and types, consistent with other gameplay zone data.【F:src/gameplay.js†L1162-L1184】
+  - Determinism: Deterministic for a given segment object.【F:src/gameplay.js†L1162-L1165】
+  - Keep / change / delete: Keep; small helper keeps feature access consistent and safe.
+  - Confidence / assumptions: High confidence; assumes segments store boost-zone definitions under `features.boostZones`.
 - `playerWithinBoostZone`
 - `boostZonesForPlayer`
 - `jumpZoneForPlayer`
