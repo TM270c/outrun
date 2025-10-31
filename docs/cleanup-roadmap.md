@@ -1,50 +1,5 @@
-# Outrun Codebase – Cleanup Roadmap (Pass 1 Overview)
+# Outrun Codebase – Cleanup Roadmap (Pass 2 Review)
 
-## 1. Game Overview
-- What it is: A browser racing game with menus, vehicle selection, races, scoreboards, and bonus items.
-- Where it runs: In the browser, using WebGL helpers in `src/gl/` to draw the game and normal DOM code for menus.
-- What it loads: Settings from `src/config.js`, track data from `tracks/`, sprite info from `src/sprite-catalog.js`, and texture info from `src/world.js`.
-
-## 2. Main Building Blocks
-
-### 2.1 Starting the Game
-- `src/bootstrap.js` loads assets, sets up callbacks, and shares helpers across the rest of the code.
-- `src/app.js` is the overall game manager. It swaps between menus, races, pause screens, and the scoreboard. It also tracks button presses and animation timing.
-
-### 2.2 Settings and Static Data
-- `src/config.js` stores constants such as physics values, track layout numbers, render sizes, and debug toggles.
-- `tracks/` holds the CSV files that describe the track layout, hills, and curves.
-
-### 2.3 Math and Helpers
-- `src/math.js` is a grab bag of number helpers. It includes easing curves, random helpers, and small math utilities that many files use.
-
-### 2.4 World and Assets
-- `src/world.js` creates the in-game world. It builds track segments, sets up cliff data, manages boost zones, and keeps track of textures.
-
-### 2.5 Racing Logic
-- `src/gameplay.js` runs the race. It updates car physics, handles collisions, spawns traffic, keeps time, and calls into rendering.
-
-### 2.6 Drawing the Game
-- `src/render.js` draws everything on screen. It prepares road geometry, sprites, overlays, and any debug panels each frame.
-- `src/gl/` contains the low-level WebGL code for shaders, buffers, and textured quads.
-
-### 2.7 Sprites and Animation
-- `src/sprite-catalog.js` defines every sprite sheet, animation frame, and scaling rule for vehicles, roadside props, and UI icons.
-
-### 2.8 Menus and UI
-- `src/ui/screens.js` generates the HTML for each menu screen, such as the main menu, pause screen, vehicle select, settings, scoreboard, attract mode, and race complete screens.
-
-### 2.9 Input Handling
-- Button handling lives partly in `app.js` (menus) and partly in `gameplay.js` (driving controls). Both listen for key events and update shared input state.
-
-### 2.10 Other Files
-- `docs/`, `tex/`, `video/` contain written docs and art references.
-- `index.mod.html` is the main HTML shell for the game canvas and menus.
-- `monolith-old.txt` is an older architecture reference.
-
-## 3. Function Inventory by Category
-
-### 3.1 Application & Menu Flow (`src/app.js`)
 - `createInitialRaceCompleteState`
   - Purpose: Factory for a blank race-complete screen state so menus can start fresh when a race ends or restarts.
   - Inputs: None.
@@ -59,6 +14,9 @@
   - Keep / change / delete: Keep; simplest alternative is inlining the literal where used.
   - Confidence / assumptions: High confidence; assumes `letters` of `'AAA'` is intended default.
   - Notes: Possible reductions: none spotted; placement in `src/app.js` matches usage via `resetRaceCompleteState`; consider renaming to shorter `inputNameState` for clarity.
+
+
+
 - `resetRaceCompleteState`
   - Purpose: Resets the race-finish screen data back to a clean slate so the next race starts with blank initials and zeroed time.
   - Inputs: None.
@@ -73,6 +31,9 @@
   - Keep / change / delete: Keep; simple helper prevents duplicated setup—alternative is to inline the factory call.
   - Confidence / assumptions: High confidence; assumes no other module mutates `state.raceComplete` directly.
   - Notes: Reviewer noted there were "no notes" and the helper already looks adequate; I concur and suggest only revisiting if future menu reset work reveals redundant copies or missed shared behavior.
+
+
+
 - `now`
   - Purpose: Helper that grabs the current timestamp so menu flow can compare idle time without repeating the built-in Date.now call.
   - Inputs: None.
@@ -87,6 +48,9 @@
   - Keep / change / delete: Change—either inline Date.now, or keep the helper but rename it getTimeNow and allow injecting a test clock to cut indirection.
   - Confidence / assumptions: High confidence; assumes there are no hidden callers outside this file.
   - Notes: You felt the helper was fine and suggested renaming it to getTimeNow; I still recommend inlining Date.now or accepting an injected clock so tests stay predictable.
+
+
+
 - `markInteraction`
   - Purpose: Refreshes the menu idle timer whenever menus or settings detect user activity so attract mode does not trigger unexpectedly.
   - Inputs: None.
@@ -101,6 +65,9 @@
   - Keep / change / delete: Keep; central helper prevents repeating the timestamp write.
   - Confidence / assumptions: High confidence; assumes Date.now is available and state was initialized.
   - Notes: Previous helpers here all shape the attract-mode idle timer; reviewer noted we could inline to `Date.now()` or rename `now()` to `getTimeNow`, yet centralizing this clock write still makes the idle-timer maintenance easy if we tweak the attract flow.
+
+
+
 - `escapeHtml`
   - Purpose: Converts any incoming menu label or score text into safe HTML so UI templates cannot inject tags or break layout.
   - Inputs: `text` (any value; coerced to string; no length guard but intended for short UI snippets).
@@ -115,6 +82,9 @@
   - Keep / change / delete: Keep; simplest alternative is to rely on DOM text nodes via `textContent` instead of manual escaping.
   - Confidence / assumptions: High confidence; assumes menu strings stay reasonably short and mostly plain-language characters.
   - Notes: Reviewer confirmed this helper simply keeps player score initials constrained to safe characters like "ABC" so the menu never sees risky markup, and I agree the current implementation is sound while noting we could later simplify by routing menu strings through shared DOM text-node helpers if we consolidate UI rendering.
+
+
+
 - `resolveAssetUrlSafe`
   - Purpose: Wraps the world's asset resolver so menu templates can turn relative preview filenames into usable URLs without crashing if the resolver is missing.
   - Inputs: `path` string; accepts falsy (`''`, `null`, `undefined`) and any other value, though only non-empty strings resolve meaningfully.
@@ -129,6 +99,9 @@
   - Keep / change / delete: Keep; simplest tweak would be to inline a null-safe resolver but helper keeps template call clean.
   - Confidence / assumptions: High confidence; assumes `World` global remains stable and resolver returns a string.
   - Notes: Possible reductions include inlining the null-check if we ever centralize asset helpers or renaming to `safeResolveAssetUrl` so its guard role is clearer. Reviewer summary: “Uses `escapeHtml` so filenames render despite odd characters?” Clarification: this helper never touches HTML escaping and instead just delegates to `World.resolveAssetUrl`, so unusual characters flow through unchanged unless the resolver rewrites them. Future update could link it with a path sanitizer if we discover malformed inputs.
+
+
+
 - `normalizePreviewAtlas`
   - Purpose: Convert optional preview sprite sheet settings into a safe atlas description for the vehicle preview.
   - Inputs: `raw` object with `columns`, `rows`, `frameCount`, `frameRate`, `frameDuration`; expects positive numbers or empty.
@@ -143,6 +116,9 @@
   - Keep / change / delete: Keep; consolidates validation that would otherwise live inside `renderVehicleSelect`.
   - Confidence / assumptions: High confidence; assumes preview atlas configs stay small and numeric.
   - Notes: Reviewer summarized this as the helper that lets `renderVehicleSelect` slice the preview atlas, then asked whether it should merge with the atlas animation handler used by player vehicles and animated billboards; keep it separate for now because the preview path needs unique defaults, null returns, and timing fallbacks, but queue a follow-up to lift the shared frame math if those pipelines ever align.
+
+
+
 - `formatTimeMs`
   - Purpose: Converts a raw millisecond count into a friendly label for menus and scoreboards so players see human-readable times.
   - Inputs: `value` (number in milliseconds; accepts any finite number, clamps negatives to zero, ignores non-finite values).
@@ -157,6 +133,9 @@
   - Keep / change / delete: Keep; smallest alternative would be inlining the formatting string where used.
   - Confidence / assumptions: High confidence; assumes default locale formatting is acceptable for all displays.
   - Notes: Reviewer praised the explanation and restated that the helper simply turns raw milliseconds into something readable while asking if we duplicate this logic elsewhere, and my follow-up confirmed the formatter appears only in `src/app.js` today. Should another menu or HUD pathway need the same presentation, we can lift this helper into a shared time-formatting module so we do not drift on style.
+
+
+
 - `createLeaderboardEntry`
   - Purpose: Builds a leaderboard row with cleaned initials, numeric time, formatted label, saved date, and empty rank.
   - Inputs: Name text trimmed to three uppercase letters, scoreMs finish time in milliseconds with non-numbers treated as 0, optional date string defaulting to blank.
@@ -171,6 +150,9 @@
   - Keep / change / delete: Keep; alternative is to inline the object build at the two use sites.
   - Confidence / assumptions: High confidence; assumes the board expects three-letter uppercase initials and millisecond scores.
   - Notes: Reviewer asked, “What actually updates the entry in the .csv file?”—right now nothing writes back, because entries only live in memory while `fetch('data/leaderboard.csv')` seeds the list; if persistence ever arrives we could fold this helper into a loader/saver module or attach a dedicated save routine, but until then the clearest update is to document that gap.
+
+
+
 - `recomputeLeaderboardRanks`
   - Purpose: Walks the current leaderboard list and stamps each non-empty entry with its 1-based place so the menu can show accurate ranks after sorting or CSV import.
   - Inputs: `entries` array (defaults to `state.leaderboard.entries`); expects objects shaped like `createLeaderboardEntry`; ignores falsy slots.
@@ -185,6 +167,9 @@
   - Keep / change / delete: Keep; could fold into `sortLeaderboardEntries` but shared reuse by CSV import makes the helper worthwhile.
   - Confidence / assumptions: High confidence; assumes callers already sorted entries and that sparse arrays are rare.
   - Notes: Reviewer summary: "looks good, no notes, likely no need to fold"; I concur and would only revisit consolidation if future refactors merge leaderboard sorting and ranking into a single pass, so keep monitoring but no action required now.
+
+
+
 - `sortLeaderboardEntries`
   - Purpose: Keeps the leaderboard ordered so faster times float to the top, currently breaking ties alphabetically for display.
   - Inputs: None explicitly; reads `state.leaderboard.entries` which should contain objects with `score` numbers and `name` strings.
@@ -199,6 +184,9 @@
   - Keep / change / delete: Keep; could only be inlined alongside the rank refresh at each call site.
   - Confidence / assumptions: High confidence; assumes entries always provide numeric `score` and uppercase `name`.
   - Notes: Reviewer: "Alphabetical ordering on equal scores feels wrong; should favor newer runs so the recent score rises above." Response: Capture a precise play timestamp on each entry and update the comparator to sort by score then newest-first, keeping name as a final fallback so expectations and ranking stay aligned.
+
+
+
 - `findLeaderboardEntryIndexById`
   - Purpose: Finds where a saved leaderboard entry sits in the current list so menus can highlight the right racer.
   - Inputs: id (stored entry identifier, usually created when adding to the leaderboard; must be provided).
@@ -212,6 +200,9 @@
   - Determinism: Same id and state yield the same index; repeated calls do not change data.
   - Keep / change / delete: Keep; lightweight helper that could be folded into leaderboard lookup code if refactored.
   - Confidence / assumptions: High confidence, assuming entries retain their id values.
+
+
+
 - `addLeaderboardEntry`
 - setMode
   - Purpose: Switches the app between race, menu, attract, and other screens so the right panel is shown and menu focus resets.
@@ -238,7 +229,14 @@
   - Determinism: Non-deterministic because it stamps the current date and creates a fresh `Symbol` id; calling twice with the same input produces distinct entries.
   - Keep / change / delete: Keep; consider renaming to `recordLocalLeaderboardEntry` to clarify that it mutates local state.
   - Confidence / assumptions: High confidence; assumes `state.leaderboard` exists with initialized `entries` and `localEntries` arrays and that sorting stays consistent.
+
+
+
 - `setMode`
+  - Missing?
+
+
+
 - `ensureDom`
   - Purpose: Verifies the menu layer elements exist on the page and saves quick references so later menu updates do not crash.
   - Inputs: Document (current web page; must contain an element with id appMenuLayer); state.dom.menuLayer and state.dom.menuPanel (may be empty on first run).
@@ -252,6 +250,9 @@
   - Determinism: Given the same page structure it will always cache the same nodes; reruns do not change anything once stored.
   - Keep / change / delete: Keep; simple guard that could be merged into menu setup if caching is refactored.
   - Confidence / assumptions: High confidence; assumes the menu markup is present before init runs.
+
+
+
 - `renderMainMenu`
   - Purpose: Builds the main menu markup by delegating to the shared AppScreens template with the game title, tagline, and current option highlight so the menu panel can be redrawn in one call.【F:src/app.js†L251-L261】
   - Inputs: Reads AppScreens.mainMenu (UI renderer; must be truthy), mainMenuOptions (static list of "Start Race", "Leaderboard", "Settings" entries), and state.mainMenuIndex (current highlight; expected 0–options.length-1).【F:src/app.js†L8-L12】【F:src/app.js†L251-L259】
@@ -265,6 +266,9 @@
   - Determinism: Given the same state and AppScreens.mainMenu implementation it returns the same markup; no randomness or timers.【F:src/app.js†L251-L261】
   - Keep / change / delete: Keep; thin wrapper keeps updateMenuLayer tidy and could be merged there only if menus are restructured.【F:src/app.js†L251-L261】【F:src/app.js†L401-L404】
   - Confidence / assumptions: High confidence; assumes AppScreens.mainMenu synchronously returns a renderable string.【F:src/app.js†L251-L261】
+
+
+
 - `renderLeaderboard`
   - Purpose: Builds the leaderboard screen markup so players can see the top race times and any highlighted recent run.
   - Inputs: No arguments; reads `state.leaderboard.loading`, `error`, `entries`, and `highlightId` (highlight id may be null).
@@ -278,6 +282,9 @@
   - Determinism: Yes—given the same leaderboard state it produces the same HTML.
   - Keep / change / delete: Keep; simplest tweak would be to share the top-ten limit as a named constant if reuse expands.
   - Confidence / assumptions: High confidence; assumes upstream code keeps `displayValue` current and entries sorted.
+
+
+
 - `renderSettings`
   - Purpose: Builds the settings menu text so players see the snow toggle and the back option.
   - Inputs: None directly; reads snowEnabled (expected boolean) and settingsMenuIndex (expected 0–1) from shared state when called.
@@ -291,6 +298,9 @@
   - Determinism: Same state values return the same markup; repeated calls do not change any data.
   - Keep / change / delete: Keep; separation keeps each menu renderer focused, simplest alternative would be merging into a generic renderMenu function.
   - Confidence / assumptions: High confidence; assumes the state always includes the snow flag and menu index.
+
+
+
 - `renderPauseMenu`
   - Purpose: Builds the pause overlay markup so the player sees the resume and quit choices whenever play is halted.
   - Inputs: `AppScreens.pauseMenu` template function must exist; `pauseMenuOptions` list of two menu entries (`resume`, `quit`); `state.pauseMenuIndex` zero-based position expected between 0 and options length minus one.
@@ -317,6 +327,9 @@
   - Determinism: Same state and options yield the same HTML and no persistent changes.
   - Keep / change / delete: Keep; simplest alternative is inlining the AppScreens call insideupdateMenuLayer.
   - Confidence / assumptions: High confidence; assumes AppScreens.vehicleSelect returns astring and the vehicle option list stays small.
+
+
+
 - `renderAttract`
   - Purpose: Builds the attract-mode panel so the menu layer can show a looping promo video when the player idles.【F:src/app.js†L345-L347】【F:src/app.js†L391-L432】
   - Inputs: No parameters; depends on `AppScreens.attract` existing in the global template bundle.【F:src/app.js†L345-L347】
@@ -330,6 +343,9 @@
   - Determinism: Given the same template, returns the same markup and causes no persistent changes.【F:src/app.js†L345-L347】
   - Keep / change / delete: Keep; small wrapper keeps attract rendering logic isolated from `updateMenuLayer`.【F:src/app.js†L345-L347】【F:src/app.js†L391-L432】
   - Confidence / assumptions: High confidence; assumes the template synchronously returns HTML that `updateMenuLayer` will inject.【F:src/app.js†L345-L347】【F:src/app.js†L391-L432】
+
+
+
 
 - `renderRaceComplete`
   - Purpose: Produces the race-complete overlay showing run stats, initials entry state, and reveal phases after a finish.【F:src/app.js†L350-L367】
@@ -345,6 +361,9 @@
   - Keep / change / delete: Keep; isolates template wiring from the menu update loop.【F:src/app.js†L350-L367】【F:src/app.js†L391-L414】
   - Confidence / assumptions: High confidence; assumes upstream code maintains `state.raceComplete` consistency.【F:src/app.js†L42-L65】【F:src/app.js†L350-L367】
 
+
+
+
 - `startAttractPlayback`
   - Purpose: Configures and starts the attract-mode `<video>` element whenever the attract screen loads.【F:src/app.js†L369-L377】
   - Inputs: `video` — DOM video element; ignored when falsy.【F:src/app.js†L369-L377】
@@ -358,6 +377,9 @@
   - Determinism: Given the same element it always applies the same configuration, though actual playback depends on browser policy.【F:src/app.js†L369-L377】
   - Keep / change / delete: Keep; keeps media setup separate from DOM querying logic.【F:src/app.js†L369-L377】【F:src/app.js†L391-L427】
   - Confidence / assumptions: High confidence; assumes callers pass an `HTMLVideoElement` and muted autoplay is permitted.【F:src/app.js†L369-L377】
+
+
+
 
 - `stopAttractPlayback`
   - Purpose: Pauses and rewinds the cached attract video when exiting attract mode so it restarts cleanly next time.【F:src/app.js†L380-L388】
@@ -373,6 +395,9 @@
   - Keep / change / delete: Keep; complements `startAttractPlayback` to avoid stale playback state.【F:src/app.js†L380-L388】【F:src/app.js†L391-L432】
   - Confidence / assumptions: High confidence; assumes only one attract video is tracked via `state.dom`.【F:src/app.js†L42-L65】【F:src/app.js†L380-L388】
 
+
+
+
 - `updateMenuLayer`
   - Purpose: Rebuilds the menu overlay—toggling visibility, rendering the screen for the current mode, and wiring preview/attract media after every UI state change.【F:src/app.js†L391-L432】
   - Inputs: No parameters; reads `state.mode` and cached DOM references (`state.dom.menuLayer`, `state.dom.menuPanel`), calling `ensureDom` to populate them lazily.【F:src/app.js†L220-L249】【F:src/app.js†L391-L432】
@@ -386,6 +411,9 @@
   - Determinism: With the same state and templates it produces identical markup and side effects.【F:src/app.js†L220-L432】
   - Keep / change / delete: Keep; central coordination point for menu rendering that could only be split after modularizing UI layers.【F:src/app.js†L220-L432】
   - Confidence / assumptions: High confidence; assumes `ensureDom` succeeds and renderers remain synchronous.【F:src/app.js†L220-L432】
+
+
+
 
 - `applyVehiclePreviewFrame`
   - Purpose: Computes atlas UV offsets for the vehicle preview sprite and updates the element’s background position for the current frame.【F:src/app.js†L434-L443】
@@ -401,6 +429,9 @@
   - Keep / change / delete: Keep; keeps atlas math separate from higher-level animation logic.【F:src/app.js†L434-L518】
   - Confidence / assumptions: High confidence; assumes DOM mutations succeed while the element is connected.【F:src/app.js†L434-L443】
 
+
+
+
 - `setupVehiclePreviewAnimation`
   - Purpose: Locates the vehicle preview element, normalizes atlas metadata, and seeds animation state in `state.dom.vehiclePreview` after rendering the vehicle select screen.【F:src/app.js†L446-L493】
   - Inputs: No parameters; reads `state.mode`, `state.dom.menuPanel`, and element data attributes (`data-columns`, `data-rows`, `data-frame-count`, `data-frame-duration`).【F:src/app.js†L42-L65】【F:src/app.js†L446-L472】
@@ -414,6 +445,9 @@
   - Determinism: Same DOM attributes yield identical descriptors and CSS adjustments.【F:src/app.js†L446-L493】
   - Keep / change / delete: Keep; encapsulates DOM parsing and state seeding separate from animation ticking.【F:src/app.js†L420-L493】
   - Confidence / assumptions: High confidence; assumes preview markup supplies the documented data attributes when present.【F:src/app.js†L446-L493】
+
+
+
 
 - `updateVehiclePreviewAnimation`
   - Purpose: Advances the vehicle preview sprite animation over time while the vehicle select screen is active.【F:src/app.js†L496-L518】
@@ -429,6 +463,9 @@
   - Keep / change / delete: Keep; separates animation ticking from DOM setup for clarity and potential reuse.【F:src/app.js†L496-L518】【F:src/app.js†L420-L518】
   - Confidence / assumptions: High confidence; assumes `dt` originates from the renderer loop and the descriptor stays in sync with the DOM element.【F:src/render.js†L2103-L2127】【F:src/app.js†L496-L518】
 
+
+
+
 - `clampIndex`
   - Purpose: Wraps an index into the valid `0…total-1` range so menu selections cycle correctly in both directions.【F:src/app.js†L521-L525】
   - Inputs: `index` (integer, may be negative/out of range) and `total` (expected positive integer; returns 0 when `total <= 0`).【F:src/app.js†L521-L525】
@@ -442,6 +479,9 @@
   - Determinism: Deterministic for any given inputs.【F:src/app.js†L521-L525】
   - Keep / change / delete: Keep; centralizes wrap logic shared across menu flows.【F:src/app.js†L328-L599】
   - Confidence / assumptions: High confidence; assumes menus provide non-zero totals when active.【F:src/app.js†L521-L599】
+
+
+
 - `changeMainMenuSelection`
   - Purpose: Moves the highlighted option in the main menu and redraws the panel accordingly.【F:src/app.js†L527-L531】
   - Inputs: `delta` — signed step (typically ±1) provided by navigation handlers.【F:src/app.js†L527-L531】【F:src/app.js†L867-L889】
@@ -455,6 +495,9 @@
   - Determinism: Same starting index and delta yield the same wrapped result.【F:src/app.js†L527-L531】
   - Keep / change / delete: Keep; encapsulates navigation updates separate from event handling.【F:src/app.js†L527-L531】【F:src/app.js†L867-L895】
   - Confidence / assumptions: High confidence; assumes keyboard handlers provide ±1 deltas and the options array remains stable.【F:src/app.js†L8-L12】【F:src/app.js†L867-L895】
+
+
+
 
 - `changePauseMenuSelection`
   - Purpose: Rotates the pause menu highlight between “Resume” and “Quit to Menu.”【F:src/app.js†L533-L537】
@@ -470,6 +513,9 @@
   - Keep / change / delete: Keep; mirrors other selection helpers for consistency.【F:src/app.js†L533-L537】【F:src/app.js†L871-L993】
   - Confidence / assumptions: High confidence; assumes pause menu remains two options deep.【F:src/app.js†L14-L17】【F:src/app.js†L871-L993】
 
+
+
+
 - `changeSettingsSelection`
   - Purpose: Toggles the highlighted entry within the settings menu (snow toggle vs. back).【F:src/app.js†L539-L543】
   - Inputs: `delta` — signed navigation step from settings handlers.【F:src/app.js†L539-L543】【F:src/app.js†L875-L936】
@@ -483,6 +529,9 @@
   - Determinism: Deterministic wrap logic.【F:src/app.js†L539-L543】
   - Keep / change / delete: Keep; aligns with other menu helpers.【F:src/app.js†L539-L543】【F:src/app.js†L875-L936】
   - Confidence / assumptions: High confidence; assumes settings menu keys stay in sync with template options.【F:src/app.js†L38-L38】【F:src/app.js†L539-L543】
+
+
+
 
 - `changeVehicleSelection`
   - Purpose: Steps the selected vehicle highlight and rerenders the selection screen.【F:src/app.js†L545-L549】
@@ -498,6 +547,9 @@
   - Keep / change / delete: Keep; small helper keeps the key handler focused on input flow.【F:src/app.js†L545-L549】【F:src/app.js†L943-L969】
   - Confidence / assumptions: High confidence; assumes the vehicle list stays short and static during selection.【F:src/app.js†L19-L36】【F:src/app.js†L545-L549】
 
+
+
+
 - `getVehicleOptionByKey`
   - Purpose: Looks up a vehicle configuration by its key so selection logic can retrieve the full option payload.【F:src/app.js†L552-L555】
   - Inputs: `key` — string identifier; returns `null` for falsy keys.【F:src/app.js†L552-L555】
@@ -511,6 +563,9 @@
   - Determinism: Returns the first matching entry consistently.【F:src/app.js†L552-L555】
   - Keep / change / delete: Keep; adequate for the small dataset (could shift to a keyed map if vehicles expand).【F:src/app.js†L19-L36】【F:src/app.js†L552-L555】
   - Confidence / assumptions: High confidence; assumes keys remain unique.【F:src/app.js†L19-L36】【F:src/app.js†L552-L555】
+
+
+
 
 - `applyVehicleSelection`
   - Purpose: Persists the player’s vehicle choice and swaps the gameplay texture to match that selection.【F:src/app.js†L557-L575】
@@ -526,6 +581,9 @@
   - Keep / change / delete: Keep; centralizes selection + texture wiring logic reused by race start and bootstrapping.【F:src/app.js†L557-L575】【F:src/app.js†L723-L734】【F:src/app.js†L1134-L1138】
   - Confidence / assumptions: High confidence; assumes textures have been loaded into `World.assets` before invocation.【F:src/app.js†L557-L575】
 
+
+
+
 - `showVehicleSelect`
   - Purpose: Enters the vehicle selection screen or starts a race immediately when no vehicles are defined.【F:src/app.js†L577-L589】
   - Inputs: None; reads `vehicleOptions`, `state.selectedVehicleKey`, and `state.vehicleSelectIndex`.【F:src/app.js†L19-L65】【F:src/app.js†L577-L589】
@@ -540,6 +598,9 @@
   - Keep / change / delete: Keep; encapsulates race-start entry logic separate from the menu activation handler.【F:src/app.js†L577-L589】【F:src/app.js†L769-L778】
   - Confidence / assumptions: High confidence; assumes `startRace` can safely run before asynchronous gameplay setup finishes.【F:src/app.js†L577-L734】
 
+
+
+
 - `activateVehicleSelection`
   - Purpose: Confirms the highlighted vehicle and begins the race with that selection (or defaults when no vehicles exist).【F:src/app.js†L592-L602】
   - Inputs: None; reads `vehicleOptions` and `state.vehicleSelectIndex`.【F:src/app.js†L19-L65】【F:src/app.js†L592-L602】
@@ -553,6 +614,9 @@
   - Determinism: Same highlighted vehicle yields the same start call.【F:src/app.js†L592-L602】
   - Keep / change / delete: Keep; keeps keyboard handler concise and delegates to shared race-start logic.【F:src/app.js†L592-L602】【F:src/app.js†L943-L957】
   - Confidence / assumptions: High confidence; assumes `startRace` handles asynchronous scene reset and game start robustly.【F:src/app.js†L592-L734】
+
+
+
 - `adjustCurrentNameLetter`
   - Purpose: Rotates the currently editable leaderboard initial upward or downward during name entry.【F:src/app.js†L604-L617】
   - Inputs: `delta` — signed step (±1) applied to the alphabet index.【F:src/app.js†L604-L617】【F:src/app.js†L1010-L1019】
@@ -566,6 +630,9 @@
   - Determinism: Same delta and state yield identical letter updates.【F:src/app.js†L604-L617】
   - Keep / change / delete: Keep; isolates letter rotation logic from event handlers.【F:src/app.js†L604-L617】【F:src/app.js†L995-L1019】
   - Confidence / assumptions: High confidence; assumes `NAME_ALPHABET` stays uppercase A–Z and letters array length matches the entry length.【F:src/app.js†L67-L67】【F:src/app.js†L604-L617】
+
+
+
 
 - `lockCurrentNameLetter`
   - Purpose: Confirms the active initial and either advances editing to the next slot or finalizes the leaderboard entry.【F:src/app.js†L620-L633】
@@ -581,6 +648,9 @@
   - Keep / change / delete: Keep; encapsulates entry confirmation logic away from key handling.【F:src/app.js†L620-L633】【F:src/app.js†L995-L1033】
   - Confidence / assumptions: High confidence; assumes exactly three-letter initials and that `finalizeRaceCompleteEntry` handles persistence.【F:src/app.js†L620-L642】
 
+
+
+
 - `finalizeRaceCompleteEntry`
   - Purpose: Commits the entered initials and time to the leaderboard, records the new entry id/rank, and advances the reveal sequence.【F:src/app.js†L635-L642】
   - Inputs: None; reads `state.raceComplete` and calls `addLeaderboardEntry`.【F:src/app.js†L211-L217】【F:src/app.js†L635-L642】
@@ -594,6 +664,9 @@
   - Determinism: Same letters and time create the same leaderboard entry (aside from unique symbol ids).【F:src/app.js†L211-L217】【F:src/app.js†L635-L642】
   - Keep / change / delete: Keep; cleanly separates persistence from input handling.【F:src/app.js†L631-L642】
   - Confidence / assumptions: High confidence; assumes leaderboard arrays remain mutable and accessible.【F:src/app.js†L211-L217】【F:src/app.js†L635-L642】
+
+
+
 
 - `setRaceCompletePhase`
   - Purpose: Updates the race-complete state machine, resetting the phase timer and refreshing the UI for the next reveal step.【F:src/app.js†L644-L649】
@@ -609,6 +682,9 @@
   - Keep / change / delete: Keep; single point of truth for phase transitions and timer resets.【F:src/app.js†L644-L649】
   - Confidence / assumptions: High confidence; assumes repeated calls stay inexpensive and `updateMenuLayer` handles the redraw cost.【F:src/app.js†L644-L649】
 
+
+
+
 - `advanceRaceCompleteSequence`
   - Purpose: Steps the post-race reveal sequence forward or exits to attract mode when complete.【F:src/app.js†L652-L658】
   - Inputs: None; reads `state.raceComplete.phase`.【F:src/app.js†L652-L658】
@@ -622,6 +698,9 @@
   - Determinism: Deterministic transitions for a given current phase.【F:src/app.js†L652-L658】
   - Keep / change / delete: Keep; keeps phase logic out of the key handler.【F:src/app.js†L652-L658】【F:src/app.js†L995-L1033】
   - Confidence / assumptions: High confidence; assumes only the documented phases reach this helper.【F:src/app.js†L652-L658】
+
+
+
 
 - `updateRaceComplete`
   - Purpose: Runs the timed progression for post-race reveals, advancing phases after fixed delays and eventually returning to attract mode.【F:src/app.js†L663-L677】
@@ -637,6 +716,9 @@
   - Keep / change / delete: Keep; encapsulates timer thresholds separate from the render loop.【F:src/app.js†L663-L677】【F:src/app.js†L1106-L1124】
   - Confidence / assumptions: High confidence; assumes `dt` originates from the renderer loop and phases start with `timer = 0`.【F:src/render.js†L2103-L2127】【F:src/app.js†L644-L677】
 
+
+
+
 - `goToAttract`
   - Purpose: Switches the application into attract mode so the idle video can play.【F:src/app.js†L682-L684】
   - Inputs: None.【F:src/app.js†L682-L684】
@@ -650,6 +732,9 @@
   - Determinism: Deterministic state change given the same prior mode.【F:src/app.js†L682-L684】
   - Keep / change / delete: Keep; clarifies intent at call sites and centralizes the attract transition.【F:src/app.js†L659-L1121】
   - Confidence / assumptions: High confidence; assumes `setMode` handles any cleanup required when leaving other modes.【F:src/app.js†L220-L235】【F:src/app.js†L682-L684】
+
+
+
 - `toggleSnowSetting`
   - Purpose: Flips the snow visual-effect toggle and refreshes the settings menu display.【F:src/app.js†L686-L689】
   - Inputs: None; reads `state.settings.snowEnabled`.【F:src/app.js†L42-L65】【F:src/app.js†L686-L689】
@@ -663,6 +748,9 @@
   - Determinism: Deterministic toggle for each invocation.【F:src/app.js†L686-L689】
   - Keep / change / delete: Keep; minimal helper keeps UI logic tidy.【F:src/app.js†L686-L689】【F:src/app.js†L791-L936】
   - Confidence / assumptions: High confidence; assumes snow-enabled state is consumed elsewhere as a simple boolean.【F:src/app.js†L686-L689】【F:src/app.js†L1140-L1146】
+
+
+
 
 - `applyDebugModeSetting`
   - Purpose: Pushes the debug-mode toggle from settings into the shared `Config.debug.mode` flag used by rendering diagnostics.【F:src/app.js†L691-L699】
@@ -678,6 +766,9 @@
   - Keep / change / delete: Keep; isolates Config wiring from UI logic.【F:src/app.js†L691-L699】【F:src/app.js†L704-L705】
   - Confidence / assumptions: High confidence; assumes `Config.debug` exists and other systems read `Config.debug.mode`.【F:src/app.js†L2-L5】【F:src/app.js†L691-L699】
 
+
+
+
 - `setDebugEnabled`
   - Purpose: Updates the settings boolean for debug visuals and applies it to `Config.debug.mode`.【F:src/app.js†L702-L705】
   - Inputs: `enabled` — truthy to enable debug mode, falsy to disable.【F:src/app.js†L702-L705】
@@ -691,6 +782,9 @@
   - Determinism: Deterministic assignment for given input.【F:src/app.js†L702-L705】
   - Keep / change / delete: Keep; single point for updating the debug flag and side effects.【F:src/app.js†L702-L705】
   - Confidence / assumptions: High confidence; assumes `applyDebugModeSetting` handles Config integration safely.【F:src/app.js†L691-L705】
+
+
+
 
 - `toggleDebugSetting`
   - Purpose: Inverts the debug-mode setting and refreshes the settings menu to reflect the new state.【F:src/app.js†L707-L709】
@@ -706,6 +800,9 @@
   - Keep / change / delete: Keep; provides a dedicated helper for both shortcut and potential UI toggle reuse.【F:src/app.js†L707-L709】【F:src/app.js†L1042-L1050】
   - Confidence / assumptions: High confidence; assumes the shortcut should always update the menu when not playing.【F:src/app.js†L707-L709】【F:src/app.js†L1042-L1050】
 
+
+
+
 - `resetGameplayInputs`
   - Purpose: Clears gameplay input flags so no movement keys remain stuck when switching modes or finishing a race.【F:src/app.js†L712-L719】
   - Inputs: None; uses `Gameplay.state.input` when available.【F:src/app.js†L2-L5】【F:src/app.js†L712-L719】
@@ -720,6 +817,9 @@
   - Keep / change / delete: Keep; centralizes input reset logic used across multiple flows.【F:src/app.js†L712-L765】【F:src/app.js†L1052-L1057】
   - Confidence / assumptions: High confidence; assumes gameplay module exposes mutable input flags.【F:src/app.js†L2-L5】【F:src/app.js†L712-L719】
 
+
+
+
 - `startRace`
   - Purpose: Applies the chosen vehicle, resets race-complete state, and hands control to gameplay to begin a new race session.【F:src/app.js†L722-L734】
   - Inputs: `vehicleKey` — optional vehicle identifier (defaults to `state.selectedVehicleKey`).【F:src/app.js†L722-L734】
@@ -733,6 +833,9 @@
   - Determinism: Deterministic sequencing given the same state, though gameplay reset/start may involve asynchronous behavior.【F:src/app.js†L722-L734】
   - Keep / change / delete: Keep; central orchestration point for launching races.【F:src/app.js†L722-L734】
   - Confidence / assumptions: High confidence; assumes gameplay module fulfills `resetScene` and `startRaceSession` contracts and handles their own errors after logging.【F:src/app.js†L722-L734】
+
+
+
 - `handleRaceFinish`
   - Purpose: Transitions the app from gameplay into the race-complete flow by clearing controls, capturing the finish time, and priming name-entry state for the leaderboard screen.【F:src/app.js†L736-L746】
   - Inputs: `timeMs` — reported finish duration in milliseconds; accepts any number (non-finite or negative values are coerced to `0`).【F:src/app.js†L738-L742】
@@ -746,6 +849,9 @@
   - Determinism: Deterministic given the same `timeMs` and existing state; repeated calls overwrite the race-complete snapshot with the same derived values.【F:src/app.js†L736-L746】
   - Keep / change / delete: Keep; it is the single integration point from gameplay completion into the UI pipeline.【F:src/app.js†L736-L746】【F:src/bootstrap.js†L50-L54】
   - Confidence / assumptions: High confidence; assumes `createInitialRaceCompleteState` returns the canonical template used throughout the race-complete workflow.【F:src/app.js†L739-L745】
+
+
+
 
 - `showLeaderboard`
   - Purpose: Brings the UI to the leaderboard screen and triggers a fetch if cached data is absent.【F:src/app.js†L749-L752】
@@ -761,6 +867,9 @@
   - Keep / change / delete: Keep; central helper for multiple entry points to the leaderboard.【F:src/app.js†L749-L778】
   - Confidence / assumptions: High confidence; assumes `requestLeaderboard` gracefully handles already-loaded state.【F:src/app.js†L800-L828】
 
+
+
+
 - `showSettings`
   - Purpose: Switches the app into the settings menu without any additional setup.【F:src/app.js†L754-L756】
   - Inputs: None.【F:src/app.js†L754-L756】
@@ -774,6 +883,9 @@
   - Determinism: Deterministic for the same current state.【F:src/app.js†L754-L756】
   - Keep / change / delete: Keep; provides a single semantic entry point for settings navigation.【F:src/app.js†L754-L778】
   - Confidence / assumptions: High confidence; assumes `setMode` manages any cleanup like resetting indices when applicable.【F:src/app.js†L220-L235】
+
+
+
 
 - `resumeRace`
   - Purpose: Leaves pause-or-menu states and returns the game to active play.【F:src/app.js†L758-L760】
@@ -789,6 +901,9 @@
   - Keep / change / delete: Keep; central resume hook shared by UI and keyboard controls.【F:src/app.js†L781-L990】【F:src/app.js†L1052-L1063】
   - Confidence / assumptions: High confidence; assumes `setMode('playing')` handles resetting menu indices as needed.【F:src/app.js†L220-L228】
 
+
+
+
 - `quitToMenu`
   - Purpose: Exits gameplay back to the main menu while ensuring controls and scene reset hooks run.【F:src/app.js†L762-L767】
   - Inputs: None.【F:src/app.js†L762-L767】
@@ -802,6 +917,9 @@
   - Determinism: Deterministic control flow; asynchronous reset outcome may vary but is logged on error.【F:src/app.js†L762-L767】
   - Keep / change / delete: Keep; consolidates quit behavior for reuse across inputs.【F:src/app.js†L781-L789】
   - Confidence / assumptions: High confidence; assumes gameplay module tolerates repeated `resetScene` calls.【F:src/app.js†L765-L767】
+
+
+
 
 - `activateMainMenuSelection`
   - Purpose: Executes the action tied to the currently highlighted main-menu option.【F:src/app.js†L769-L779】
@@ -817,6 +935,9 @@
   - Keep / change / delete: Keep; keeps menu behavior centralized rather than scattering conditionals across input handlers.【F:src/app.js†L769-L895】
   - Confidence / assumptions: High confidence; assumes menu options array stays in sync with rendered menu order.【F:src/app.js†L251-L260】【F:src/app.js†L769-L778】
 
+
+
+
 - `activatePauseMenuSelection`
   - Purpose: Executes the selected pause-menu action (resume or quit).【F:src/app.js†L781-L788】
   - Inputs: None; consumes `state.pauseMenuIndex`.【F:src/app.js†L781-L787】
@@ -830,6 +951,9 @@
   - Determinism: Deterministic for a given index state.【F:src/app.js†L781-L788】
   - Keep / change / delete: Keep; isolates pause-menu behaviors for reuse by multiple input paths.【F:src/app.js†L781-L988】【F:src/app.js†L1052-L1062】
   - Confidence / assumptions: High confidence; assumes pause options remain limited to resume/quit until expanded.【F:src/app.js†L314-L322】【F:src/app.js†L781-L788】
+
+
+
 
 - `activateSettingsSelection`
   - Purpose: Applies the settings menu action currently highlighted (toggle snow or leave the menu).【F:src/app.js†L791-L797】
@@ -845,6 +969,9 @@
   - Keep / change / delete: Keep; centralizes side effects for the sparse settings menu.【F:src/app.js†L291-L311】【F:src/app.js†L791-L937】
   - Confidence / assumptions: High confidence; assumes `settingsMenuKeys` mirrors the rendered options order.【F:src/app.js†L291-L311】【F:src/app.js†L791-L797】
 
+
+
+
 - `requestLeaderboard`
   - Purpose: Lazily loads remote leaderboard data, merges it with local entries, and updates loading state for the menu.【F:src/app.js†L800-L828】
   - Inputs: None; acts on `state.leaderboard` internals.【F:src/app.js†L800-L828】
@@ -858,6 +985,9 @@
   - Determinism: Deterministic for identical CSV input; external fetch results introduce variability.【F:src/app.js†L804-L828】
   - Keep / change / delete: Keep; encapsulates leaderboard loading concerns and guards against redundant fetches.【F:src/app.js†L800-L828】
   - Confidence / assumptions: High confidence; assumes CSV schema contains `name`, `points`, and `date` headers or defaults can be applied.【F:src/app.js†L831-L854】
+
+
+
 
 - `parseLeaderboardCsv`
   - Purpose: Converts CSV leaderboard text into normalized entry objects sorted by score (then name) with ranks assigned.【F:src/app.js†L831-L864】
@@ -873,6 +1003,9 @@
   - Keep / change / delete: Keep; isolates CSV parsing logic from network handling.【F:src/app.js†L813-L864】
   - Confidence / assumptions: High confidence; assumes CSV is simple (no embedded commas/quotes).【F:src/app.js†L833-L858】
 
+
+
+
 - `handleMenuNavigation`
   - Purpose: Adjusts the main-menu selection index in response to navigation input.【F:src/app.js†L867-L869】
   - Inputs: `delta` — signed step applied to the menu index.【F:src/app.js†L867-L869】
@@ -886,6 +1019,9 @@
   - Determinism: Deterministic given the same starting state and delta.【F:src/app.js†L867-L869】
   - Keep / change / delete: Keep; preserves separation between navigation intent and index mutation logic.【F:src/app.js†L867-L889】
   - Confidence / assumptions: High confidence; assumes `changeMainMenuSelection` enforces bounds.【F:src/app.js†L867-L869】
+
+
+
 
 - `handlePauseNavigation`
   - Purpose: Moves the pause-menu cursor according to user input.【F:src/app.js†L871-L873】
@@ -901,6 +1037,9 @@
   - Keep / change / delete: Keep; mirrors other menu navigation helpers for consistency.【F:src/app.js†L871-L986】
   - Confidence / assumptions: High confidence; assumes helper enforces limits.【F:src/app.js†L871-L873】
 
+
+
+
 - `handleSettingsNavigation`
   - Purpose: Changes the highlighted option within the settings menu.【F:src/app.js†L875-L877】
   - Inputs: `delta` — signed navigation increment.【F:src/app.js†L875-L877】
@@ -914,6 +1053,9 @@
   - Determinism: Deterministic for same inputs.【F:src/app.js†L875-L877】
   - Keep / change / delete: Keep; maintains symmetry with other navigation helpers.【F:src/app.js†L875-L934】
   - Confidence / assumptions: High confidence; assumes helper covers bounds.【F:src/app.js†L875-L877】
+
+
+
 
 - `handleMenuKeyDown`
   - Purpose: Handles keyboard input on the main menu, supporting navigation and selection.【F:src/app.js†L879-L895】
@@ -929,6 +1071,9 @@
   - Keep / change / delete: Keep; encapsulates menu key handling separate from global dispatch.【F:src/app.js†L879-L895】【F:src/app.js†L1075-L1089】
   - Confidence / assumptions: High confidence; assumes `preventDefault` is sufficient to stop browser scrolling.【F:src/app.js†L881-L894】
 
+
+
+
 - `handleLeaderboardKeyDown`
   - Purpose: Processes inputs on the leaderboard screen, allowing dismissal and disabling navigation keys.【F:src/app.js†L898-L909】
   - Inputs: `e` — keyboard event focused on `code` for space/enter/escape/arrows.【F:src/app.js†L898-L907】
@@ -942,6 +1087,9 @@
   - Determinism: Deterministic for same event and state.【F:src/app.js†L898-L909】
   - Keep / change / delete: Keep; minimal but sufficient event handling for the static leaderboard view.【F:src/app.js†L898-L907】【F:src/app.js†L1078-L1089】
   - Confidence / assumptions: High confidence; assumes leaving the screen should always return to the main menu.【F:src/app.js†L900-L907】
+
+
+
 
 - `handleSettingsKeyDown`
   - Purpose: Handles keyboard interaction on the settings menu, covering navigation, toggles, and exit.【F:src/app.js†L911-L940】
@@ -957,6 +1105,9 @@
   - Keep / change / delete: Keep; concentrates all settings key handling logic for clarity.【F:src/app.js†L911-L938】【F:src/app.js†L1078-L1089】
   - Confidence / assumptions: High confidence; assumes only the snow toggle responds to left/right inputs.【F:src/app.js†L923-L928】
 
+
+
+
 - `handleVehicleSelectKeyDown`
   - Purpose: Manages keyboard input on the vehicle selection screen, including cycling options and confirming choices.【F:src/app.js†L943-L968】
   - Inputs: `e` — keyboard event for arrow, space, enter, and escape codes.【F:src/app.js†L943-L967】
@@ -970,6 +1121,9 @@
   - Determinism: Deterministic for the same input and selection state.【F:src/app.js†L943-L968】
   - Keep / change / delete: Keep; contains all keyboard interactions for vehicle selection.【F:src/app.js†L943-L966】【F:src/app.js†L1076-L1089】
   - Confidence / assumptions: High confidence; assumes vehicle list is non-empty and helpers wrap safely.【F:src/app.js†L325-L342】【F:src/app.js†L943-L966】
+
+
+
 
 - `handlePauseKeyDown`
   - Purpose: Responds to keyboard input while the pause menu is visible, covering navigation, confirmation, and quick resume.【F:src/app.js†L971-L993】
@@ -985,6 +1139,9 @@
   - Keep / change / delete: Keep; required to make the pause overlay interactive.【F:src/app.js†L971-L990】【F:src/app.js†L1084-L1089】
   - Confidence / assumptions: High confidence; assumes pause options remain resume/quit and escape should always resume.【F:src/app.js†L314-L322】【F:src/app.js†L987-L990】
 
+
+
+
 - `handleRaceCompleteKeyDown`
   - Purpose: Drives the race-complete input flow, handling name entry, advancing the celebration, and exiting to attract mode.【F:src/app.js†L995-L1034】
   - Inputs: `e` — keyboard event using escape, space, enter, and arrow codes.【F:src/app.js†L995-L1033】
@@ -998,6 +1155,9 @@
   - Determinism: Deterministic for same state and inputs.【F:src/app.js†L995-L1034】
   - Keep / change / delete: Keep; consolidates the multi-phase race completion controls.【F:src/app.js†L995-L1032】【F:src/app.js†L1086-L1089】
   - Confidence / assumptions: High confidence; assumes race-complete state machine uses `active`/`phase` as documented.【F:src/app.js†L995-L1032】
+
+
+
 
 - `handleAttractKeyDown`
   - Purpose: Lets any key press during attract mode return players to the main menu.【F:src/app.js†L1036-L1040】
@@ -1013,6 +1173,9 @@
   - Keep / change / delete: Keep; ensures quick exit from attract loop on input.【F:src/app.js†L1036-L1039】【F:src/app.js†L1088-L1089】
   - Confidence / assumptions: High confidence; assumes any attract-mode key should re-enter the menu.【F:src/app.js†L1036-L1039】
 
+
+
+
 - `handleKeyDown`
   - Purpose: Acts as the global keyboard dispatcher, handling debug toggles, pause shortcut, gameplay forwarding, and routing to mode-specific handlers.【F:src/app.js†L1042-L1095】
   - Inputs: `e` — keyboard event for all gameplay and menu interactions.【F:src/app.js†L1042-L1094】
@@ -1026,6 +1189,9 @@
   - Determinism: Deterministic for a given state and key event.【F:src/app.js†L1042-L1095】
   - Keep / change / delete: Keep; required as the top-level event handler bound by bootstrap.【F:src/app.js†L1042-L1094】【F:src/bootstrap.js†L67-L75】
   - Confidence / assumptions: High confidence; assumes gameplay exposes compatible `keydownHandler`.【F:src/app.js†L1070-L1094】
+
+
+
 
 - `handleKeyUp`
   - Purpose: Forwards keyup events to gameplay while suppressing the pause shortcut release.【F:src/app.js†L1097-L1104】
@@ -1041,6 +1207,9 @@
   - Keep / change / delete: Keep; necessary for gameplay control parity with the bootstrap fallback.【F:src/app.js†L1097-L1103】【F:src/bootstrap.js†L70-L75】
   - Confidence / assumptions: High confidence; assumes gameplay consumes keyup events appropriately.【F:src/app.js†L1097-L1103】
 
+
+
+
 - `step`
   - Purpose: Runs the per-frame update loop, delegating to gameplay, race-complete animations, vehicle previews, and idle-attract timeout logic.【F:src/app.js†L1106-L1125】
   - Inputs: `dt` — frame delta time in seconds (as provided by `Renderer.frame`).【F:src/app.js†L1106-L1119】【F:src/bootstrap.js†L77-L83】
@@ -1054,6 +1223,9 @@
   - Determinism: Deterministic given the same state, elapsed time, and helper determinism (except any randomness inside delegates).【F:src/app.js†L1106-L1122】
   - Keep / change / delete: Keep; it is the application’s frame driver registered with the renderer.【F:src/app.js†L1106-L1122】【F:src/bootstrap.js†L77-L83】
   - Confidence / assumptions: High confidence; assumes helpers handle their own timing nuances (e.g., `updateRaceComplete`).【F:src/app.js†L1106-L1122】
+
+
+
 
 - `init`
   - Purpose: Performs one-time application bootstrap: wiring DOM references, resetting state, applying selections, and loading the leaderboard.【F:src/app.js†L1127-L1138】
@@ -1069,6 +1241,9 @@
   - Keep / change / delete: Keep; canonical entry point for app startup.【F:src/app.js†L1127-L1138】【F:src/bootstrap.js†L57-L63】
   - Confidence / assumptions: High confidence; assumes helper functions succeed (vehicle selection, debug application).【F:src/app.js†L1127-L1138】
 
+
+
+
 - `isSnowEnabled`
   - Purpose: Exposes whether snow effects should be active based on app settings.【F:src/app.js†L1140-L1142】
   - Inputs: None.【F:src/app.js†L1140-L1142】
@@ -1082,6 +1257,9 @@
   - Determinism: Deterministic for a given state.【F:src/app.js†L1140-L1142】
   - Keep / change / delete: Keep; provides stable contract for render systems checking snow feature availability.【F:src/app.js†L1140-L1142】【F:src/render.js†L416-L426】
   - Confidence / assumptions: High confidence; assumes settings state is kept in sync with UI toggles.【F:src/app.js†L793-L797】【F:src/app.js†L1140-L1142】
+
+
+
 
 - `isDebugEnabled`
   - Purpose: Reports whether debug overlays should be visible based on settings.【F:src/app.js†L1144-L1146】
@@ -1098,6 +1276,9 @@
   - Confidence / assumptions: High confidence; assumes debug setting is maintained by menu/debug shortcut flows.【F:src/app.js†L699-L709】【F:src/app.js†L1043-L1057】【F:src/app.js†L1144-L1146】
 
 ### 3.2 UI Screen Templates (`src/ui/screens.js`)
+
+
+
 - `ensureEscapeHtml`
   - Purpose: Supplies a safe HTML-escaping helper, defaulting to a simple string conversion when none is provided.【F:src/ui/screens.js†L4-L6】
   - Inputs: `helpers` — optional object that may contain an `escapeHtml` function; any other shape falls back to a default converter.【F:src/ui/screens.js†L4-L6】
@@ -1111,6 +1292,9 @@
   - Determinism: Deterministic for a given helper input.【F:src/ui/screens.js†L4-L6】
   - Keep / change / delete: Keep; centralizes escape helper fallback for all templates.【F:src/ui/screens.js†L4-L6】【F:src/ui/screens.js†L8-L296】
   - Confidence / assumptions: High confidence; assumes callers provide well-behaved escape functions when needed.【F:src/ui/screens.js†L4-L6】
+
+
+
 
 - `mainMenuScreen`
   - Purpose: Renders the main menu HTML structure using provided titles and options, highlighting the selected entry.【F:src/ui/screens.js†L8-L37】
@@ -1126,6 +1310,9 @@
   - Keep / change / delete: Keep; core template used whenever the main menu is shown.【F:src/ui/screens.js†L8-L36】【F:src/app.js†L251-L260】
   - Confidence / assumptions: High confidence; assumes options array items contain `key`/`label` strings.【F:src/ui/screens.js†L16-L25】
 
+
+
+
 - `pauseMenuScreen`
   - Purpose: Generates HTML for the pause menu, displaying available pause actions and the current selection.【F:src/ui/screens.js†L39-L63】
   - Inputs: `ctx` (`options`, `selectedIndex`) plus optional `helpers` with escape function.【F:src/ui/screens.js†L39-L53】
@@ -1140,6 +1327,9 @@
   - Keep / change / delete: Keep; required to render the pause overlay.【F:src/ui/screens.js†L39-L61】【F:src/app.js†L314-L322】
   - Confidence / assumptions: High confidence; assumes options include `key` and `label` values.【F:src/ui/screens.js†L43-L52】
 
+
+
+
 - `vehicleSelectScreen`
   - Purpose: Builds the vehicle selection UI markup, including preview metadata for animations and contextual labels.【F:src/ui/screens.js†L65-L175】
   - Inputs: `ctx` fields (`title`, `vehicleLabel`, `vehicleDescription`, `optionIndex`, `optionCount`, `previewSrc`, `previewAtlas`) and optional `helpers` (`escapeHtml`, `resolveAssetUrl`).【F:src/ui/screens.js†L65-L112】
@@ -1153,6 +1343,9 @@
   - Determinism: Deterministic for the same context data.【F:src/ui/screens.js†L65-L175】
   - Keep / change / delete: Keep; encapsulates complex preview markup separate from logic.【F:src/ui/screens.js†L65-L175】【F:src/app.js†L325-L342】
   - Confidence / assumptions: High confidence; assumes atlas metadata follows expected structure when provided.【F:src/ui/screens.js†L81-L110】
+
+
+
 - `settingsMenuScreen`
   - Purpose: Generates the Settings menu HTML, listing each configurable option and highlighting the current selection so the UI can be rendered without manual DOM manipulation.【F:src/ui/screens.js†L147-L175】
   - Inputs: `ctx` — expects `{ options, selectedIndex }` where `options` is an array of menu option objects (falls back to `[]`) and `selectedIndex` is the zero-based highlighted entry; `helpers` — optional object supplying `escapeHtml` for sanitization.【F:src/ui/screens.js†L147-L165】
@@ -1166,6 +1359,9 @@
   - Determinism: Deterministic given the same `ctx` and helper inputs, since it only formats provided data.【F:src/ui/screens.js†L147-L174】
   - Keep / change / delete: Keep; consolidates settings menu markup instead of duplicating template code elsewhere.
   - Confidence / assumptions: High confidence; assumes callers pass option objects with `key`, `label`, and optional `value` fields.
+
+
+
 
 - `leaderboardScreen`
   - Purpose: Renders the leaderboard screen with loading/error/empty states so the UI communicates progress and results.【F:src/ui/screens.js†L177-L214】
@@ -1181,6 +1377,9 @@
   - Keep / change / delete: Keep; centralizes leaderboard templating rather than scattering markup across the app.
   - Confidence / assumptions: High confidence; assumes entries provide stringifiable ranks, names, and scores.
 
+
+
+
 - `attractScreen`
   - Purpose: Produces the attract-mode video container so the game can loop a promotional clip when idle.【F:src/ui/screens.js†L216-L229】
   - Inputs: `ctx` — optional object with `videoSrc`, defaulting to the bundled attract-loop MP4.【F:src/ui/screens.js†L216-L224】
@@ -1194,6 +1393,9 @@
   - Determinism: Deterministic given the same `videoSrc` input.【F:src/ui/screens.js†L216-L228】
   - Keep / change / delete: Keep; isolates attract-mode markup from the controller logic.
   - Confidence / assumptions: High confidence; assumes the provided video path is valid and autoplay is acceptable.
+
+
+
 
 - `raceCompleteScreen`
   - Purpose: Builds the race-complete UI, covering the preparation, name-entry, and results phases so players understand post-race flow.【F:src/ui/screens.js†L231-L296】
@@ -1210,6 +1412,9 @@
   - Confidence / assumptions: High confidence; assumes controller supplies consistent `phase` strings and letter arrays.
 
 ### 3.3 Asset Loading & Bootstrapping (`src/bootstrap.js`)
+
+
+
 - `loadManifestTextures`
   - Purpose: Asynchronously loads every texture listed in a manifest and registers it with the renderer so later systems can reference GPU resources by key.【F:src/bootstrap.js†L18-L27】
   - Inputs: `manifest` — object mapping texture keys to relative URLs; accepts `null`/`undefined` by treating them as an empty manifest.【F:src/bootstrap.js†L18-L24】
@@ -1224,6 +1429,9 @@
   - Keep / change / delete: Keep; isolates manifest loading logic and parallelization from higher-level bootstrap code.
   - Confidence / assumptions: High confidence; assumes manifests map to valid URLs and `glr.loadTexture` rejects on failure.
 
+
+
+
 - `loadAssets`
   - Purpose: Coordinates startup asset loading by processing the core manifest and any sprite-catalog textures so rendering has everything it needs before the game starts.【F:src/bootstrap.js†L30-L35】
   - Inputs: None; reads manifests from global `World.assets` and optional `SpriteCatalog`.【F:src/bootstrap.js†L31-L34】
@@ -1237,6 +1445,9 @@
   - Determinism: Deterministic given the same manifests and network conditions.
   - Keep / change / delete: Keep; provides a single entry point for boot-time asset fetching.
   - Confidence / assumptions: High confidence; assumes manifests remain relatively small and `SpriteCatalog` exposes `getTextureManifest` when present.
+
+
+
 
 - `setupCallbacks`
   - Purpose: Hooks gameplay lifecycle callbacks into renderer and app handlers so UI elements respond to resets, respawns, and race finishes automatically.【F:src/bootstrap.js†L38-L55】
@@ -1253,6 +1464,9 @@
   - Confidence / assumptions: High confidence; assumes `Gameplay.state.callbacks` remains mutable and renderer/app functions exist when needed.
 
 ### 3.4 Vehicle Control & Physics (`src/gameplay.js`)
+
+
+
 - `trackLengthRef`
   - Purpose: Provides the current total track length so wrap calculations can stay in sync with dynamic track data.【F:src/gameplay.js†L73-L76】
   - Inputs: None; reads `World.data.trackLength` from the captured `data` object.【F:src/gameplay.js†L58-L76】
@@ -1266,6 +1480,9 @@
   - Determinism: Deterministic for a given `World.data` state.【F:src/gameplay.js†L74-L76】
   - Keep / change / delete: Keep; lightweight accessor avoids hard-coding property lookups throughout the module.
   - Confidence / assumptions: High confidence; assumes `World.data.trackLength` is maintained by track-building routines.
+
+
+
 
 - `hasSegments`
   - Purpose: Quickly reports whether the track has any segments so systems can bail out before doing segment-dependent work.【F:src/gameplay.js†L73-L78】
@@ -1281,6 +1498,9 @@
   - Keep / change / delete: Keep; tiny helper improves readability of guard clauses.
   - Confidence / assumptions: High confidence; assumes `segments` accurately reflects the loaded track.
 
+
+
+
 - `wrapByLength`
   - Purpose: Wraps a longitudinal `s` value into the `[0, length)` track range so repeated laps stay numerically bounded.【F:src/gameplay.js†L79-L83】
   - Inputs: `value` — distance or coordinate to wrap; `length` — positive track length controlling the wrap window (no wrapping when `length <= 0`).【F:src/gameplay.js†L79-L83】
@@ -1294,6 +1514,9 @@
   - Determinism: Deterministic for numeric inputs.【F:src/gameplay.js†L79-L83】
   - Keep / change / delete: Keep; concise helper avoids duplicating modular arithmetic around the codebase.
   - Confidence / assumptions: High confidence; assumes callers pass finite numbers.
+
+
+
 
 - `wrapSegmentIndex`
   - Purpose: Normalizes a segment index so lookups stay within bounds even when callers traverse past the ends of the segment array.【F:src/gameplay.js†L85-L90】
@@ -1309,6 +1532,9 @@
   - Keep / change / delete: Keep; prevents repeated modulus boilerplate in callers.
   - Confidence / assumptions: High confidence; assumes `segments.length` fits within standard number precision.
 
+
+
+
 - `ensureArray`
   - Purpose: Guarantees that an object owns an array under the requested key, creating one when absent, so callers can push into it without guards.【F:src/gameplay.js†L92-L96】
   - Inputs: `obj` — target object (can be falsy); `key` — property name to ensure as an array.【F:src/gameplay.js†L92-L96】
@@ -1322,6 +1548,9 @@
   - Determinism: Deterministic for the same object and key.【F:src/gameplay.js†L92-L96】
   - Keep / change / delete: Keep; reduces repetitive `if (!obj[key]) obj[key] = []` patterns.
   - Confidence / assumptions: High confidence; assumes callers respect the returned array semantics.
+
+
+
 
 - `atlasFrameUv`
   - Purpose: Converts a frame index within a sprite atlas into normalized UV coordinates for rendering.【F:src/gameplay.js†L98-L112】
@@ -1337,6 +1566,9 @@
   - Keep / change / delete: Keep; encapsulates atlas math that would otherwise be error-prone when repeated.
   - Confidence / assumptions: High confidence; assumes uniform grids without per-frame offsets.
 
+
+
+
 - `normalizeAnimClip`
   - Purpose: Sanitizes raw animation clip definitions into a canonical shape with validated frame lists and playback mode.【F:src/gameplay.js†L114-L124】
   - Inputs: `rawClip` — potentially sparse clip object; `fallbackFrame` — numeric frame to insert when no frames exist; `useFallback` — boolean controlling fallback insertion.【F:src/gameplay.js†L114-L123】
@@ -1350,6 +1582,9 @@
   - Determinism: Deterministic for the same input clip and fallback options.【F:src/gameplay.js†L114-L123】
   - Keep / change / delete: Keep; centralizes clip sanitization logic that would otherwise be duplicated wherever clips are loaded.
   - Confidence / assumptions: High confidence; assumes clips, when provided, already follow general structure (e.g., `frames` array).
+
+
+
 
 - `createSpriteAnimationState`
   - Purpose: Combines base and interaction clips into a runtime animation state object that tracks frame progression, playback rules, and defaults.【F:src/gameplay.js†L126-L150】
@@ -1365,6 +1600,9 @@
   - Keep / change / delete: Keep; encapsulates animation state initialization logic for reuse.
   - Confidence / assumptions: High confidence; assumes clips are relatively small arrays.
 
+
+
+
 - `currentAnimationClip`
   - Purpose: Returns the clip currently designated as active so frame advancement code knows which frame list to use.【F:src/gameplay.js†L153-L157】
   - Inputs: `anim` — animation state object with `active` and `clips` fields.【F:src/gameplay.js†L153-L157】
@@ -1378,6 +1616,9 @@
   - Determinism: Deterministic for identical animation state input.【F:src/gameplay.js†L153-L157】
   - Keep / change / delete: Keep; isolates clip-selection logic for clarity.
   - Confidence / assumptions: High confidence; assumes animation states follow the structure produced by `createSpriteAnimationState`.
+
+
+
 
 - `clampFrameIndex`
   - Purpose: Constrains a frame index to the valid range for a clip, preventing out-of-bounds access when switching or advancing animations.【F:src/gameplay.js†L159-L166】
@@ -1393,6 +1634,9 @@
   - Keep / change / delete: Keep; essential safeguard against array bounds errors.
   - Confidence / assumptions: High confidence; assumes callers pass finite lengths.
 
+
+
+
 - `switchSpriteAnimationClip`
   - Purpose: Activates a different clip on an animation state, optionally restarting timing so sprites can transition between base and interaction animations.【F:src/gameplay.js†L168-L196】
   - Inputs: `anim` — animation state to mutate; `clipName` — `'base'` or `'interact'`; `restart` — boolean indicating whether to reset timers and indices.【F:src/gameplay.js†L168-L188】
@@ -1406,6 +1650,9 @@
   - Determinism: Deterministic given the same animation state and parameters.【F:src/gameplay.js†L168-L195】
   - Keep / change / delete: Keep; encapsulates clip-toggle logic that would be verbose inline.
   - Confidence / assumptions: High confidence; assumes animation states follow the structure from `createSpriteAnimationState`.
+
+
+
 
 - `updateSpriteUv`
   - Purpose: Recomputes a sprite’s UV coordinates whenever its animation frame changes so rendering samples the correct atlas tile.【F:src/gameplay.js†L198-L205】
@@ -1421,6 +1668,9 @@
   - Keep / change / delete: Keep; central utility avoids duplicating atlas logic across render paths.
   - Confidence / assumptions: High confidence; assumes sprites that require UVs provide valid `atlasInfo`.
 
+
+
+
 - `advanceSpriteAnimation`
   - Purpose: Steps a sprite’s animation forward based on elapsed time, handling looping, once, and ping-pong playback while updating sprite frames and UVs.【F:src/gameplay.js†L207-L285】
   - Inputs: `sprite` — expects an `animation` state from `createSpriteAnimationState`; `dt` — delta time in seconds since the last update.【F:src/gameplay.js†L207-L285】
@@ -1434,6 +1684,9 @@
   - Determinism: Deterministic for the same sprite state and `dt`; dependent on floating-point accumulation order.【F:src/gameplay.js†L207-L285】
   - Keep / change / delete: Keep; consolidates complex playback behavior in one tested routine.
   - Confidence / assumptions: High confidence; assumes `dt` is non-negative and relatively small (per-frame timestep).
+
+
+
 
 - `createSpriteMetaEntry`
   - Purpose: Produces a sprite metadata descriptor by merging defaults with catalog-provided metrics so runtime systems know scale, tint, textures, and atlas layout.【F:src/gameplay.js†L378-L409】
@@ -1449,6 +1702,9 @@
   - Keep / change / delete: Keep; centralizes sprite metadata normalization across catalogs.
   - Confidence / assumptions: High confidence; assumes metrics resemble SpriteCatalog definitions and that textures may be missing during early bootstrap.
 
+
+
+
 - `createInitialMetrics`
   - Purpose: Initializes the player metrics tracker with zeroed counters and timers so race statistics start from a clean slate.【F:src/gameplay.js†L1043-L1057】
   - Inputs: None.【F:src/gameplay.js†L1043-L1057】
@@ -1462,6 +1718,9 @@
   - Determinism: Deterministic—always returns identical baseline data.【F:src/gameplay.js†L1043-L1057】
   - Keep / change / delete: Keep; provides a single source of truth for metric defaults.
   - Confidence / assumptions: High confidence; assumes downstream code increments these properties directly.
+
+
+
 
 - `getSpriteMeta`
   - Purpose: Retrieves the sprite metadata definition for a given kind, falling back to defaults when overrides are absent.【F:src/gameplay.js†L1112-L1117】
@@ -1477,6 +1736,9 @@
   - Keep / change / delete: Keep; central accessor prevents scattering fallback logic.
   - Confidence / assumptions: High confidence; assumes `state.spriteMeta` is kept up to date with overrides from sprite data.
 
+
+
+
 - `defaultGetKindScale`
   - Purpose: Supplies the default scaling rule for sprite kinds, scaling the player sprite while leaving others unchanged.【F:src/gameplay.js†L1041-L1093】
   - Inputs: `kind` — sprite kind identifier (string).【F:src/gameplay.js†L1041-L1042】
@@ -1490,6 +1752,9 @@
   - Determinism: Deterministic for a given config.【F:src/gameplay.js†L1041-L1042】
   - Keep / change / delete: Keep; provides a safe default when no dynamic scaling strategy is supplied.
   - Confidence / assumptions: High confidence; assumes player scale is defined in configuration.
+
+
+
 
 - `segmentAtS`
   - Purpose: Finds the track segment that covers a given longitudinal `s` position, wrapping around the track length as needed.【F:src/gameplay.js†L1119-L1123】
@@ -1505,6 +1770,9 @@
   - Keep / change / delete: Keep; core utility for spatial queries along the track.
   - Confidence / assumptions: High confidence; assumes segment data is continuous and segment lengths are consistent.
 
+
+
+
 - `segmentAtIndex`
   - Purpose: Retrieves a segment by index with automatic wrapping so callers can iterate forwards or backwards around the loop safely.【F:src/gameplay.js†L1125-L1129】
   - Inputs: `idx` — integer index (may be negative or beyond the segment count).【F:src/gameplay.js†L1125-L1129】
@@ -1518,6 +1786,9 @@
   - Determinism: Deterministic for a given index and segment list.【F:src/gameplay.js†L1125-L1129】
   - Keep / change / delete: Keep; wrapper simplifies repetitive modulo logic.
   - Confidence / assumptions: High confidence; assumes `segments` array remains stable during iteration.
+
+
+
 
 - `elevationAt`
   - Purpose: Computes the interpolated road height at a longitudinal position using the current segment geometry.【F:src/gameplay.js†L1131-L1137】
@@ -1533,6 +1804,9 @@
   - Keep / change / delete: Keep; central interpolation helper for vertical sampling.
   - Confidence / assumptions: High confidence; assumes segment endpoints are valid and ordered along `s`.
 
+
+
+
 - `groundProfileAt`
   - Purpose: Estimates the road’s slope and curvature around a position so physics and rendering can react to elevation changes smoothly.【F:src/gameplay.js†L1139-L1148】
   - Inputs: `s` — world distance along the track.【F:src/gameplay.js†L1139-L1148】
@@ -1546,6 +1820,9 @@
   - Determinism: Deterministic given current track geometry.【F:src/gameplay.js†L1139-L1148】
   - Keep / change / delete: Keep; encapsulates derivative sampling needed for physics smoothing.
   - Confidence / assumptions: High confidence; assumes segment spacing is fine-grained enough for finite difference approximation.
+
+
+
 
 - `playerFloorHeightAt`
   - Purpose: Determines the player vehicle’s floor height at a given `s` and lateral position, respecting custom floor overrides when available.【F:src/gameplay.js†L1150-L1159】
@@ -1561,6 +1838,9 @@
   - Keep / change / delete: Keep; consolidates multi-source floor sampling logic.
   - Confidence / assumptions: High confidence; assumes `floorElevationAt` (when provided) returns finite values.
 
+
+
+
 - `boostZonesOnSegment`
   - Purpose: Retrieves the list of boost zones attached to a segment so gameplay and rendering can highlight or process them.【F:src/gameplay.js†L1162-L1165】
   - Inputs: `seg` — segment object, expected to carry a `features.boostZones` array.【F:src/gameplay.js†L1162-L1165】
@@ -1574,6 +1854,9 @@
   - Determinism: Deterministic for a given segment object.【F:src/gameplay.js†L1162-L1165】
   - Keep / change / delete: Keep; small helper keeps feature access consistent and safe.
   - Confidence / assumptions: High confidence; assumes segments store boost-zone definitions under `features.boostZones`.
+  
+  
+  
   - `playerWithinBoostZone`
     - Purpose: Checks whether a player's normalized lateral position falls between a boost zone's start and end bounds, defaulting to lane clamps when the zone omits them.【F:src/gameplay.js†L1170-L1178】
     - Inputs: `zone` — boost zone with optional `nStart`/`nEnd`; `nNorm` — player lateral offset clamped to lane range (defaults come from ±2 passed through `clampBoostLane`).【F:src/gameplay.js†L69-L75】【F:src/gameplay.js†L1170-L1178】
@@ -1588,6 +1871,9 @@
     - Keep / change / delete: Keep; consolidates lane-bound fallback logic that would otherwise repeat inside callers.
     - Confidence / assumptions: High confidence; assumes `clampBoostLane` returns consistent bounds and `nNorm` already reflects the player.
 
+  
+  
+  
   - `boostZonesForPlayer`
     - Purpose: Collects only the boost zones on a segment that currently cover the player's lateral position so other systems can react.【F:src/gameplay.js†L1181-L1184】
     - Inputs: `seg` — segment containing potential zones; `nNorm` — player’s normalized lane offset to test.【F:src/gameplay.js†L1181-L1184】
@@ -1602,6 +1888,9 @@
     - Keep / change / delete: Keep; clear helper isolates boost-zone filtering away from callers.
     - Confidence / assumptions: High confidence; assumes segment `features.boostZones` contains immutable zone descriptors during a frame.
 
+  
+  
+  
   - `jumpZoneForPlayer`
     - Purpose: Finds the jump-type boost zone currently under the player so hops can trigger air boosts.【F:src/gameplay.js†L1187-L1192】
     - Inputs: None; derives the player's segment `s` and lateral position from global state.【F:src/gameplay.js†L1187-L1191】
@@ -1616,6 +1905,9 @@
     - Keep / change / delete: Keep; encapsulates jump-zone lookup so callers remain concise.
     - Confidence / assumptions: High confidence; assumes boost zone data stays synchronized with `segmentAtS`.
 
+  
+  
+  
   - `applyBoostImpulse`
     - Purpose: Adds a forward speed impulse to the player capped by the boosted top speed when a boost event fires.【F:src/gameplay.js†L1194-L1199】
     - Inputs: None; uses `state.phys.vtan`, `player.topSpeed`, and boost tuning constants.【F:src/gameplay.js†L1194-L1199】
@@ -1630,6 +1922,9 @@
     - Keep / change / delete: Keep; centralizes boost capping so the impulse logic stays consistent.
     - Confidence / assumptions: High confidence; assumes physics state is mutable and accessible here.
 
+  
+  
+  
   - `applyJumpZoneBoost`
     - Purpose: Activates the player's boost timer and flash effect when entering a jump zone, layering on a speed impulse.【F:src/gameplay.js†L1202-L1207】
     - Inputs: `zone` — jump zone descriptor; ignored when falsy.【F:src/gameplay.js†L1202-L1203】
@@ -1644,6 +1939,9 @@
     - Keep / change / delete: Keep; bundles jump-specific boost side effects in one place.
     - Confidence / assumptions: High confidence; assumes `state.phys.boostFlashTimer` exists and is time-based.
 
+  
+  
+  
   - `playerHalfWN`
     - Purpose: Computes half of the player's sprite width in normalized lane units for spacing and collision checks.【F:src/gameplay.js†L1209-L1211】
     - Inputs: None; references player sprite metadata and scale from state.【F:src/gameplay.js†L1209-L1211】
@@ -1658,6 +1956,9 @@
     - Keep / change / delete: Keep; avoids duplicating scale logic throughout gameplay code.
     - Confidence / assumptions: Medium confidence; assumes metadata is loaded before use.
 
+  
+  
+  
   - `spawnDriftSmokeSprites`
     - Purpose: Spawns transient drift-smoke sprites at both sides of the player while drifting to visualize tire slip.【F:src/gameplay.js†L1213-L1247】
     - Inputs: None; relies on current physics state for position, velocity, and segment selection.【F:src/gameplay.js†L1213-L1247】
@@ -1672,6 +1973,9 @@
     - Keep / change / delete: Keep; encapsulates all drift-smoke initialization logic though pooling could limit allocations further.
     - Confidence / assumptions: Medium confidence; assumes sprite pools are large enough to satisfy allocations without leaks.
 
+  
+  
+  
   - `spawnSparksSprites`
     - Purpose: Emits spark sprites near the contact side when the player scrapes a guard rail for visual feedback.【F:src/gameplay.js†L1250-L1296】
     - Inputs: `contactSide` — optional sign indicating which side triggered the sparks (defaults to player leaning side).【F:src/gameplay.js†L1250-L1259】
@@ -1686,6 +1990,9 @@
     - Keep / change / delete: Keep; encapsulates spark setup though random seeds could be injected for replay determinism.
     - Confidence / assumptions: Medium confidence; assumes guard-rail contact detection prevents duplicate spawns within a frame.
 
+  
+  
+  
   - `applyDriftSmokeMotion`
     - Purpose: Advances drift-smoke sprite motion over time, applying drag and moving sprites between segments when necessary.【F:src/gameplay.js†L1299-L1338】
     - Inputs: `sprite` — expected to be a drift-smoke sprite; `dt` — simulation step in seconds; `currentSeg` — segment currently iterated (optional).【F:src/gameplay.js†L1299-L1305】
@@ -1700,6 +2007,9 @@
     - Keep / change / delete: Keep; isolates physics integration for smoke particles.
     - Confidence / assumptions: High confidence; assumes calling code initializes `sprite.driftMotion`.
 
+  
+  
+  
   - `applySparksMotion`
     - Purpose: Updates spark sprite motion, including track movement, lateral slide, and screen-space trails.【F:src/gameplay.js†L1341-L1406】
     - Inputs: `sprite` — spark sprite; `dt` — time step; `currentSeg` — current segment context.【F:src/gameplay.js†L1341-L1346】
@@ -1714,6 +2024,9 @@
     - Keep / change / delete: Keep; provides encapsulated kinematics for sparks.
     - Confidence / assumptions: High confidence; assumes spark sprites always own a motion payload.
 
+  
+  
+  
   - `carMeta`
     - Purpose: Retrieves the metadata describing a car sprite, defaulting to generic car data when custom metadata is absent.【F:src/gameplay.js†L1408-L1411】
     - Inputs: `car` — NPC car object that may include `type` and `meta`.【F:src/gameplay.js†L1408-L1411】
@@ -1728,6 +2041,9 @@
     - Keep / change / delete: Keep; centralizes metadata fallback logic.
     - Confidence / assumptions: High confidence; assumes metadata table is already loaded.
 
+  
+  
+  
   - `carHalfWN`
     - Purpose: Calculates half the normalized width of an NPC car to support spacing, avoidance, and collision checks.【F:src/gameplay.js†L1413-L1415】
     - Inputs: `car` — NPC car descriptor.【F:src/gameplay.js†L1413-L1415】
@@ -1742,6 +2058,9 @@
     - Keep / change / delete: Keep; simple helper aids readability.
     - Confidence / assumptions: High confidence; assumes metadata is static per car.
 
+  
+  
+  
   - `currentPlayerForwardSpeed`
     - Purpose: Returns the player's current forward (tangential) speed clamped to a non-negative value.【F:src/gameplay.js†L1418-L1421】
     - Inputs: None; reads from `state.phys.vtan`.【F:src/gameplay.js†L1418-L1421】
@@ -1756,6 +2075,9 @@
     - Keep / change / delete: Keep; avoids repeating guard logic on `state.phys.vtan`.
     - Confidence / assumptions: High confidence; assumes physics state object stays defined.
 
+  
+  
+  
   - `npcForwardSpeed`
     - Purpose: Sanitizes an NPC car's forward speed for collision comparisons.【F:src/gameplay.js†L1423-L1425】
     - Inputs: `car` — NPC car with a `speed` property.【F:src/gameplay.js†L1423-L1425】
@@ -1770,6 +2092,9 @@
     - Keep / change / delete: Keep; keeps sanity checks centralized.
     - Confidence / assumptions: High confidence; assumes car objects expose `speed`.
 
+  
+  
+  
   - `ensureCarNearMissReset`
     - Purpose: Marks an NPC car as ready for a future near-miss when the player is sufficiently far laterally away.【F:src/gameplay.js†L1428-L1436】
     - Inputs: `car` — NPC object; `combinedHalf` — sum of player and car half-widths; `lateralGap` — current lateral separation.【F:src/gameplay.js†L1428-L1436】
@@ -1784,6 +2109,9 @@
     - Keep / change / delete: Keep; keeps near-miss gating logic separate from collision detection.
     - Confidence / assumptions: High confidence; assumes callers provide consistent gap measurements.
 
+  
+  
+  
   - `tryRegisterCarNearMiss`
     - Purpose: Detects and records a near-miss event when the player passes close to an NPC without colliding.【F:src/gameplay.js†L1439-L1455】
     - Inputs: `car`, `combinedHalf`, and `lateralGap` matching the collision context.【F:src/gameplay.js†L1439-L1444】
@@ -1798,6 +2126,9 @@
     - Keep / change / delete: Keep; isolates metrics bookkeeping from collision logic.
     - Confidence / assumptions: Medium confidence; assumes metrics object is initialized before collisions are processed.
 
+  
+  
+  
   - `computeCollisionPush`
     - Purpose: Calculates forward and lateral push velocities to separate the player from another object after contact.【F:src/gameplay.js†L1457-L1491】
     - Inputs: `forwardSpeed` — player speed; `playerOffset`/`targetOffset` — normalized lateral positions; `forwardMaxSegments`/`lateralMax` — tuning caps (defaults supplied).【F:src/gameplay.js†L1457-L1463】
@@ -1812,6 +2143,9 @@
     - Keep / change / delete: Keep; reusable push computation shared by sprites and cars.
     - Confidence / assumptions: High confidence; assumes tuning constants remain positive.
 
+  
+  
+  
   - `configureImpactableSprite`
     - Purpose: Initializes and sanitizes the impact motion state on an impactable sprite so collision pushes can be applied safely.【F:src/gameplay.js†L1494-L1506】
     - Inputs: `sprite` — sprite descriptor expected to carry `impactable` flag.【F:src/gameplay.js†L1494-L1496】
@@ -1826,6 +2160,9 @@
     - Keep / change / delete: Keep; provides a safe initialization point for impactable sprites.
     - Confidence / assumptions: High confidence; assumes all impactable sprites should carry a mutable `impactState`.
 
+  
+  
+  
   - `applyImpactPushToSprite`
     - Purpose: Applies a freshly computed collision push to an impactable sprite, starting its impact timer and velocity.【F:src/gameplay.js†L1509-L1526】
     - Inputs: `sprite` — candidate sprite to push.【F:src/gameplay.js†L1509-L1515】
@@ -1840,6 +2177,9 @@
     - Keep / change / delete: Keep; bridges collision detection and sprite motion in a focused helper.
     - Confidence / assumptions: High confidence; assumes `sprite.offset` mirrors normalized N space.
 
+  
+  
+  
   - `updateImpactableSprite`
     - Purpose: Steps an impactable sprite’s push motion forward, updating offsets, timers, and optionally moving it to a new segment.【F:src/gameplay.js†L1529-L1572】
     - Inputs: `sprite` — impactable sprite; `dt` — elapsed time; `currentSeg` — segment currently iterated (optional).【F:src/gameplay.js†L1529-L1537】
@@ -1854,6 +2194,9 @@
     - Keep / change / delete: Keep; cleanly separates impact motion from interaction detection.
     - Confidence / assumptions: Medium confidence; assumes referenced segments remain valid while sprites move.
 
+  
+  
+  
   - `carHitboxHeight`
     - Purpose: Calculates an NPC car’s hitbox height in world units, honoring explicit overrides or deriving it from width and aspect ratio.【F:src/gameplay.js†L1574-L1583】
     - Inputs: `car` — NPC descriptor; `s` — optional longitudinal position for road-width queries (defaults to player `s`).【F:src/gameplay.js†L1574-L1580】
@@ -1868,6 +2211,9 @@
     - Keep / change / delete: Keep; centralizes hitbox derivation logic.
     - Confidence / assumptions: Medium confidence; assumes `roadWidthAt` is available or falls back to `track.roadWidth`.
 
+  
+  
+  
   - `carHitboxTopY`
     - Purpose: Computes the world-space Y coordinate of an NPC car’s hitbox top, blending road elevation with hitbox height.【F:src/gameplay.js†L1586-L1591】
     - Inputs: `car` — NPC descriptor (uses its `z` and lateral offset when available).【F:src/gameplay.js†L1586-L1589】
@@ -1882,6 +2228,9 @@
     - Keep / change / delete: Keep; simplifies collision height comparisons.
     - Confidence / assumptions: High confidence; assumes elevation helpers are reliable at the queried positions.
 
+  
+  
+  
   - `applyNpcCollisionPush`
     - Purpose: Starts a collision push response on an NPC car when the player rear-ends it, mirroring the player-side push.【F:src/gameplay.js†L1593-L1610】
     - Inputs: `car` — NPC to push; `playerForwardSpeed` — player speed at impact.【F:src/gameplay.js†L1593-L1600】
@@ -1896,6 +2245,9 @@
     - Keep / change / delete: Keep; mirrors player push logic for NPC feedback.
     - Confidence / assumptions: High confidence; assumes `COLLISION_PUSH_DURATION` positive.
 
+  
+  
+  
   - `playerBaseHeight`
     - Purpose: Determines the player’s current floor height, choosing the road surface when grounded or the physics Y when airborne.【F:src/gameplay.js†L1613-L1618】
     - Inputs: None.【F:src/gameplay.js†L1613-L1618】
@@ -1910,6 +2262,9 @@
     - Keep / change / delete: Keep; clarifies base-height logic across collision checks.
     - Confidence / assumptions: High confidence; assumes `phys.grounded` flag accurately reflects landing state.
 
+  
+  
+  
   - `npcLateralLimit`
     - Purpose: Calculates how far an NPC car may move laterally, respecting its width, safety padding, and guard-rail constraints.【F:src/gameplay.js†L1621-L1629】
     - Inputs: `segIndex` — segment index; `car` — NPC descriptor.【F:src/gameplay.js†L1621-L1628】
@@ -1924,6 +2279,9 @@
     - Keep / change / delete: Keep; encapsulates guard-rail aware clamping.
     - Confidence / assumptions: Medium confidence; assumes segment guard-rail data stays synchronized with indices.
 
+  
+  
+  
   - `slopeAngleDeg`
     - Purpose: Converts a slope ratio into an absolute angle in degrees for cliff limit comparisons.【F:src/gameplay.js†L1632-L1635】
     - Inputs: `slope` — rise/run ratio.【F:src/gameplay.js†L1632-L1635】
@@ -1938,6 +2296,9 @@
     - Keep / change / delete: Keep; small helper keeps degree conversion centralized.
     - Confidence / assumptions: High confidence; assumes slope inputs are numeric.
 
+  
+  
+  
   - `slopeLimitRatio`
     - Purpose: Expresses how close a slope is to the configured cliff angle limit as a 0..1+ ratio.【F:src/gameplay.js†L1637-L1641】
     - Inputs: `slope` — rise/run ratio.【F:src/gameplay.js†L1637-L1641】
@@ -1952,6 +2313,9 @@
     - Keep / change / delete: Keep; simple ratio helper clarifies limit math.
     - Confidence / assumptions: High confidence; assumes `CLIFF_LIMIT_DEG` describes a positive degree limit when enabled.
 
+  
+  
+  
   - `slopeExceedsLimit`
     - Purpose: Flags slopes whose angle surpasses the configured cliff safety threshold.【F:src/gameplay.js†L1643-L1645】
     - Inputs: `slope` — rise/run ratio.【F:src/gameplay.js†L1643-L1645】
@@ -1966,6 +2330,9 @@
     - Keep / change / delete: Keep; keeps slope comparisons consistent.
     - Confidence / assumptions: High confidence; assumes `slopeLimitRatio` returns sensible ratios.
 
+  
+  
+  
   - `cliffSectionExceedsLimit`
     - Purpose: Evaluates a cliff cross-section’s slope to determine if it breaches the configured steepness limit.【F:src/gameplay.js†L1648-L1654】
     - Inputs: `section` — object containing `dx`/`dy` components.【F:src/gameplay.js†L1648-L1653】
@@ -1980,6 +2347,9 @@
     - Keep / change / delete: Keep; localized helper simplifies `segmentHasSteepCliff`.
     - Confidence / assumptions: Medium confidence; assumes `dx` is non-zero for meaningful slopes.
 
+  
+  
+  
   - `cliffInfoExceedsLimit`
     - Purpose: Checks aggregated cliff surface info for any slope component that surpasses the configured limit.【F:src/gameplay.js†L1659-L1664】
     - Inputs: `info` — structure with `slope`, `slopeA`, and `slopeB` fields.【F:src/gameplay.js†L1659-L1664】
@@ -1993,6 +2363,9 @@
     - Determinism: Deterministic.【F:src/gameplay.js†L1659-L1664】
     - Keep / change / delete: Keep; keeps multi-slope checks concise inside segment scanning.
     - Confidence / assumptions: High confidence; assumes upstream samplers populate slope fields consistently.
+  
+  
+  
   - `segmentHasSteepCliff`
     - Purpose: Scans a segment’s cliff samples to detect any section whose slope exceeds the configured limit, aborting early once a violation is found.【F:src/gameplay.js†L1667-L1689】
     - Inputs: `segIndex` — segment index to inspect; should correspond to cached cliff parameters for sampling positions `t` and lateral offsets `n`.【F:src/gameplay.js†L1669-L1684】
@@ -2006,6 +2379,9 @@
     - Determinism: Deterministic given the same track data and configuration.【F:src/gameplay.js†L1667-L1689】
     - Keep / change / delete: Keep; localized helper avoids duplicating steep-cliff scans (alternate would be inlining into `playerLateralLimit`).
     - Confidence / assumptions: Medium confidence; assumes `cliffParamsAt` returns consistent `dx`/`dy` measurements for both cliff sides.
+  
+  
+  
   - `wrapDistance`
     - Purpose: Adds a delta to a track position and wraps it to the track length so movers seamlessly loop around the circuit.【F:src/gameplay.js†L1692-L1694】
     - Inputs: `v` — starting S position; `dv` — delta to apply; `max` — wrap length (typically total track S). Accepts finite numbers; if `max` is non-positive the downstream helper defines the behavior.【F:src/gameplay.js†L1692-L1694】
@@ -2019,6 +2395,9 @@
     - Determinism: Deterministic for deterministic inputs.【F:src/gameplay.js†L1692-L1694】
     - Keep / change / delete: Keep; single-purpose helper clarifies intent (alternatively call `wrapByLength` directly).
     - Confidence / assumptions: High confidence; assumes callers supply finite numbers.
+  
+  
+  
   - `shortestSignedTrackDistance`
     - Purpose: Computes the minimal signed longitudinal separation between two positions on the looping track.【F:src/gameplay.js†L1696-L1705】
     - Inputs: `a` — reference S position; `b` — comparison S position; expects finite numbers, falling back to raw subtraction when track length is invalid.【F:src/gameplay.js†L1696-L1703】
@@ -2032,6 +2411,9 @@
     - Determinism: Deterministic.【F:src/gameplay.js†L1696-L1705】
     - Keep / change / delete: Keep; encapsulates wrap-aware subtraction (alternative would be duplicating the modulo math inline).
     - Confidence / assumptions: High confidence; assumes `trackLengthRef` stays synchronized with course updates.
+  
+  
+  
   - `nearestSegmentCenter`
     - Purpose: Snaps an arbitrary longitudinal position to the center of its nearest road segment for respawn logic.【F:src/gameplay.js†L1708-L1710】
     - Inputs: `s` — world S coordinate; expects finite numbers tied to segment length.【F:src/gameplay.js†L1708-L1710】
@@ -2045,6 +2427,9 @@
     - Determinism: Deterministic.【F:src/gameplay.js†L1708-L1710】
     - Keep / change / delete: Keep; concise helper clarifies respawn centering (alternative would be duplicating the rounding math).
     - Confidence / assumptions: High confidence; assumes `segmentLength` is initialized.
+  
+  
+  
   - `cliffSurfaceInfoAt`
     - Purpose: Derives cliff height and slope information beyond the road edge at a sampled segment position, returning a normalized info object for downstream checks.【F:src/gameplay.js†L1724-L1801】
     - Inputs: `segIndex` — segment index being sampled; `nNorm` — normalized lateral coordinate where |n|>1 falls outside the road; `t` — longitudinal interpolation along the segment (defaults to 0).【F:src/gameplay.js†L1724-L1780】
@@ -2058,6 +2443,9 @@
     - Determinism: Deterministic given the same cliff data.【F:src/gameplay.js†L1724-L1801】
     - Keep / change / delete: Keep; consolidates cliff sampling math (alternative would be duplicating calculations in each consumer).
     - Confidence / assumptions: Medium confidence; assumes cliff parameter objects include `left/right` sections with finite `dx`/`dy`.
+  
+  
+  
   - `cliffLateralSlopeAt`
     - Purpose: Convenience accessor that returns the aggregate lateral slope component from `cliffSurfaceInfoAt` for a given sample.【F:src/gameplay.js†L1803-L1806】
     - Inputs: `segIndex` — segment index; `nNorm` — normalized lateral coordinate; `t` — optional longitudinal interpolation.【F:src/gameplay.js†L1803-L1806】
@@ -2071,6 +2459,9 @@
     - Determinism: Deterministic.【F:src/gameplay.js†L1803-L1806】
     - Keep / change / delete: Keep; keeps push-force code succinct (alternative is inlining the info lookup).
     - Confidence / assumptions: High confidence; assumes cliff info helpers stay stable.
+  
+  
+  
   - `getAdditiveTiltDeg`
     - Purpose: Computes an additional player/camera roll angle based on local cliff slope to visually lean away from steep drops.【F:src/gameplay.js†L1808-L1825】
     - Inputs: None; derives data from current state, tilt configuration, and sampled cliff info.【F:src/gameplay.js†L1808-L1824】
@@ -2084,6 +2475,9 @@
     - Determinism: Deterministic given the same game state.【F:src/gameplay.js†L1808-L1825】
     - Keep / change / delete: Keep; isolates camera-tilt math (alternative would be embedding logic in render loop).
     - Confidence / assumptions: Medium confidence; assumes tilt configuration flags remain synchronized with render expectations.
+  
+  
+  
   - `updateCameraFromFieldOfView`
     - Purpose: Recomputes camera projection parameters (depth, near plane, playerZ) when the field of view changes.【F:src/gameplay.js†L1830-L1836】
     - Inputs: None; operates on `state.camera.fieldOfView`.【F:src/gameplay.js†L1830-L1836】
@@ -2097,6 +2491,9 @@
     - Determinism: Deterministic.【F:src/gameplay.js†L1830-L1836】
     - Keep / change / delete: Keep; centralizes camera projection math (alternative is duplicating the trig in callers).
     - Confidence / assumptions: High confidence; assumes camera state exists before invocation.
+  
+  
+  
   - `setFieldOfView`
     - Purpose: Setter that applies a new camera FOV and immediately refreshes dependent projection values.【F:src/gameplay.js†L1838-L1844】
     - Inputs: `fov` — field of view in degrees; expected to be finite.【F:src/gameplay.js†L1838-L1840】
@@ -2110,6 +2507,9 @@
     - Determinism: Deterministic.【F:src/gameplay.js†L1838-L1844】
     - Keep / change / delete: Keep; simple setter keeps camera updates uniform (alternative is writing to the state and calling the helper manually).
     - Confidence / assumptions: High confidence; assumes camera object has been initialized.
+  
+  
+  
   - `cliffSteepnessMultiplier`
     - Purpose: Converts a slope ratio into a multiplier that grows as the slope approaches or exceeds the configured cliff limit, intensifying push-back forces.【F:src/gameplay.js†L1846-L1860】
     - Inputs: `slope` — lateral slope ratio; expected finite number.【F:src/gameplay.js†L1846-L1853】
@@ -2123,6 +2523,9 @@
     - Determinism: Deterministic.【F:src/gameplay.js†L1846-L1860】
     - Keep / change / delete: Keep; encapsulates easing curve for steepness (alternative would be hard-coding math in `applyCliffPushForce`).
     - Confidence / assumptions: Medium confidence; assumes limit configuration matches slope sampling units.
+  
+  
+  
   - `applyCliffPushForce`
     - Purpose: Nudges the player back toward the road when drifting beyond the guard rails, scaling the correction with distance and cliff steepness.【F:src/gameplay.js†L1863-L1879】
     - Inputs: `step` — base steering delta (used to scale the applied push); expects finite number.【F:src/gameplay.js†L1863-L1878】
@@ -2136,6 +2539,9 @@
     - Determinism: Deterministic given the same state and sampling functions.【F:src/gameplay.js†L1863-L1879】
     - Keep / change / delete: Keep; encapsulates cliff push logic (alternative is embedding calculations inside `updatePhysics`).
     - Confidence / assumptions: Medium confidence; assumes cliff sampling returns meaningful slopes for |n|>1.
+  
+  
+  
   - `doHop`
     - Purpose: Applies the player’s hop impulse, transitioning from grounded to airborne motion and seeding drift/boost interactions.【F:src/gameplay.js†L1884-L1902】
     - Inputs: None; relies on `state.phys`, jump zone info, and player tuning.【F:src/gameplay.js†L1884-L1901】
@@ -2149,6 +2555,9 @@
     - Determinism: Deterministic given the same state and random-free dependencies.【F:src/gameplay.js†L1884-L1902】
     - Keep / change / delete: Keep; isolates hop physics (alternative is embedding hop logic directly into `updatePhysics`).
     - Confidence / assumptions: Medium confidence; assumes `player.hopImpulse` and normals are tuned for stable trajectories.
+  
+  
+  
   - `playerLateralLimit`
     - Purpose: Computes the maximum lateral travel the player can have within a segment, considering car width, guard rails, and cliff safety limits.【F:src/gameplay.js†L1904-L1917】
     - Inputs: `segIndex` — segment index being evaluated.【F:src/gameplay.js†L1904-L1911】
@@ -2162,6 +2571,9 @@
     - Determinism: Deterministic.【F:src/gameplay.js†L1904-L1917】
     - Keep / change / delete: Keep; centralizes lateral clamp logic (alternative is duplicating guard-rail math in callers).
     - Confidence / assumptions: Medium confidence; assumes guard-rail flags accurately match segment geometry.
+  
+  
+  
   - `resolveSpriteInteractionsInSeg`
     - Purpose: Processes sprite-player interactions within a segment, triggering toggles, animations, impacts, and cleanup for collected props.【F:src/gameplay.js†L1920-L1959】
     - Inputs: `seg` — segment object whose `sprites` array is inspected.【F:src/gameplay.js†L1920-L1924】
@@ -2175,6 +2587,9 @@
     - Determinism: Deterministic, aside from reliance on deterministic sprite state transitions.【F:src/gameplay.js†L1920-L1959】
     - Keep / change / delete: Keep; isolates sprite-interaction logic (alternative is folding into the broader collision loop).
     - Confidence / assumptions: Medium confidence; assumes sprite metadata is accurate and `seg.sprites` holds mutable arrays.
+  
+  
+  
   - `resolveCarCollisionsInSeg`
     - Purpose: Handles collisions between the player and NPC cars within a segment, applying velocity transfers, landing logic, and metrics updates.【F:src/gameplay.js†L1962-L2021】
     - Inputs: `seg` — segment whose `cars` array is tested.【F:src/gameplay.js†L1962-L1969】
@@ -2188,6 +2603,9 @@
     - Determinism: Deterministic, barring any randomness in upstream car behavior.【F:src/gameplay.js†L1962-L2021】
     - Keep / change / delete: Keep; encapsulates complex collision handling (alternative is embedding logic in the integration loop).
     - Confidence / assumptions: Medium confidence; assumes car hitboxes and cooldown constants are tuned consistently.
+  
+  
+  
   - `resolveSegmentCollisions`
     - Purpose: Processes both car and sprite collision handling for a single segment and reports whether a car impact occurred.【F:src/gameplay.js†L2025-L2029】
     - Inputs: `seg` — segment instance to resolve.【F:src/gameplay.js†L2025-L2028】
@@ -2201,6 +2619,9 @@
     - Determinism: Deterministic given deterministic delegates.【F:src/gameplay.js†L2025-L2029】
     - Keep / change / delete: Keep; provides a single entry point for collision resolution (alternative is calling the two helpers separately each time).
     - Confidence / assumptions: High confidence; assumes delegates remain side-effectful as intended.
+  
+  
+  
   - `resolveCollisions`
     - Purpose: Convenience wrapper that resolves collisions in the player’s current segment.【F:src/gameplay.js†L2032-L2036】
     - Inputs: None; derives the segment from `state.phys.s`.【F:src/gameplay.js†L2032-L2035】
@@ -2214,6 +2635,9 @@
     - Determinism: Deterministic.【F:src/gameplay.js†L2032-L2036】
     - Keep / change / delete: Keep; handy shim for potential external callers (alternative is invoking `resolveSegmentCollisions(segmentAtS(...))` manually).
     - Confidence / assumptions: Medium confidence; assumes future tooling may call it despite no in-repo uses.
+  
+  
+  
   - `updateSpriteAnimations`
     - Purpose: Advances sprite animations, lifetimes, and motion effects across all segments, recycling expired instances and transferring moving effects between segments.【F:src/gameplay.js†L2038-L2108】
     - Inputs: `dt` — time step in seconds; expects non-negative finite value.【F:src/gameplay.js†L2038-L2107】
@@ -2227,6 +2651,9 @@
     - Determinism: Deterministic provided helper motion/animation code is deterministic.【F:src/gameplay.js†L2038-L2107】
     - Keep / change / delete: Keep; central tick for sprite effects (alternative is distributing animation updates across multiple sites).
     - Confidence / assumptions: Medium confidence; assumes sprite helpers behave consistently and segments remain enumerable.
+  
+  
+  
   - `collectSegmentsCrossed`
     - Purpose: Identifies which segments the player traversed during an integration step so collision checks can process them in order.【F:src/gameplay.js†L2111-L2124】
     - Inputs: `startS` — starting S position; `endS` — ending S position; expects finite numbers and positive `segmentLength`.【F:src/gameplay.js†L2111-L2118】
@@ -2240,6 +2667,9 @@
     - Determinism: Deterministic.【F:src/gameplay.js†L2111-L2124】
     - Keep / change / delete: Keep; isolates wrap-aware traversal logic (alternative is duplicating the loop in `updatePhysics`).
     - Confidence / assumptions: High confidence; assumes segment indices wrap correctly via `wrapSegmentIndex`.
+  
+  
+  
   - `updatePhysics`
     - Purpose: Advances the player’s physics simulation for one timestep, incorporating input, drift, boosts, collisions, effects, and race bookkeeping.【F:src/gameplay.js†L2127-L2431】
     - Inputs: `dt` — simulation timestep in seconds; expected non-negative finite value.【F:src/gameplay.js†L2127-L2135】
@@ -2253,6 +2683,9 @@
     - Determinism: Deterministic given deterministic inputs and helper behavior (no randomness inside the routine).【F:src/gameplay.js†L2127-L2431】
     - Keep / change / delete: Keep; central integration loop is necessary (alternative would be decomposing into smaller orchestrated steps).
     - Confidence / assumptions: Medium confidence; assumes all referenced helpers and state fields are initialized before stepping.
+  
+  
+  
   - `clearSegmentCars`
     - Purpose: Empties the per-segment car lists in preparation for respawning NPCs.【F:src/gameplay.js†L2433-L2437】
     - Inputs: None.【F:src/gameplay.js†L2433-L2437】
@@ -2266,6 +2699,9 @@
     - Determinism: Deterministic.【F:src/gameplay.js†L2433-L2437】
     - Keep / change / delete: Keep; dedicated reset helper keeps spawning routine clean (alternative is inlining the loop into `spawnCars`).
     - Confidence / assumptions: High confidence; assumes segments own mutable `cars` arrays.
+  
+  
+  
   - `spawnCars`
     - Purpose: Populates the world with NPC cars at random segments, seeding their offsets, types, and speeds.【F:src/gameplay.js†L2440-L2463】
     - Inputs: None.【F:src/gameplay.js†L2440-L2463】
@@ -2279,6 +2715,9 @@
     - Determinism: Non-deterministic because of `Math.random`.【F:src/gameplay.js†L2449-L2460】
     - Keep / change / delete: Keep; encapsulates spawn logic (alternative is to expose a deterministic seeding method if needed).
     - Confidence / assumptions: Medium confidence; assumes NPC constants (`NPC.total`, `CAR_TYPES`) are configured.
+  
+  
+  
   - `steerAvoidance`
     - Purpose: Computes a lateral offset adjustment for an NPC to avoid the player or other cars ahead within a configurable lookahead window.【F:src/gameplay.js†L2466-L2499】
     - Inputs: `car` — NPC descriptor; `carSeg` — current segment; `playerSeg` — player’s segment; `playerW` — player half-width in normalized units.【F:src/gameplay.js†L2466-L2470】
@@ -2292,6 +2731,9 @@
     - Determinism: Deterministic given deterministic state inputs.【F:src/gameplay.js†L2466-L2499】
     - Keep / change / delete: Keep; isolates avoidance heuristics (alternative is embedding logic directly in `tickCars`).
     - Confidence / assumptions: Medium confidence; assumes lookahead configuration and overlap thresholds are tuned.
+  
+  
+  
   - `tickCars`
     - Purpose: Updates all NPC cars for the frame, applying avoidance steering, collision pushes, and longitudinal movement while syncing segment membership.【F:src/gameplay.js†L2502-L2538】
     - Inputs: `dt` — timestep in seconds.【F:src/gameplay.js†L2502-L2522】
@@ -2305,6 +2747,9 @@
     - Determinism: Deterministic aside from any randomness embedded in prior spawn data.【F:src/gameplay.js†L2502-L2538】
     - Keep / change / delete: Keep; central NPC update loop (alternative is splitting into multiple passes).
     - Confidence / assumptions: Medium confidence; assumes car metadata (speed, offset) remains valid across frames.
+  
+  
+  
   - `spawnProps`
     - Purpose: Loads sprite placement data and instantiates all static/ambient props across the track, rebuilding sprite metadata overrides.【F:src/gameplay.js†L2541-L2571】
     - Inputs: None (async).【F:src/gameplay.js†L2541-L2571】
@@ -2318,6 +2763,9 @@
     - Determinism: Deterministic given deterministic asset data (no randomization).【F:src/gameplay.js†L2541-L2571】
     - Keep / change / delete: Keep; centralizes prop loading (alternative is to inline asset handling in reset logic).
     - Confidence / assumptions: Medium confidence; assumes asset pipeline supplies consistent catalog and placement structures.
+  
+  
+  
   - `resetPlayerState`
     - Purpose: Reinitializes the player’s physics, camera smoothing, drift state, and related timers to a known baseline, optionally overriding position and timers.【F:src/gameplay.js†L2631-L2676】
     - Inputs: Options object with optional `s`, `playerN`, `cameraHeight`, and `timers` overrides; defaults to current state values.【F:src/gameplay.js†L2631-L2651】
@@ -2331,6 +2779,9 @@
     - Determinism: Deterministic for given inputs.【F:src/gameplay.js†L2631-L2676】
     - Keep / change / delete: Keep; shared reset utility reduces duplication (alternative is scattering manual resets across call sites).
     - Confidence / assumptions: High confidence; assumes dependent helper intervals return valid numbers.
+  
+  
+  
   - `respawnPlayerAt`
     - Purpose: Respawns the player at a specific longitudinal position and lateral offset, clamping within allowed bounds before delegating to `resetPlayerState`.【F:src/gameplay.js†L2679-L2687】
     - Inputs: `sTarget` — desired S position; `nNorm` — desired normalized lateral position (default 0).【F:src/gameplay.js†L2679-L2687】
@@ -2344,6 +2795,9 @@
     - Determinism: Deterministic.【F:src/gameplay.js†L2679-L2687】
     - Keep / change / delete: Keep; thin wrapper ensures respawns respect limits (alternative is repeating wrap/limit math at call sites).
     - Confidence / assumptions: High confidence; assumes `playerLateralLimit` returns sensible bounds even if the segment lookup falls back to index 0.
+  
+  
+  
   - `applyDefaultFieldOfView`
     - Purpose: Syncs the active camera state with the default gameplay FOV, either via the registered updater or by directly assigning the stored value.【F:src/gameplay.js†L2689-L2696】
     - Inputs: None.【F:src/gameplay.js†L2689-L2696】
@@ -2357,6 +2811,9 @@
     - Determinism: Deterministic.【F:src/gameplay.js†L2689-L2696】
     - Keep / change / delete: Keep; provides a safe way to reapply defaults (alternative is duplicating the callback-check each time).
     - Confidence / assumptions: High confidence; assumes `state.camera` is populated before reset.
+  
+  
+  
   - `resetScene`
     - Purpose: Reinitializes the entire gameplay scene—reloading track/cliff data, resetting texture zones, metrics, props, cars, and player state to start a new session.【F:src/gameplay.js†L2699-L2751】
     - Inputs: None (async).【F:src/gameplay.js†L2699-L2751】
@@ -2370,6 +2827,9 @@
     - Determinism: Deterministic aside from external IO results and randomness used by downstream spawns (e.g., car spawning).【F:src/gameplay.js†L2699-L2751】
     - Keep / change / delete: Keep; orchestrates full-scene setup (alternative would be splitting into multiple public calls but adds coordination complexity).
     - Confidence / assumptions: Medium confidence; assumes external CSV assets exist and `state.callbacks` handle optional notifications.
+  
+  
+  
   - `queueReset`
     - Purpose: Requests a full scene reset by notifying callbacks, unless a reset matte is already active.【F:src/gameplay.js†L2754-L2759】
     - Inputs: None.【F:src/gameplay.js†L2754-L2759】
@@ -2383,76 +2843,277 @@
     - Determinism: Deterministic aside from callback behavior.【F:src/gameplay.js†L2754-L2759】
     - Keep / change / delete: Keep; provides a central reset hook (alternative is inlining callback invocation in input handlers).
     - Confidence / assumptions: High confidence; assumes callbacks manage visual reset flow.
+
+
+
 - `queueRespawn`
+
+
+
 - `startRaceSession`
+
+
+
 - `step`
 
 ### 3.5 Sprite Placement, RNG, & Effects (`src/gameplay.js`)
+
+
+
 - `splitCsvLine`
+
+
+
 - `parseCsvWithHeader`
+
+
+
 - `parseNumberRange`
+
+
+
 - `parseNumericRange`
+
+
+
 - `parseSpritePool`
+
+
+
 - `parsePlacementMode`
+
+
+
 - `normalizeSeed`
+
+
+
 - `createRng`
+
+
+
 - `randomInRange`
+
+
+
 - `computeAxisScaleWeight`
+
+
+
 - `computeAxisAtlasBias`
+
+
+
 - `computePlacementBias`
+
+
+
 - `biasedRandom01`
+
+
+
 - `sampleScaleValue`
+
+
+
 - `sampleUniformIndex`
+
+
+
 - `sampleBiasedIndex`
+
+
+
 - `computeLaneStep`
+
+
+
 - `dedupePositions`
+
+
+
 - `computeLanePositions`
+
+
+
 - `clampSegmentRange`
+
+
+
 - `selectAsset`
+
+
+
 - `determineInitialFrame`
+
+
+
 - `buildSpriteMetaOverrides`
+
+
+
 - `generateSpriteInstances`
+
+
+
 - `createSpriteFromInstance`
+
+
+
 - `loadSpriteCsv`
+
+
+
 - `parseSpritePlacements`
+
+
+
 - `ensureSpriteDataLoaded`
+
+
+
 - `computeDriftSmokeInterval`
+
+
+
 - `allocDriftSmokeSprite`
+
+
+
 - `recycleDriftSmokeSprite`
+
+
+
 - `computeSparksInterval`
+
+
+
 - `allocSparksSprite`
+
+
+
 - `recycleSparksSprite`
+
+
+
 - `recycleTransientSprite`
+
+
+
 - `keyActionFromFlag`
+
+
+
 - `createKeyHandler`
 
 ### 3.6 Track & Environment Management (`src/world.js`)
+
+
+
 - `resolveAssetUrl`
+
+
+
 - `loadImage`
+
+
+
 - `defaultTextureLoader`
+
+
+
 - `loadTexturesWith`
+
+
+
 - `resetCliffSeries`
+
+
+
 - `randomSnowScreenColor`
+
+
+
 - `roadWidthAt`
+
+
+
 - `addSegment`
+
+
+
 - `lastY`
+
+
+
 - `addRoad`
+
+
+
 - `buildTrackFromCSV`
+
+
+
 - `buildCliffsFromCSV_Lite`
+
+
+
 - `enforceCliffWrap`
+
+
+
 - `pushZone`
+
+
+
 - `findZone`
+
+
+
 - `vSpanForSeg`
+
+
+
 - `clampBoostLane`
+
+
+
 - `clampRoadLane`
+
+
+
 - `laneToCenterOffset`
+
+
+
 - `laneToRoadRatio`
+
+
+
 - `getZoneLaneBounds`
+
+
+
 - `parseBoostZoneType`
+
+
+
 - `parseBoostLaneValue`
+
+
+
 - `segmentAtS`
+
+
+
 - `elevationAt`
+
+
+
 - `cliffParamsAt`
+  
+  
+  
   - `cliffSurfaceInfoAt`
     - Purpose: Derives cliff height and slope information beyond the road edge at a sampled segment position, returning a normalized info object for downstream checks.【F:src/gameplay.js†L1724-L1801】
     - Inputs: `segIndex` — segment index being sampled; `nNorm` — normalized lateral coordinate where |n|>1 falls outside the road; `t` — longitudinal interpolation along the segment (defaults to 0).【F:src/gameplay.js†L1724-L1780】
@@ -2466,7 +3127,13 @@
     - Determinism: Deterministic given the same cliff data.【F:src/gameplay.js†L1724-L1801】
     - Keep / change / delete: Keep; consolidates cliff sampling math (alternative would be duplicating calculations in each consumer).
     - Confidence / assumptions: Medium confidence; assumes cliff parameter objects include `left/right` sections with finite `dx`/`dy`.
+
+
+
 - `floorElevationAt`
+  
+  
+  
   - `cliffLateralSlopeAt`
     - Purpose: Convenience accessor that returns the aggregate lateral slope component from `cliffSurfaceInfoAt` for a given sample.【F:src/gameplay.js†L1803-L1806】
     - Inputs: `segIndex` — segment index; `nNorm` — normalized lateral coordinate; `t` — optional longitudinal interpolation.【F:src/gameplay.js†L1803-L1806】
@@ -2482,6 +3149,9 @@
     - Confidence / assumptions: High confidence; assumes cliff info helpers stay stable.
 
 ### 3.7 Rendering & Camera Systems (`src/render.js`)
+
+
+
 - `areTexturesEnabled`
   - Purpose: Switches rendering between textured and debug-solid output depending on the global debug configuration so tests and wireframe modes can override the usual art pipeline.【F:src/render.js†L8-L67】
   - Inputs: None; reads `Config.debug.mode` and `Config.debug.textures` flags where `mode` is expected to be `'off'` during normal play and `textures` can force-disable artwork.【F:src/render.js†L8-L67】
@@ -2495,6 +3165,9 @@
   - Determinism: Deterministic for a fixed debug configuration.【F:src/render.js†L61-L67】
   - Keep / change / delete: Keep; concise helper centralizes the debug toggle—alternative would be repeating the condition in every caller.【F:src/render.js†L202-L205】【F:src/render.js†L748-L930】
   - Confidence / assumptions: High confidence; assumes the config globals are initialized before rendering begins.【F:src/render.js†L8-L67】
+
+
+
 - `randomColorFor`
   - Purpose: Provides deterministic fallback RGBA colors per identifier so debug rendering remains readable when textures are disabled.【F:src/render.js†L84-L140】
   - Inputs: `key` (string or falsy) naming the element; falsy keys map to `'default'`. Any string is accepted.【F:src/render.js†L135-L138】
@@ -2508,6 +3181,9 @@
   - Determinism: Deterministic for a given key thanks to the seeded PRNG and cached results.【F:src/render.js†L84-L139】
   - Keep / change / delete: Keep; avoids duplicating seeded random color logic—alternative would be a static palette table.【F:src/render.js†L84-L139】
   - Confidence / assumptions: High confidence; assumes `mulberry32` remains stable for reproducible hues.【F:src/render.js†L473-L500】
+
+
+
 - `makeColor`
   - Purpose: Internal helper within `randomColorFor` that converts seeded random HSV samples into a normalized RGBA array for debug fills.【F:src/render.js†L87-L134】
   - Inputs: None directly; pulls random values from the closure-scoped PRNG and clamps them into valid hue/saturation/value ranges.【F:src/render.js†L87-L133】
@@ -2521,6 +3197,9 @@
   - Determinism: Deterministic because it consumes a deterministic RNG sequence.【F:src/render.js†L87-L134】
   - Keep / change / delete: Keep; scoped helper keeps HSV→RGB math localized—alternative is to inline the conversion inside `randomColorFor`.【F:src/render.js†L84-L139】
   - Confidence / assumptions: High confidence; assumes seeded RNG coverage is adequate for visually distinct hues.【F:src/render.js†L87-L134】
+
+
+
 - `applyDeadzone`
   - Purpose: Normalizes analog-style inputs by removing a configurable deadzone so minor noise does not influence sprite steering or tilt.【F:src/render.js†L142-L151】
   - Inputs: `value` (float typically in `[-1,1]`) and optional `deadzone` (0–0.99). Non-finite inputs are tolerated but clamped.【F:src/render.js†L142-L150】
@@ -2534,6 +3213,9 @@
   - Determinism: Deterministic for given inputs.【F:src/render.js†L142-L151】
   - Keep / change / delete: Keep; shared helper prevents repeating clamping math—alternative would be inline logic per call site.【F:src/render.js†L241-L253】
   - Confidence / assumptions: High confidence; assumes callers pass reasonable normalized inputs.【F:src/render.js†L241-L253】
+
+
+
 - `smoothTowards`
   - Purpose: Applies critically damped smoothing toward a target using an exponential decay constant so sprite pose changes ease instead of snapping.【F:src/render.js†L153-L159】
   - Inputs: `current`, `target` (numbers), `dt` (seconds, >0), `timeConstant` (seconds, >0). Non-positive or non-finite values cause immediate target snaps.【F:src/render.js†L153-L158】
@@ -2547,6 +3229,9 @@
   - Determinism: Deterministic for given inputs.【F:src/render.js†L153-L159】
   - Keep / change / delete: Keep; compact smoothing helper avoids repeated exponential logic.【F:src/render.js†L260-L271】
   - Confidence / assumptions: High confidence; assumes frame `dt` remains small for accurate smoothing.【F:src/render.js†L260-L271】
+
+
+
 - `atlasUvFromRowCol`
   - Purpose: Converts atlas grid coordinates into normalized UV corners so sprites sample the correct tile during rendering.【F:src/render.js†L161-L170】
   - Inputs: `row`, `col`, `columns`, `rows` (integers ≥1). Non-integer inputs are floored and clamped.【F:src/render.js†L161-L169】
@@ -2560,6 +3245,9 @@
   - Determinism: Deterministic for given indices.【F:src/render.js†L161-L170】
   - Keep / change / delete: Keep; reusable helper avoids copy/pasted UV math.【F:src/render.js†L161-L170】
   - Confidence / assumptions: High confidence; assumes atlases form uniform grids.【F:src/render.js†L161-L170】
+
+
+
 - `computePlayerAtlasSamples`
   - Purpose: Maps smoothed steering and height values onto discrete atlas tiles for the player sprite, currently returning a single weighted sample.【F:src/render.js†L173-L188】
   - Inputs: `steerValue`, `heightValue` (normalized -1..1), `columns`, `rows` (integers ≥1).【F:src/render.js†L173-L188】
@@ -2573,6 +3261,9 @@
   - Determinism: Deterministic for identical inputs.【F:src/render.js†L173-L188】
   - Keep / change / delete: Keep; structured return enables future multi-tile blending without refactoring.【F:src/render.js†L173-L189】
   - Confidence / assumptions: High confidence; assumes atlas metadata is accurate.【F:src/render.js†L173-L188】
+
+
+
 - `computePlayerSpriteSamples`
   - Purpose: Produces the animated player sprite description (texture, pose blend values, UV samples) based on physics, input, and terrain so the renderer can draw the bike/car avatar.【F:src/render.js†L191-L289】
   - Inputs: `frame` (current frame payload with `phys` data) and `meta` (sprite metadata providing `tex` and atlas info).【F:src/render.js†L191-L215】
@@ -2586,6 +3277,9 @@
   - Determinism: Deterministic given identical physics/input history (relies on monotonic `state.phys.t`).【F:src/render.js†L191-L289】
   - Keep / change / delete: Keep; encapsulates complex blending logic—alternative would be scattering pose math through the render loop.【F:src/render.js†L1353-L1365】
   - Confidence / assumptions: Medium confidence; assumes metadata supplies `tex()` and atlas parameters and that physics state stays finite.【F:src/render.js†L207-L215】
+
+
+
 - `createPerfTracker`
   - Purpose: Builds the instrumentation object that records per-frame rendering statistics for debugging overlays and performance monitoring.【F:src/render.js†L291-L412】
   - Inputs: None directly; captures helper `makeFrameStats` within closure.【F:src/render.js†L291-L412】
@@ -2599,6 +3293,9 @@
   - Determinism: Deterministic aside from floating-point smoothing dependent on real frame times.【F:src/render.js†L320-L335】
   - Keep / change / delete: Keep; centralizes perf tracking so overlays can consume consistent metrics.【F:src/render.js†L1972-L1998】
   - Confidence / assumptions: High confidence; assumes renderer methods exist to wrap.【F:src/render.js†L336-L354】
+
+
+
 - `makeFrameStats`
   - Purpose: Factory returning a blank statistics object for the perf tracker so per-frame counters start from zero.【F:src/render.js†L291-L309】
   - Inputs: None.【F:src/render.js†L291-L309】
@@ -2612,6 +3309,9 @@
   - Determinism: Deterministic object literal.【F:src/render.js†L292-L309】
   - Keep / change / delete: Keep; keeps tracker reset logic concise.【F:src/render.js†L320-L334】
   - Confidence / assumptions: High confidence; assumes tracked counters align with overlay expectations.【F:src/render.js†L1972-L1998】
+
+
+
 - `beginFrame`
   - Purpose: Resets current perf counters and updates smoothed FPS/frame-time metrics at the start of each frame.【F:src/render.js†L318-L333】
   - Inputs: `dt` (seconds since last frame, should be positive).【F:src/render.js†L320-L329】
@@ -2625,6 +3325,9 @@
   - Determinism: Depends on measured `dt`; otherwise deterministic.【F:src/render.js†L320-L333】
   - Keep / change / delete: Keep; essential for accurate counters—alternative would be manual resets in the main loop.【F:src/render.js†L2110-L2118】
   - Confidence / assumptions: High confidence; assumes `dt` from the main loop is finite.【F:src/render.js†L2110-L2118】
+
+
+
 - `endFrame`
   - Purpose: Captures the finished frame’s counters into `stats.last` so overlays can display the most recent metrics.【F:src/render.js†L333-L335】
   - Inputs: None.【F:src/render.js†L333-L335】
@@ -2638,6 +3341,9 @@
   - Determinism: Deterministic.【F:src/render.js†L333-L335】
   - Keep / change / delete: Keep; provides stable snapshot for overlays.【F:src/render.js†L1972-L1998】
   - Confidence / assumptions: High confidence; assumes `stats.current` holds the current frame counts.【F:src/render.js†L333-L335】
+
+
+
 - `wrapRenderer`
   - Purpose: Monkey-patches the GL renderer’s quad draw methods so perf tracking counts solids/textured draws automatically.【F:src/render.js†L336-L354】
   - Inputs: `renderer` (RenderGL instance). Must not be previously wrapped.【F:src/render.js†L336-L344】
@@ -2651,6 +3357,9 @@
   - Determinism: Deterministic instrumentation; does not alter draw order.【F:src/render.js†L336-L354】
   - Keep / change / delete: Keep; provides centralized instrumentation—alternative is to sprinkle counter increments around call sites.【F:src/render.js†L2079-L2083】
   - Confidence / assumptions: High confidence; assumes renderer exposes `drawQuadTextured`/`drawQuadSolid` methods.【F:src/render.js†L336-L347】
+
+
+
 - `markSolidStart`
   - Purpose: Tracks entry into solid-draw sections so textured wrappers know when they should count draws as solid.【F:src/render.js†L345-L359】
   - Inputs: None.【F:src/render.js†L355-L359】
@@ -2664,6 +3373,9 @@
   - Determinism: Deterministic.【F:src/render.js†L355-L359】
   - Keep / change / delete: Keep; required for nested solid draws to be tracked accurately.【F:src/render.js†L345-L351】
   - Confidence / assumptions: High confidence; assumes wrappers call start/end in pairs.【F:src/render.js†L345-L351】
+
+
+
 - `markSolidEnd`
   - Purpose: Balances `markSolidStart` by decrementing the solid-depth counter after a solid quad draw completes.【F:src/render.js†L346-L359】
   - Inputs: None.【F:src/render.js†L358-L359】
@@ -2677,6 +3389,9 @@
   - Determinism: Deterministic.【F:src/render.js†L358-L359】
   - Keep / change / delete: Keep; ensures instrumentation accuracy.【F:src/render.js†L345-L351】
   - Confidence / assumptions: High confidence; assumes wrappers always invoke it via `finally`.【F:src/render.js†L345-L351】
+
+
+
 - `isSolidActive`
   - Purpose: Reports whether the perf tracker is currently inside a solid draw block so textured draw wrappers can treat white-textured quads as solids.【F:src/render.js†L340-L363】
   - Inputs: None.【F:src/render.js†L361-L363】
@@ -2690,6 +3405,9 @@
   - Determinism: Deterministic.【F:src/render.js†L361-L363】
   - Keep / change / delete: Keep; needed for accurate solid counts.【F:src/render.js†L341-L343】
   - Confidence / assumptions: High confidence; assumes wrappers maintain depth correctly.【F:src/render.js†L345-L359】
+
+
+
 - `countDrawCall`
   - Purpose: Increments aggregated draw counters and splits them into solid vs. textured categories for diagnostics.【F:src/render.js†L364-L371】
   - Inputs: Optional `{ solid }` flag indicating whether to count as solid (`true`) or textured (`false`).【F:src/render.js†L364-L370】
@@ -2703,6 +3421,9 @@
   - Determinism: Deterministic given draw sequence.【F:src/render.js†L364-L371】
   - Keep / change / delete: Keep; centralizes stats increments.【F:src/render.js†L342-L371】
   - Confidence / assumptions: High confidence; assumes draws remain manageable in count.【F:src/render.js†L364-L371】
+
+
+
 - `registerDrawListSize`
   - Purpose: Records the number of items in the world draw list so perf overlays can report batching sizes.【F:src/render.js†L373-L375】
   - Inputs: `size` (numeric, expected ≥0).【F:src/render.js†L373-L375】
@@ -2716,6 +3437,9 @@
   - Determinism: Deterministic.【F:src/render.js†L373-L375】
   - Keep / change / delete: Keep; simpler than recomputing size when overlay reads stats.【F:src/render.js†L1373-L1376】
   - Confidence / assumptions: High confidence; assumes draw list length is finite.【F:src/render.js†L1373-L1376】
+
+
+
 - `registerStrip`
   - Purpose: Counts how many road strips were enqueued for the current frame, aiding breakdown of geometry work.【F:src/render.js†L376-L378】
   - Inputs: None.【F:src/render.js†L376-L378】
@@ -2729,6 +3453,9 @@
   - Determinism: Deterministic.【F:src/render.js†L376-L378】
   - Keep / change / delete: Keep; gives visibility into ground geometry workload.【F:src/render.js†L1376-L1388】
   - Confidence / assumptions: High confidence; assumes loop calls it appropriately.【F:src/render.js†L1376-L1388】
+
+
+
 - `registerSprite`
   - Purpose: Tracks how many sprites of each category (npc/prop/player) were enqueued to inform debugging overlays.【F:src/render.js†L379-L384】
   - Inputs: `kind` string `'npc'`, `'prop'`, `'player'`, or other.【F:src/render.js†L379-L383】
@@ -2742,6 +3469,9 @@
   - Determinism: Deterministic.【F:src/render.js†L379-L384】
   - Keep / change / delete: Keep; supports overlay breakdowns.【F:src/render.js†L1972-L1998】
   - Confidence / assumptions: High confidence; assumes kind strings follow expected values.【F:src/render.js†L1380-L1425】
+
+
+
 - `registerSnowScreen`
   - Purpose: Tallies how many snow-screen quads are submitted each frame.【F:src/render.js†L385-L387】
   - Inputs: None.【F:src/render.js†L385-L387】
@@ -2755,6 +3485,9 @@
   - Determinism: Deterministic.【F:src/render.js†L385-L387】
   - Keep / change / delete: Keep; necessary for overlay reporting.【F:src/render.js†L1972-L1998】
   - Confidence / assumptions: High confidence; assumes snow overlay uses this registration path.【F:src/render.js†L1422-L1425】
+
+
+
 - `registerSnowQuad`
   - Purpose: Counts individual snow flakes/quads rendered inside the snow-screen pass for performance insight.【F:src/render.js†L388-L390】
   - Inputs: None.【F:src/render.js†L388-L390】
@@ -2768,6 +3501,9 @@
   - Determinism: Deterministic given same snow field iteration.【F:src/render.js†L388-L390】
   - Keep / change / delete: Keep; provides granular snow perf insight.【F:src/render.js†L1521-L1535】
   - Confidence / assumptions: High confidence; assumes snow renderer calls it for each quad.【F:src/render.js†L1521-L1535】
+
+
+
 - `registerBoostQuad`
   - Purpose: Tracks how many boost zone quads render per frame for overlay metrics.【F:src/render.js†L391-L393】
   - Inputs: None.【F:src/render.js†L391-L393】
@@ -2781,6 +3517,9 @@
   - Determinism: Deterministic.【F:src/render.js†L391-L393】
   - Keep / change / delete: Keep; surfaces boost rendering cost.【F:src/render.js†L873-L887】
   - Confidence / assumptions: High confidence; assumes draw routine calls it per quad.【F:src/render.js†L873-L887】
+
+
+
 - `registerPhysicsSteps`
   - Purpose: Aggregates how many fixed-physics steps executed during the frame so perf overlays can show simulation load.【F:src/render.js†L394-L397】
   - Inputs: `count` (integer ≥0).【F:src/render.js†L394-L396】
@@ -2794,6 +3533,9 @@
   - Determinism: Deterministic.【F:src/render.js†L394-L397】
   - Keep / change / delete: Keep; useful for diagnosing variable-step catch-up work.【F:src/render.js†L2118-L2120】
   - Confidence / assumptions: High confidence; assumes main loop passes accurate counts.【F:src/render.js†L2118-L2120】
+
+
+
 - `registerSegment`
   - Purpose: Tracks how many road segments were processed while building the draw list, providing visibility into horizon depth.【F:src/render.js†L399-L401】
   - Inputs: None.【F:src/render.js†L399-L401】
@@ -2807,6 +3549,9 @@
   - Determinism: Deterministic.【F:src/render.js†L399-L401】
   - Keep / change / delete: Keep; enables overlays to display how much of the road is being drawn.【F:src/render.js†L1078-L1110】
   - Confidence / assumptions: High confidence; assumes build loop calls it each iteration.【F:src/render.js†L1078-L1110】
+
+
+
 - `getLastFrameStats`
   - Purpose: Returns the most recent perf snapshot (FPS, frame time, and draw counters) for overlays and debugging panels.【F:src/render.js†L402-L407】
   - Inputs: None.【F:src/render.js†L402-L407】
@@ -2820,6 +3565,9 @@
   - Determinism: Deterministic for a given tracker state.【F:src/render.js†L402-L407】
   - Keep / change / delete: Keep; single accessor for overlays—alternative is to expose `stats` directly, risking mutation.【F:src/render.js†L1972-L1998】
   - Confidence / assumptions: High confidence; assumes `endFrame` ran previously.【F:src/render.js†L333-L407】
+
+
+
 - `isSnowFeatureEnabled`
   - Purpose: Determines whether the snow-screen effect should run by consulting the app’s snow toggle and defaulting to enabled when the toggle is missing so snowy segments always draw.【F:src/render.js†L416-L427】
   - Inputs: None.【F:src/render.js†L416-L427】
@@ -2833,6 +3581,9 @@
   - Determinism: Deterministic given the same `App.isSnowEnabled` behaviour; otherwise mirrors that callback’s result.【F:src/render.js†L416-L427】
   - Keep / change / delete: Keep; isolates feature gating logic instead of repeating `App` checks at each site. Simplest alternative is inlining the null-safe call where needed.【F:src/render.js†L1174-L1200】【F:src/render.js†L1431-L1523】
   - Confidence / assumptions: High confidence; assumes the `App` singleton remains stable while rendering.【F:src/render.js†L416-L427】
+
+
+
 
 - `numericOr`
   - Purpose: Normalises configuration values into numbers, falling back to a supplied default whenever parsing fails so snow parameters stay valid.【F:src/render.js†L429-L457】
@@ -2848,6 +3599,9 @@
   - Keep / change / delete: Keep; avoids repeating verbose finite checks. Simplest alternative is to inline the `Number.isFinite(Number(v))` pattern at each usage.【F:src/render.js†L429-L457】
   - Confidence / assumptions: High confidence; assumes fallbacks are sensible values from configuration.【F:src/render.js†L453-L457】
 
+
+
+
 - `orderedRange`
   - Purpose: Converts any two endpoints into an ordered `{ min, max }` pair so later code can assume ascending ranges.【F:src/render.js†L434-L438】
   - Inputs: `minVal`, `maxVal` numbers (may arrive inverted).【F:src/render.js†L434-L438】
@@ -2861,6 +3615,9 @@
   - Determinism: Deterministic per input pair.【F:src/render.js†L434-L438】
   - Keep / change / delete: Keep; readability gain versus repeating ternaries. Alternative is inline conditional object creation.【F:src/render.js†L434-L445】
   - Confidence / assumptions: High confidence; assumes upstream sanitises inputs to numbers.【F:src/render.js†L440-L452】
+
+
+
 
 - `rangeFromConfig`
   - Purpose: Normalises snow configuration expressed as arrays, objects, or scalars into consistent `{ min, max }` ranges so later math works uniformly.【F:src/render.js†L440-L452】
@@ -2876,6 +3633,9 @@
   - Keep / change / delete: Keep; consolidates resilient config parsing instead of repeating shape checks for each knob.【F:src/render.js†L453-L457】
   - Confidence / assumptions: High confidence; assumes caller-provided fallbacks reflect sane defaults.【F:src/render.js†L453-L457】
 
+
+
+
 - `computeSnowScreenBaseRadius`
   - Purpose: Computes a base snow-screen radius from camera scale and road width so the overlay footprint matches the road before applying stretch effects.【F:src/render.js†L465-L471】
   - Inputs: `scale` (projection scale >0) and `roadWidth` (world width units).【F:src/render.js†L465-L470】
@@ -2889,6 +3649,9 @@
   - Determinism: Deterministic for given inputs.【F:src/render.js†L465-L471】
   - Keep / change / delete: Keep; centralises tuning constants instead of repeating math. Alternative is to inline the formula inside the draw-list loop.【F:src/render.js†L1174-L1200】
   - Confidence / assumptions: High confidence; assumes road width reflects the world width at the snow location.【F:src/render.js†L1174-L1200】
+
+
+
 
 - `mulberry32`
   - Purpose: Provides a tiny deterministic RNG used to generate snow flake attributes from segment seeds.【F:src/render.js†L473-L481】
@@ -2904,6 +3667,9 @@
   - Keep / change / delete: Keep; ensures reproducible snow fields. Simplest alternative is `Math.random`, which would lose determinism.【F:src/render.js†L485-L503】
   - Confidence / assumptions: High confidence; assumes JS bitwise semantics remain stable across browsers.【F:src/render.js†L473-L480】
 
+
+
+
 - `buildSnowField`
   - Purpose: Generates a single snow field composed of flake descriptors with varied offsets, speeds, sway, and phases for one deterministic seed.【F:src/render.js†L485-L503】
   - Inputs: `seed` integer.【F:src/render.js†L485-L486】
@@ -2917,6 +3683,9 @@
   - Determinism: Deterministic for the same seed and configuration constants.【F:src/render.js†L485-L503】
   - Keep / change / delete: Keep; isolates procedural generation, avoiding per-frame random work. Alternative is to generate flakes inside `renderSnowScreen` each frame.【F:src/render.js†L1431-L1523】
   - Confidence / assumptions: High confidence; assumes snow density/stretches remain within expected ranges.【F:src/render.js†L485-L503】
+
+
+
 
 - `ensureSnowFieldPool`
   - Purpose: Lazily fills the reusable snow field pool so repeated lookups can reuse precomputed flake layouts.【F:src/render.js†L505-L511】
@@ -2932,6 +3701,9 @@
   - Keep / change / delete: Keep; amortises generation work. Simplest alternative is to rebuild per segment lookup.【F:src/render.js†L505-L518】
   - Confidence / assumptions: High confidence; assumes pool size of 12 covers distinct snow patterns sufficiently.【F:src/render.js†L505-L511】
 
+
+
+
 - `snowFieldFor`
   - Purpose: Retrieves a snow field for a segment index by wrapping the index into the prebuilt pool so snow visuals repeat predictably.【F:src/render.js†L513-L518】
   - Inputs: `segIndex` integer (defaults to 0).【F:src/render.js†L513-L516】
@@ -2945,6 +3717,9 @@
   - Determinism: Deterministic mapping from index to cached field.【F:src/render.js†L513-L518】
   - Keep / change / delete: Keep; ensures consistent snow without per-frame RNG. Alternative would be storing snow data on segments themselves.【F:src/render.js†L1439-L1473】
   - Confidence / assumptions: High confidence; assumes repeating every 12 segments is visually acceptable.【F:src/render.js†L505-L518】
+
+
+
 
 - `fogNear`
   - Purpose: Reports the world-space distance where fog begins based on configured segment counts and segment length.【F:src/render.js†L712-L717】
@@ -2960,6 +3735,9 @@
   - Keep / change / delete: Keep; paired with `fogFar` for readability. Simplest alternative is to inline `fog.nearSegments * segmentLength` at each call.【F:src/render.js†L714-L724】
   - Confidence / assumptions: High confidence; assumes fog settings remain static at runtime.【F:src/render.js†L712-L717】
 
+
+
+
 - `computeOverlayEnabled`
   - Purpose: Determines whether the debug overlay canvas should be visible by consulting `App.isDebugEnabled` and the renderer’s debug config.【F:src/render.js†L554-L564】
   - Inputs: None.【F:src/render.js†L554-L564】
@@ -2973,6 +3751,9 @@
   - Determinism: Deterministic for stable `App` responses and config.【F:src/render.js†L554-L564】
   - Keep / change / delete: Keep; centralises debug toggle logic. Alternative is to inline the try/catch at each overlay call.【F:src/render.js†L566-L577】
   - Confidence / assumptions: High confidence; assumes the app callback is synchronous.【F:src/render.js†L554-L563】
+
+
+
 
 - `syncOverlayVisibility`
   - Purpose: Shows or hides the overlay canvas and clears it when hiding so stale debug imagery disappears.【F:src/render.js†L566-L577】
@@ -2988,6 +3769,9 @@
   - Keep / change / delete: Keep; encapsulates overlay toggling logic. Alternative is manual `style.display` writes at each caller.【F:src/render.js†L1888-L2030】
   - Confidence / assumptions: High confidence; assumes overlay context can be cleared without side effects.【F:src/render.js†L566-L577】
 
+
+
+
 - `createPoint`
   - Purpose: Builds the `{ world, camera, screen }` structure used during projection, accepting either an object or raw coordinates.【F:src/render.js†L580-L589】
   - Inputs: Either `worldOrX` object `{x,y,z}` or separate `worldOrX`, `y`, `z` numbers (defaults to 0).【F:src/render.js†L580-L589】
@@ -3001,6 +3785,9 @@
   - Determinism: Deterministic per input.【F:src/render.js†L580-L589】
   - Keep / change / delete: Keep; avoids repetitive object literal boilerplate before projection. Alternative is to construct ad-hoc objects in each caller.【F:src/render.js†L592-L607】
   - Confidence / assumptions: High confidence; assumes projection immediately follows creation.【F:src/render.js†L592-L607】
+
+
+
 
 - `projectWorldPoint`
   - Purpose: Projects a world-space coordinate into camera and screen coordinates using the current camera origin.【F:src/render.js†L592-L596】
@@ -3016,6 +3803,9 @@
   - Keep / change / delete: Keep; clarifies intent versus calling `projectPoint` manually. Alternative is to inline object creation and projection each time.【F:src/render.js†L1032-L1049】
   - Confidence / assumptions: High confidence; assumes camera depth stays positive.【F:src/render.js†L592-L607】
 
+
+
+
 - `projectSegPoint`
   - Purpose: Projects a segment endpoint plus vertical offset into screen space, useful for rails and cliffs.【F:src/render.js†L598-L607】
   - Inputs: `segPoint` (with `world`), `yOffset` (number), `camX`, `camY`, `camS`.【F:src/render.js†L598-L607】
@@ -3029,6 +3819,9 @@
   - Determinism: Deterministic for given inputs.【F:src/render.js†L598-L607】
   - Keep / change / delete: Keep; clarifies Y-offset handling per segment. Alternative is to compute offset and call `projectWorldPoint` manually.【F:src/render.js†L1051-L1332】
   - Confidence / assumptions: High confidence; assumes segment data remains valid while iterating.【F:src/render.js†L1051-L1332】
+
+
+
 
 - `padWithSpriteOverlap`
   - Purpose: Expands quads by the configured sprite overlap so adjacent tiles avoid seam gaps.【F:src/render.js†L610-L612】
@@ -3044,6 +3837,9 @@
   - Keep / change / delete: Keep; prevents repeating padding logic. Alternative is manual per-edge adjustments in each draw routine.【F:src/render.js†L761-L879】
   - Confidence / assumptions: High confidence; assumes overlap constants remain small relative to tile size.【F:src/render.js†L523-L612】
 
+
+
+
 - `computeCliffLaneProgress`
   - Purpose: Converts off-road sprite offsets into progress through multi-stage cliff geometry so props align with layered cliffs.【F:src/render.js†L614-L655】
   - Inputs: `segIndex` integer, `offset` lane offset, `t` segment interpolation (0–1), `roadWidth` world width.【F:src/render.js†L614-L626】
@@ -3057,6 +3853,9 @@
   - Determinism: Deterministic for identical inputs.【F:src/render.js†L614-L655】
   - Keep / change / delete: Keep; encapsulates cliff math used by multiple sprite kinds. Alternative is to inline calculations when placing each prop.【F:src/render.js†L1241-L1287】
   - Confidence / assumptions: High confidence; assumes `cliffParamsAt` returns consistent geometry for both sides.【F:src/render.js†L614-L655】
+
+
+
 
 - `fogArray`
   - Purpose: Produces per-vertex fog factors `[near, near, far, far]` for quads based on start/end depths.【F:src/render.js†L658-L662】
@@ -3072,6 +3871,9 @@
   - Keep / change / delete: Keep; avoids repeating array assembly in each draw path.【F:src/render.js†L761-L1730】
   - Confidence / assumptions: High confidence; assumes depth inputs are finite.【F:src/render.js†L658-L719】
 
+
+
+
 - `getTrackLength`
   - Purpose: Retrieves the track length whether stored as a literal or function, defaulting to zero when absent.【F:src/render.js†L664-L667】
   - Inputs: None.【F:src/render.js†L664-L667】
@@ -3085,6 +3887,9 @@
   - Determinism: Deterministic when `data.trackLength` stable.【F:src/render.js†L664-L667】
   - Keep / change / delete: Keep; small helper that hides mixed representation. Alternative is to repeat the ternary at each use.【F:src/render.js†L945-L1235】
   - Confidence / assumptions: High confidence; assumes active tracks provide a positive value.【F:src/render.js†L945-L1235】
+
+
+
 
 - `projectPoint`
   - Purpose: Core projection routine that converts a point from world space into camera-relative screen coordinates and width scaling.【F:src/render.js†L669-L681】
@@ -3100,6 +3905,9 @@
   - Keep / change / delete: Keep; fundamental to rendering. Alternative is none without rewriting projection logic.【F:src/render.js†L592-L607】
   - Confidence / assumptions: High confidence; assumes camera depth stays positive and `roadWidthAt` is reliable.【F:src/render.js†L669-L681】
 
+
+
+
 - `makeCliffLeftQuads`
   - Purpose: Builds two textured quads (inner and outer) for the left cliff wall segment, including UVs and intermediate points for sprite placement.【F:src/render.js†L683-L695】
   - Inputs: Screen coordinates `x1,y1,w1,x2,y2,w2`, vertical targets `yA1,yA2,yB1,yB2`, horizontal offsets `dxA0,dxA1,dxB0,dxB1`, UV span `u0,u1`, and road widths `rw1,rw2`.【F:src/render.js†L683-L694】
@@ -3113,6 +3921,9 @@
   - Determinism: Deterministic given inputs.【F:src/render.js†L683-L695】
   - Keep / change / delete: Keep; encapsulates verbose geometry math. Alternative is to inline the calculations inside `buildWorldDrawList`.【F:src/render.js†L1051-L1172】
   - Confidence / assumptions: High confidence; assumes cliff parameter data is coherent for left wall.【F:src/render.js†L1051-L1172】
+
+
+
 
 - `makeCliffRightQuads`
   - Purpose: Mirrors `makeCliffLeftQuads` for the right side, constructing two quads with UVs and inner edge positions.【F:src/render.js†L697-L709】
@@ -3128,6 +3939,9 @@
   - Keep / change / delete: Keep; keeps symmetrical math isolated. Alternative is to inline inside `buildWorldDrawList`.【F:src/render.js†L1051-L1172】
   - Confidence / assumptions: High confidence; assumes right-side cliff data mirrors left structure.【F:src/render.js†L1051-L1172】
 
+
+
+
 - `fogFactorFromZ`
   - Purpose: Computes a fog interpolation factor (0–1) based on camera-space depth and configured near/far distances.【F:src/render.js†L714-L718】
   - Inputs: `z` depth (number).【F:src/render.js†L714-L718】
@@ -3141,6 +3955,9 @@
   - Determinism: Deterministic per input.【F:src/render.js†L714-L718】
   - Keep / change / delete: Keep; central helper for fog math. Alternative is to repeat the interpolation formula everywhere.【F:src/render.js†L658-L724】
   - Confidence / assumptions: High confidence; assumes fog distances remain positive or handled by guard logic.【F:src/render.js†L714-L718】
+
+
+
 
 - `spriteFarScaleFromZ`
   - Purpose: Shrinks distant sprites according to fog factor so far objects taper as they fade out.【F:src/render.js†L720-L724】
@@ -3156,6 +3973,9 @@
   - Keep / change / delete: Keep; encapsulates far-distance scaling logic. Alternative is to replicate the power/easing math per sprite.【F:src/render.js†L1174-L1327】
   - Confidence / assumptions: High confidence; assumes sprite config values stay within 0–1 range.【F:src/render.js†L720-L724】
 
+
+
+
 - `drawParallaxLayer`
   - Purpose: Renders a background parallax layer by drawing a large textured quad offset by player lateral position; falls back to solid colour when textures disabled.【F:src/render.js†L728-L753】
   - Inputs: `tex` (WebGL texture or null) and `cfg` descriptor (`parallaxX`, `uvSpanX`, `uvSpanY`, optional `key`).【F:src/render.js†L728-L753】
@@ -3169,6 +3989,9 @@
   - Determinism: Deterministic for the same player position and configuration.【F:src/render.js†L728-L753】
   - Keep / change / delete: Keep; isolates background rendering. Alternative is to inline inside `renderHorizon`.【F:src/render.js†L728-L758】
   - Confidence / assumptions: High confidence; assumes `cfg` contains valid spans.【F:src/render.js†L728-L753】
+
+
+
 
 - `renderHorizon`
   - Purpose: Draws all configured parallax layers to form the horizon backdrop before road geometry.【F:src/render.js†L755-L758】
@@ -3184,6 +4007,9 @@
   - Keep / change / delete: Keep; separates background pass. Alternative is to inline loop within `renderScene`.【F:src/render.js†L995-L1003】
   - Confidence / assumptions: High confidence; assumes parallax texture keys resolve to textures map.【F:src/render.js†L755-L758】
 
+
+
+
 - `drawRoadStrip`
   - Purpose: Tesselates a road segment into grid-aligned quads and draws them textured (or coloured) with fog gradients and padding to avoid seams.【F:src/render.js†L761-L813】
   - Inputs: Screen coords `x1,y1,w1,x2,y2,w2`, texture V span `v0,v1`, fog array `fogRoad`, base texture `tex`, and `segIndex` for debug colouring.【F:src/render.js†L761-L813】
@@ -3197,6 +4023,9 @@
   - Determinism: Deterministic for given geometry, grid config, and texture state.【F:src/render.js†L761-L813】
   - Keep / change / delete: Keep; encapsulates detailed strip tessellation. Alternative is to inline inside `renderStrip`, hurting readability.【F:src/render.js†L1605-L1625】
   - Confidence / assumptions: High confidence; assumes grid config tuned to avoid aliasing.【F:src/render.js†L761-L813】
+
+
+
 
 - `drawBoostZonesOnStrip`
   - Purpose: Draws boost zone overlays across a road strip by subdividing zone bounds into padded quads with fog-aware colouring or textures.【F:src/render.js†L815-L882】
@@ -3212,6 +4041,9 @@
   - Keep / change / delete: Keep; isolates boost rendering logic separate from generic strip drawing. Alternative is to inline inside `renderStrip`.【F:src/render.js†L1616-L1624】
   - Confidence / assumptions: High confidence; assumes zone configs supply valid bounds and textures when referenced.【F:src/render.js†L815-L883】
 
+
+
+
 - `drawBillboard`
   - Purpose: Draws an upright sprite quad (npc/prop) with optional texture, tint, and fog, centred on the provided anchor.【F:src/render.js†L885-L912】
   - Inputs: `anchorX`, `baseY`, width/height in pixels, fog depth, optional `tint`, `texture`, `uvOverride`, `colorKey`.【F:src/render.js†L885-L912】
@@ -3225,6 +4057,9 @@
   - Determinism: Deterministic for given inputs (random colours keyed).【F:src/render.js†L885-L912】
   - Keep / change / delete: Keep; central billboard helper. Alternative is to embed draw logic inside `renderDrawList`.【F:src/render.js†L1370-L1420】
   - Confidence / assumptions: High confidence; assumes tint arrays follow `[r,g,b,a]`.【F:src/render.js†L885-L912】
+
+
+
 
 - `drawBillboardRotated`
   - Purpose: Draws a sprite quad with rotation around its centre (used for angled props) using optional texture/tint inputs.【F:src/render.js†L915-L943】
@@ -3240,6 +4075,9 @@
   - Keep / change / delete: Keep; isolates rotation math. Alternative is to inline inside draw list loop.【F:src/render.js†L1393-L1407】
   - Confidence / assumptions: High confidence; assumes angle is in radians and quads remain reasonably small.【F:src/render.js†L915-L942】
 
+
+
+
 - `segmentAtS`
   - Purpose: Finds the track segment corresponding to a world distance `s`, wrapping around the track length and segment list.【F:src/render.js†L945-L952】
   - Inputs: `s` world distance (number).【F:src/render.js†L945-L951】
@@ -3253,6 +4091,9 @@
   - Determinism: Deterministic for given `s` and segment array.【F:src/render.js†L945-L952】
   - Keep / change / delete: Keep; central lookup for many systems. Alternative is to repeat wrapping logic at each call site.【F:src/render.js†L945-L1235】
   - Confidence / assumptions: High confidence; assumes segment array covers full track in order.【F:src/render.js†L945-L1235】
+
+
+
 
 - `elevationAt`
   - Purpose: Returns interpolated road elevation at distance `s` by sampling the containing segment.【F:src/render.js†L954-L963】
@@ -3268,6 +4109,9 @@
   - Keep / change / delete: Keep; reused in multiple overlays. Alternative is to inline interpolation logic where needed.【F:src/render.js†L1921-L2029】
   - Confidence / assumptions: High confidence; assumes segments expose `p1/p2.world.y` positions.【F:src/render.js†L954-L963】
 
+
+
+
 - `groundProfileAt`
   - Purpose: Computes elevation, slope, and curvature (`dy`, `d2y`) at distance `s` using centered differences for overlay analytics.【F:src/render.js†L965-L973】
   - Inputs: `s` world distance (number).【F:src/render.js†L965-L973】
@@ -3281,6 +4125,9 @@
   - Determinism: Deterministic for given track data.【F:src/render.js†L965-L973】
   - Keep / change / delete: Keep; clean helper for overlay analytics. Alternative is to inline derivative computations in the overlay function.【F:src/render.js†L1920-L2029】
   - Confidence / assumptions: High confidence; assumes track spacing stays consistent.【F:src/render.js†L965-L973】
+
+
+
 
 - `boostZonesOnSegment`
   - Purpose: Retrieves the boost zone definitions attached to a segment’s features, defaulting to an empty array when absent.【F:src/render.js†L976-L980】
@@ -3296,6 +4143,9 @@
   - Keep / change / delete: Keep; small helper reducing repeated null checks. Alternative is inline optional chaining each time.【F:src/render.js†L1088-L1172】
   - Confidence / assumptions: High confidence; assumes zone arrays are immutable per segment.【F:src/render.js†L976-L980】
 
+
+
+
 - `zonesFor`
   - Purpose: Retrieves texture zone ranges from track data for the given key (`road`, `rail`, `cliff`), supporting both top-level arrays and grouped `texZones` structure.【F:src/render.js†L982-L988】
   - Inputs: `key` string.【F:src/render.js†L982-L988】
@@ -3309,6 +4159,9 @@
   - Determinism: Deterministic for given track data.【F:src/render.js†L982-L988】
   - Keep / change / delete: Keep; centralises zone lookup. Alternative is to duplicate `data` access inside `renderScene`.【F:src/render.js†L1004-L1009】
   - Confidence / assumptions: High confidence; assumes track data uses either legacy `keyTexZones` or grouped `texZones`.【F:src/render.js†L982-L988】
+
+
+
 
 - `renderScene`
   - Purpose: Main 3D render function—clears the frame, builds the draw list from the current camera frame, sorts items by depth, and draws them.【F:src/render.js†L990-L1018】
@@ -3324,6 +4177,9 @@
   - Keep / change / delete: Keep; orchestrates rendering pipeline. Alternative is to inline all steps in the game loop, reducing modularity.【F:src/render.js†L2103-L2126】
   - Confidence / assumptions: High confidence; assumes `glr.begin/end` manage GL state correctly.【F:src/render.js†L990-L1018】
 
+
+
+
 - `createCameraFrame`
   - Purpose: Gathers camera parameters (player position, camera offsets) for the current frame and applies tilt adjustments.【F:src/render.js†L1020-L1029】
   - Inputs: None; reads `state`.【F:src/render.js†L1020-L1029】
@@ -3337,6 +4193,9 @@
   - Determinism: Deterministic for given state (tilt uses smoothing).【F:src/render.js†L1020-L1049】
   - Keep / change / delete: Keep; isolates camera parameter assembly. Alternative is to inline inside `renderScene`.【F:src/render.js†L990-L1015】
   - Confidence / assumptions: High confidence; assumes `state.phys` updated by gameplay each frame.【F:src/render.js†L1020-L1049】
+
+
+
 
 - `applyCameraTilt`
   - Purpose: Updates camera roll and player tilt based on speed, upcoming curve, and lateral movement, then sets the renderer’s roll pivot.【F:src/render.js†L1032-L1049】
@@ -3352,6 +4211,9 @@
   - Keep / change / delete: Keep; isolates camera dynamics. Alternative is to embed inside `createCameraFrame`.【F:src/render.js†L1020-L1049】
   - Confidence / assumptions: High confidence; assumes `state.getAdditiveTiltDeg` returns sensible values.【F:src/render.js†L1032-L1049】
 
+
+
+
 - `buildWorldDrawList`
   - Purpose: Traverses visible segments to project road geometry, cliffs, cars, sprites, snow screens, and push them into a draw list sorted by depth.【F:src/render.js†L1051-L1332】
   - Inputs: `baseSeg`, `basePct`, `frame`, and `zoneData`.【F:src/render.js†L1051-L1172】
@@ -3365,6 +4227,9 @@
   - Determinism: Deterministic for given state snapshot (aside from RNG-driven snow fields seeded deterministically).【F:src/render.js†L1051-L1332】
   - Keep / change / delete: Keep; core world assembly logic. Alternative is to split into smaller passes but still necessary central function.【F:src/render.js†L1051-L1332】
   - Confidence / assumptions: Medium confidence; complex function relying on many configs but behaviour well understood.【F:src/render.js†L1051-L1332】
+
+
+
 
 - `enqueuePlayer`
   - Purpose: Projects the player car body/shadow, computes sprite samples, and pushes a player draw item onto the list when visible.【F:src/render.js†L1335-L1367】
@@ -3380,6 +4245,9 @@
   - Keep / change / delete: Keep; isolates player enqueue logic. Alternative is to embed inside `buildWorldDrawList`.【F:src/render.js†L1335-L1367】
   - Confidence / assumptions: High confidence; assumes sprite metadata configured for the player atlas.【F:src/render.js†L1335-L1367】
 
+
+
+
 - `renderDrawList`
   - Purpose: Iterates draw-list items, dispatching to specific renderers (road strips, NPCs, props, snow screens, player) and updating perf counters.【F:src/render.js†L1370-L1428】
   - Inputs: `drawList` array.【F:src/render.js†L1370-L1374】
@@ -3393,6 +4261,9 @@
   - Determinism: Deterministic for given draw list (order after sort).【F:src/render.js†L1370-L1428】
   - Keep / change / delete: Keep; central dispatcher. Alternative is to render inline in `renderScene`.【F:src/render.js†L990-L1016】
   - Confidence / assumptions: High confidence; assumes draw-list items follow documented structure.【F:src/render.js†L1051-L1428】
+
+
+
 
 - `renderSnowScreen`
   - Purpose: Renders a snow screen overlay with animated flakes, stretching them based on player speed and distance, respecting fog.【F:src/render.js†L1431-L1523】
@@ -3408,6 +4279,9 @@
   - Keep / change / delete: Keep; specialised effect rendering. Alternative is to pre-render snow to texture, which is heavier work.【F:src/render.js†L1431-L1523】
   - Confidence / assumptions: Medium confidence; relies on consistent state.phys timing and flake counts but behaviour observed stable.【F:src/render.js†L1431-L1523】
 
+
+
+
 - `renderStrip`
   - Purpose: Draws a road strip item, including road surface, cliffs, rails, and boost overlays, respecting debug fill modes.【F:src/render.js†L1526-L1670】
   - Inputs: Strip descriptor from draw list containing projected points, widths, UV spans, boost data, and cliff quads.【F:src/render.js†L1526-L1669】
@@ -3421,6 +4295,9 @@
   - Determinism: Deterministic for given strip data.【F:src/render.js†L1526-L1669】
   - Keep / change / delete: Keep; encapsulates complex strip rendering steps. Alternative is to break into sub-functions for cliffs/rails if refactoring later.【F:src/render.js†L1526-L1669】
   - Confidence / assumptions: Medium confidence due to complexity; behaviour battle-tested in gameplay.【F:src/render.js†L1526-L1669】
+
+
+
 
 - `renderPlayer`
   - Purpose: Draws the player’s shadow and body quads with rotation, sampling atlas frames (including multi-sample blending) or fallback tint.【F:src/render.js†L1673-L1757】
@@ -3436,6 +4313,9 @@
   - Keep / change / delete: Keep; specialised player rendering logic. Alternative is to integrate into draw list but loses clarity.【F:src/render.js†L1370-L1427】
   - Confidence / assumptions: High confidence; assumes sprite metadata includes atlas info for player.【F:src/render.js†L1673-L1757】
 
+
+
+
 - `computeDebugPanels`
   - Purpose: Calculates rectangles for the boost and elevation panels on the overlay canvas, leaving margins and padding for layout.【F:src/render.js†L1760-L1799】
   - Inputs: None; uses canvas dimensions and constants.【F:src/render.js†L1760-L1799】
@@ -3449,6 +4329,9 @@
   - Determinism: Deterministic for given canvas size.【F:src/render.js†L1760-L1799】
   - Keep / change / delete: Keep; centralises layout numbers. Alternative is inline calculations inside `renderOverlay`.【F:src/render.js†L1888-L2030】
   - Confidence / assumptions: High confidence; assumes overlay dimensions set during `attach`.【F:src/render.js†L2077-L2101】
+
+
+
 
 - `worldToOverlay`
   - Purpose: Converts world distance/elevation into overlay canvas coordinates for plotting the elevation profile.【F:src/render.js†L1800-L1811】
@@ -3464,6 +4347,9 @@
   - Keep / change / delete: Keep; shared between curve plotting and crosshair. Alternative is duplicating conversion math inside overlay drawing.【F:src/render.js†L1916-L1930】
   - Confidence / assumptions: High confidence; assumes `track.metersPerPixel` configured.【F:src/render.js†L1800-L1811】
 
+
+
+
 - `drawBoostCrossSection`
   - Purpose: Renders a cross-section panel showing active boost zones relative to lanes, including centre lines and player position marker.【F:src/render.js†L1812-L1887】
   - Inputs: `ctx` canvas context and optional `panelRect`.【F:src/render.js†L1812-L1887】
@@ -3477,6 +4363,9 @@
   - Determinism: Deterministic for given track state.【F:src/render.js†L1812-L1887】
   - Keep / change / delete: Keep; encapsulates panel drawing. Alternative is to inline the drawing logic in `renderOverlay`.【F:src/render.js†L1888-L2030】
   - Confidence / assumptions: High confidence; assumes lane mapping helpers return valid ratios.【F:src/render.js†L1812-L1887】
+
+
+
 
 - `mapRatio`
   - Purpose: Helper closure inside `drawBoostCrossSection` that maps a lane ratio (−1…1) into panel X coordinates.【F:src/render.js†L1843-L1854】
@@ -3492,6 +4381,9 @@
   - Keep / change / delete: Keep; micro-helper that improves readability inside the panel function. Alternative is inline `roadX + ratio * roadW`.【F:src/render.js†L1843-L1854】
   - Confidence / assumptions: High confidence; closure scope stable.【F:src/render.js†L1833-L1854】
 
+
+
+
 - `fmtSeconds`
   - Purpose: Formats a metric value in seconds with two decimals for overlay text, returning `'0.00s'` when value missing or ≤0.【F:src/render.js†L1942-L1945】
   - Inputs: `value` number.【F:src/render.js†L1942-L1945】
@@ -3505,6 +4397,9 @@
   - Determinism: Deterministic for given value.【F:src/render.js†L1942-L1945】
   - Keep / change / delete: Keep; small local helper clarifies formatting. Alternative is inline checks per metric.【F:src/render.js†L1957-L1983】
   - Confidence / assumptions: High confidence; assumes overlay metrics measured in seconds.【F:src/render.js†L1957-L1983】
+
+
+
 
 - `fmtCount`
   - Purpose: Formats counters as non-negative integers, defaulting to 0 for invalid inputs.【F:src/render.js†L1946-L1947】
@@ -3520,6 +4415,9 @@
   - Keep / change / delete: Keep; prevents repeated guard logic. Alternative is inline guard for each metric.【F:src/render.js†L1957-L1983】
   - Confidence / assumptions: High confidence; assumes metrics meant to be counts.【F:src/render.js†L1957-L1983】
 
+
+
+
 - `fmtSpeed`
   - Purpose: Formats speed metrics to one decimal, returning `'0.0'` when invalid or non-positive.【F:src/render.js†L1947-L1949】
   - Inputs: `value` number.【F:src/render.js†L1947-L1949】
@@ -3533,6 +4431,9 @@
   - Determinism: Deterministic per input.【F:src/render.js†L1947-L1949】
   - Keep / change / delete: Keep; avoids repeated formatting logic. Alternative is inline formatting per metric.【F:src/render.js†L1957-L1983】
   - Confidence / assumptions: High confidence; assumes positive values mean real speed.【F:src/render.js†L1957-L1983】
+
+
+
 
 - `fmtFloat`
   - Purpose: Generic formatter returning a fixed-decimal string or fallback when value invalid, used for FPS and other floats.【F:src/render.js†L1951-L1953】
@@ -3548,6 +4449,9 @@
   - Keep / change / delete: Keep; reduces duplication when formatting multiple floats. Alternative is inline ternaries for each metric.【F:src/render.js†L1972-L1982】
   - Confidence / assumptions: High confidence; assumes digits parameter small.【F:src/render.js†L1951-L1953】
 
+
+
+
 - `renderOverlay`
   - Purpose: Draws the 2D debug overlay, including elevation profile, boost cross-section, metrics list, and HUD text, while respecting overlay visibility toggles.【F:src/render.js†L1888-L2030】
   - Inputs: None; uses canvas contexts and state metrics.【F:src/render.js†L1888-L2030】
@@ -3561,6 +4465,9 @@
   - Determinism: Deterministic for given state metrics (random colours keyed).【F:src/render.js†L1888-L2030】
   - Keep / change / delete: Keep; central overlay routine. Alternative is to break into submodules if overlay grows.【F:src/render.js†L1888-L2030】
   - Confidence / assumptions: Medium confidence; depends on many state fields but behaviour is well-understood in overlay feature.【F:src/render.js†L1888-L2030】
+
+
+
 
 - `start`
   - Purpose: Begins the reset matte animation, optionally configuring respawn parameters, and marks the matte as active.【F:src/render.js†L2032-L2041】
@@ -3576,6 +4483,9 @@
   - Keep / change / delete: Keep; encapsulates matte initialisation. Alternative is to replicate state resets in each public entry point.【F:src/render.js†L2132-L2136】
   - Confidence / assumptions: High confidence; assumes `state.phys` valid when starting matte.【F:src/render.js†L2032-L2041】
 
+
+
+
 - `tick`
   - Purpose: Advances the reset matte animation each frame, executing callbacks when the cover reaches midpoint and clearing state when finished.【F:src/render.js†L2042-L2056】
   - Inputs: None; uses internal timer `t`.【F:src/render.js†L2042-L2056】
@@ -3589,6 +4499,9 @@
   - Determinism: Deterministic for given start state.【F:src/render.js†L2042-L2056】
   - Keep / change / delete: Keep; central to matte timing. Alternative is to integrate into main loop manually.【F:src/render.js†L2103-L2136】
   - Confidence / assumptions: High confidence; assumes `requestAnimationFrame` cadence drives tick consistently.【F:src/render.js†L2042-L2056】
+
+
+
 
 - `draw`
   - Purpose: Renders the circular matte on the HUD canvas according to the current animation scale, cutting a hole when active.【F:src/render.js†L2057-L2068】
@@ -3604,6 +4517,9 @@
   - Keep / change / delete: Keep; isolates matte drawing. Alternative is to draw matte inside main overlay function.【F:src/render.js†L1888-L2056】
   - Confidence / assumptions: High confidence; assumes HUD canvas initialised in `attach`.【F:src/render.js†L2077-L2100】
 
+
+
+
 - `startReset`
   - Purpose: Public API that triggers the reset matte animation in reset mode by delegating to `resetMatte.start('reset')`.【F:src/render.js†L2132-L2134】
   - Inputs: None.【F:src/render.js†L2133-L2134】
@@ -3617,6 +4533,9 @@
   - Determinism: Same as `start`.【F:src/render.js†L2032-L2041】
   - Keep / change / delete: Keep; provides semantic API for reset transitions. Alternative is to call `resetMatte.start('reset')` directly wherever needed.【F:src/render.js†L2132-L2134】
   - Confidence / assumptions: High confidence; wrapper only.【F:src/render.js†L2133-L2134】
+
+
+
 
 - `startRespawn`
   - Purpose: Public API to launch the matte in respawn mode with target distance/offset.【F:src/render.js†L2132-L2136】
@@ -3632,6 +4551,9 @@
   - Keep / change / delete: Keep; clearer API for respawn transitions. Alternative is to call `resetMatte.start` with mode arguments directly.【F:src/render.js†L2132-L2136】
   - Confidence / assumptions: High confidence; minimal wrapper.【F:src/render.js†L2134-L2135】
 
+
+
+
 - `attach`
   - Purpose: Wires the renderer to WebGL and overlay canvases, storing contexts, wrapping the renderer with perf tracking, and computing canvas dimensions/radii.【F:src/render.js†L2077-L2101】
   - Inputs: `glRenderer` object and `dom` container with `canvas`, `overlay`, `hud`.【F:src/render.js†L2077-L2083】
@@ -3646,6 +4568,9 @@
   - Keep / change / delete: Keep; centralises renderer setup. Alternative is to perform setup scattered across bootstrap code.【F:src/bootstrap.js†L55-L65】
   - Confidence / assumptions: High confidence; assumes DOM canvases sized correctly before attach.【F:src/render.js†L2077-L2101】
 
+
+
+
 - `frame`
   - Purpose: Starts the main game loop using `requestAnimationFrame`, implementing fixed-step physics with variable render timing, and orchestrating per-frame rendering and matte updates.【F:src/render.js†L2103-L2127】
   - Inputs: `stepFn` callback for fixed physics step.【F:src/render.js†L2103-L2124】
@@ -3659,6 +4584,9 @@
   - Determinism: Deterministic for given `stepFn` and timing inputs (floating rounding aside).【F:src/render.js†L2103-L2127】
   - Keep / change / delete: Keep; core game loop orchestrator. Alternative is to manage loop outside renderer module.【F:src/bootstrap.js†L77-L83】
   - Confidence / assumptions: High confidence; widely used pattern for fixed-step update with variable render.【F:src/render.js†L2103-L2127】
+
+
+
 
 - `loop`
   - Purpose: Inner RAF callback defined within `frame` that processes accumulated time, runs physics steps, renders the scene/overlay, updates matte, and schedules the next frame.【F:src/render.js†L2106-L2125】
@@ -3675,6 +4603,9 @@
   - Confidence / assumptions: High confidence; assumes browser provides `performance.now` and RAF.【F:src/render.js†L2103-L2125】
 
 ### 3.8 WebGL Renderer (`src/gl/renderer.js`)
+
+
+
 - `constructor`
   - Purpose: Configures the WebGL renderer by acquiring a context, compiling shaders, caching attribute/uniform lookups, seeding a streaming vertex buffer, and creating the fallback white texture and fog defaults used by draw helpers.【F:src/gl/renderer.js†L15-L104】
   - Inputs: `canvas` HTMLCanvasElement providing `width`/`height` and a `getContext('webgl', ...)` hook; assumes numeric dimensions and a valid DOM canvas.【F:src/gl/renderer.js†L15-L77】
@@ -3688,6 +4619,9 @@
   - Determinism: Deterministic for a fixed canvas and shader source; runtime differences stem only from browser WebGL implementations.【F:src/gl/renderer.js†L15-L170】
   - Keep / change / delete: Keep; centralises GL bootstrap logic. Alternative would spread context setup across bootstrap/render modules, increasing coupling.【F:src/bootstrap.js†L7-L35】
   - Confidence / assumptions: High confidence; assumes a standard WebGL 1.0 environment and valid shader sources.【F:src/gl/renderer.js†L15-L118】
+
+
+
 - `_createShader`
   - Purpose: Compiles a GLSL shader of the requested type using the renderer’s WebGL context, surfacing compilation errors via thrown exceptions.【F:src/gl/renderer.js†L105-L109】
   - Inputs: `src` shader source string and `type` (`gl.VERTEX_SHADER`/`gl.FRAGMENT_SHADER`).【F:src/gl/renderer.js†L105-L109】
@@ -3701,6 +4635,9 @@
   - Determinism: Deterministic for identical source and driver state, aside from driver-specific optimisation differences.【F:src/gl/renderer.js†L105-L109】
   - Keep / change / delete: Keep; helper avoids duplicating compile boilerplate for each shader stage.【F:src/gl/renderer.js†L57-L115】
   - Confidence / assumptions: High confidence; thin wrapper around standard WebGL calls.【F:src/gl/renderer.js†L105-L109】
+
+
+
 - `_createProgram`
   - Purpose: Builds a linked shader program from vertex/fragment sources, attaching compiled shaders and validating link success.【F:src/gl/renderer.js†L111-L117】
   - Inputs: `vs` vertex shader source, `fs` fragment shader source (strings).【F:src/gl/renderer.js†L111-L116】
@@ -3714,6 +4651,9 @@
   - Determinism: Deterministic given identical sources and WebGL driver behaviour.【F:src/gl/renderer.js†L111-L117】
   - Keep / change / delete: Keep; encapsulates shader program creation for clarity. Alternative would inline into constructor, reducing readability.【F:src/gl/renderer.js†L57-L117】
   - Confidence / assumptions: High confidence; follows standard WebGL program setup.【F:src/gl/renderer.js†L111-L117】
+
+
+
 - `_makeWhiteTex`
   - Purpose: Creates a 1×1 RGBA white texture used as the default when drawing solids without external textures.【F:src/gl/renderer.js†L119-L127】
   - Inputs: None; relies on the renderer’s WebGL context.【F:src/gl/renderer.js†L119-L124】
@@ -3727,6 +4667,9 @@
   - Determinism: Deterministic; always produces the same white texel.【F:src/gl/renderer.js†L119-L126】
   - Keep / change / delete: Keep; avoids rebuilding dummy textures for every solid draw. Alternative is to construct ad hoc solid quads on CPU.【F:src/gl/renderer.js†L194-L198】
   - Confidence / assumptions: High confidence; standard technique for solid-color quads.【F:src/gl/renderer.js†L119-L127】
+
+
+
 - `loadTexture`
   - Purpose: Asynchronously loads an image, uploads it to WebGL, and resolves with a configured texture for use in draw calls.【F:src/gl/renderer.js†L129-L147】
   - Inputs: `url` string pointing to the image resource; expects reachable image data.【F:src/gl/renderer.js†L129-L146】
@@ -3740,6 +4683,9 @@
   - Determinism: Deterministic for a given URL and image content.【F:src/gl/renderer.js†L129-L146】
   - Keep / change / delete: Keep; central loader ensures consistent texture parameters. Alternative is duplicating texture setup in asset pipeline.【F:src/bootstrap.js†L18-L35】
   - Confidence / assumptions: High confidence; assumes images are power-of-two friendly or rely on repeat wrap as configured.【F:src/gl/renderer.js†L136-L145】
+
+
+
 - `begin`
   - Purpose: Prepares the frame by resizing the viewport if needed, clearing the color buffer, positioning the roll pivot, and updating fog uniforms from configuration.【F:src/gl/renderer.js†L149-L170】
   - Inputs: Optional `clear` RGBA array (defaults to `[0.9,0.95,1.0,1]`).【F:src/gl/renderer.js†L149-L161】
@@ -3753,6 +4699,9 @@
   - Determinism: Deterministic for given canvas size and fog config; reliant on external config state.【F:src/gl/renderer.js†L149-L170】
   - Keep / change / delete: Keep; encapsulates per-frame GL housekeeping. Alternative would force renderers to repeat viewport/clear logic inline.【F:src/render.js†L990-L1017】
   - Confidence / assumptions: High confidence; validated via resize test ensuring uniform updates when the canvas changes.【F:test/glrenderer.resize.test.js†L34-L58】
+
+
+
 - `setRollPivot`
   - Purpose: Updates the roll angle uniform and pivot coordinates used by the vertex shader to rotate quads around a screen-space pivot.【F:src/gl/renderer.js†L172-L172】
   - Inputs: `rad` roll angle in radians, `px`/`py` pivot coordinates in pixels.【F:src/gl/renderer.js†L172-L172】
@@ -3766,6 +4715,9 @@
   - Determinism: Deterministic given inputs; idempotent for repeated values.【F:src/gl/renderer.js†L172-L172】
   - Keep / change / delete: Keep; isolates shader uniform plumbing from camera logic. Alternative would inline uniform calls inside renderer, reducing reuse.【F:src/render.js†L1032-L1048】
   - Confidence / assumptions: High confidence; thin wrapper around straightforward uniform writes.【F:src/gl/renderer.js†L172-L172】
+
+
+
 - `drawQuadTextured`
   - Purpose: Streams a single quad worth of vertices with per-vertex tint and fog into the shared VBO, binds the chosen texture (or fallback), and issues a triangle draw.【F:src/gl/renderer.js†L173-L193】
   - Inputs: `tex` (`WebGLTexture` or falsy), `quad` object with `x1..x4`/`y1..y4` pixel coordinates, `uv` struct with `u1..u4`/`v1..v4`, optional `tint` RGBA array, optional `fog` array of four fog weights.【F:src/gl/renderer.js†L173-L193】
@@ -3779,6 +4731,9 @@
   - Determinism: Deterministic given identical inputs and GL state; floating precision may vary slightly across hardware.【F:src/gl/renderer.js†L173-L193】
   - Keep / change / delete: Keep; foundational draw primitive. Alternative would require batching multiple quads per submission, which is a broader redesign.【F:src/render.js†L728-L1767】
   - Confidence / assumptions: High confidence; heavily exercised by render loop.【F:src/render.js†L728-L1767】
+
+
+
 - `drawQuadSolid`
   - Purpose: Convenience wrapper that renders a solid-colored quad (with optional fog) by delegating to `drawQuadTextured` using the shared white texture and unit UVs.【F:src/gl/renderer.js†L194-L198】
   - Inputs: `quad` coordinates, optional `color` RGBA array, optional `fog` array.【F:src/gl/renderer.js†L194-L198】
@@ -3792,6 +4747,9 @@
   - Determinism: Deterministic given inputs.【F:src/gl/renderer.js†L194-L198】
   - Keep / change / delete: Keep; avoids duplicating tint/fog packing for solid draws. Alternative would require callers to manage textures manually.【F:src/render.js†L728-L1767】
   - Confidence / assumptions: High confidence; extensively used in current renderer.【F:src/render.js†L728-L1767】
+
+
+
 - `makeCircleTex`
   - Purpose: Generates a radial-gradient circle texture on an offscreen canvas and uploads it to WebGL, useful for particle or glow effects.【F:src/gl/renderer.js†L199-L216】
   - Inputs: Optional `size` (pixels, defaults to `64`); expects positive integers for reasonable quality.【F:src/gl/renderer.js†L199-L216】
@@ -3805,6 +4763,9 @@
   - Determinism: Deterministic gradient for a given size.【F:src/gl/renderer.js†L199-L216】
   - Keep / change / delete: Keep; handy utility despite no current callers. Simplest alternative is to ship a baked circle sprite asset.【F:src/gl/renderer.js†L199-L216】
   - Confidence / assumptions: High confidence; straightforward texture generation routine.【F:src/gl/renderer.js†L199-L216】
+
+
+
 - `end`
   - Purpose: Placeholder terminator for the render pass; currently a no-op reserved for future teardown or post-frame bookkeeping.【F:src/gl/renderer.js†L218-L218】
   - Inputs: None.【F:src/gl/renderer.js†L218-L218】
@@ -3818,6 +4779,9 @@
   - Determinism: N/A.【F:src/gl/renderer.js†L218-L218】
   - Keep / change / delete: Keep for symmetry; alternative is to remove and adjust callers, but that would reduce clarity around frame lifecycle.【F:src/render.js†L990-L1017】
   - Confidence / assumptions: High confidence; inert stub.【F:src/gl/renderer.js†L218-L218】
+
+
+
 - `padQuad`
   - Purpose: Returns a new quad expanded by configurable padding along each edge, ensuring sprites overlap cleanly regardless of vertex ordering.【F:src/gl/renderer.js†L221-L256】
   - Inputs: `q` quad with `x1..x4`/`y1..y4`; optional padding object `{ padLeft, padRight, padTop, padBottom }` (defaults to `0`).【F:src/gl/renderer.js†L221-L249】
@@ -3831,6 +4795,9 @@
   - Determinism: Deterministic given inputs.【F:src/gl/renderer.js†L221-L256】
   - Keep / change / delete: Keep; simplifies sprite overlap tuning. Alternative is to repeat padding math at each call site.【F:src/render.js†L610-L812】
   - Confidence / assumptions: High confidence; behaviour covered by numerous draw callers relying on overlap.【F:src/render.js†L728-L812】
+
+
+
 - `makeRotatedQuad`
   - Purpose: Computes the four vertices of a rectangle rotated around its center, returning screen-space coordinates ready for rendering.【F:src/gl/renderer.js†L259-L267】
   - Inputs: `cx`/`cy` center pixels, `w` width, `h` height, `rad` rotation in radians.【F:src/gl/renderer.js†L259-L266】
@@ -3846,6 +4813,9 @@
   - Confidence / assumptions: High confidence; long-standing helper for sprite orientation.【F:src/gl/renderer.js†L259-L267】
 
 ### 3.9 Sprite Catalog (`src/sprite-catalog.js`)
+
+
+
 - `freezeClip`
   - Purpose: Normalises optional animation clip definitions into immutable objects with frozen frame arrays and a playback mode, providing safe defaults when clips are absent.【F:src/sprite-catalog.js†L19-L27】
   - Inputs: `clip` object with optional `frames` array and `playback` string; falsy values trigger a default empty clip.【F:src/sprite-catalog.js†L19-L27】
@@ -3859,6 +4829,9 @@
   - Determinism: Deterministic for a given input clip.【F:src/sprite-catalog.js†L19-L27】
   - Keep / change / delete: Keep; encapsulates defensive cloning. Alternative is to freeze in-line for each entry, duplicating code.【F:src/sprite-catalog.js†L132-L151】
   - Confidence / assumptions: High confidence; straightforward immutable wrapper.【F:src/sprite-catalog.js†L19-L27】
+
+
+
 - `makeFrames`
   - Purpose: Generates an inclusive sequence of frame indices between `start` and `end`, supporting ascending and descending ranges for atlas clips.【F:src/sprite-catalog.js†L30-L36】
   - Inputs: `start`, `end` numbers; expects finite values to produce frames.【F:src/sprite-catalog.js†L30-L34】
@@ -3872,6 +4845,9 @@
   - Determinism: Deterministic for given start/end.【F:src/sprite-catalog.js†L30-L36】
   - Keep / change / delete: Keep; concise helper for frame lists. Alternative is manual loops at each call site.【F:src/sprite-catalog.js†L52-L78】
   - Confidence / assumptions: High confidence; simple numeric iteration.【F:src/sprite-catalog.js†L30-L36】
+
+
+
 - `makeAtlasFrameAssets`
   - Purpose: Converts a list of frame numbers into atlas asset descriptors consumed by the renderer/loader for sprite animation.【F:src/sprite-catalog.js†L40-L43】
   - Inputs: `key` texture manifest key string, `frameValues` array-like of frame numbers.【F:src/sprite-catalog.js†L40-L43】
@@ -3885,6 +4861,9 @@
   - Determinism: Deterministic given inputs.【F:src/sprite-catalog.js†L40-L43】
   - Keep / change / delete: Keep; keeps catalog construction declarative. Alternative is manual object literals for every frame.【F:src/sprite-catalog.js†L70-L78】
   - Confidence / assumptions: High confidence; minimal transformation.【F:src/sprite-catalog.js†L40-L43】
+
+
+
 - `cloneCatalog`
   - Purpose: Produces a shallow copy of the internal `CATALOG_MAP` so callers can iterate without mutating the shared singleton.【F:src/sprite-catalog.js†L158-L160】
   - Inputs: None.【F:src/sprite-catalog.js†L158-L160】
@@ -3898,6 +4877,9 @@
   - Determinism: Deterministic snapshot of the underlying map.【F:src/sprite-catalog.js†L158-L160】
   - Keep / change / delete: Keep; prevents accidental mutation of the singleton map. Alternative is to expose the map directly and trust callers.【F:src/sprite-catalog.js†L175-L179】
   - Confidence / assumptions: High confidence; simple wrapper around `new Map`.【F:src/sprite-catalog.js†L158-L160】
+
+
+
 - `getTextureManifest`
   - Purpose: Returns a shallow copy of the sprite texture manifest so loaders can request sprite-specific assets without mutating shared data.【F:src/sprite-catalog.js†L5-L34】【F:src/sprite-catalog.js†L162-L164】
   - Inputs: None.【F:src/sprite-catalog.js†L162-L164】
@@ -3911,6 +4893,9 @@
   - Determinism: Deterministic; always mirrors the static manifest.【F:src/sprite-catalog.js†L5-L34】【F:src/sprite-catalog.js†L162-L164】
   - Keep / change / delete: Keep; isolates manifest exposure. Alternative is to export the frozen manifest directly, limiting caller flexibility.【F:src/sprite-catalog.js†L162-L164】
   - Confidence / assumptions: High confidence; trivial copy helper.【F:src/sprite-catalog.js†L162-L164】
+
+
+
 - `getCatalogEntry`
   - Purpose: Fetches a frozen catalog entry by `spriteId`, enabling callers to inspect metrics/assets for individual sprites.【F:src/sprite-catalog.js†L166-L168】
   - Inputs: `spriteId` string.【F:src/sprite-catalog.js†L166-L168】
@@ -3924,6 +4909,9 @@
   - Determinism: Deterministic; entries are frozen and static.【F:src/sprite-catalog.js†L132-L178】
   - Keep / change / delete: Keep; essential point lookup for future gameplay/render code. Alternative would require callers to copy the entire catalog and filter manually.【F:src/sprite-catalog.js†L166-L178】
   - Confidence / assumptions: High confidence; straightforward map access.【F:src/sprite-catalog.js†L166-L168】
+
+
+
 - `getMetrics`
   - Purpose: Convenience accessor that returns sprite metrics or the frozen fallback when an entry is missing.【F:src/sprite-catalog.js†L170-L172】
   - Inputs: `spriteId` string.【F:src/sprite-catalog.js†L170-L172】
@@ -3939,6 +4927,9 @@
   - Confidence / assumptions: High confidence; tiny wrapper around `getCatalogEntry`.【F:src/sprite-catalog.js†L166-L172】
 
 ### 3.10 Math Utilities (`src/math.js`)
+
+
+
 - `clamp`
   - Purpose: Limits a numeric value to an inclusive `[min, max]` range, preventing downstream math from exceeding configured bounds in rendering and gameplay systems.【F:src/math.js†L1-L1】【F:src/render.js†L84-L104】【F:src/gameplay.js†L1199-L1201】
   - Inputs: `value` (number to bound), `min` lower limit, `max` upper limit; expects numeric inputs with `min ≤ max` for intuitive results.【F:src/math.js†L1-L1】
@@ -3952,6 +4943,9 @@
   - Determinism: Deterministic pure math.【F:src/math.js†L1-L1】
   - Keep / change / delete: Keep; ubiquitous helper avoiding verbose inline min/max chains.【F:src/math.js†L1-L1】
   - Confidence / assumptions: High confidence; trivial wrapper around built-ins.【F:src/math.js†L1-L1】
+
+
+
 - `clamp01`
   - Purpose: Convenience wrapper that clamps a value into the `[0,1]` interval, widely used for normalised ratios and easing inputs.【F:src/math.js†L2-L2】【F:src/gameplay.js†L570-L588】
   - Inputs: `value` number.【F:src/math.js†L2-L2】
@@ -3965,6 +4959,9 @@
   - Determinism: Deterministic.【F:src/math.js†L2-L2】
   - Keep / change / delete: Keep; reduces boilerplate when constraining easing parameters.【F:src/math.js†L2-L2】
   - Confidence / assumptions: High confidence; simple call-through.【F:src/math.js†L2-L2】
+
+
+
 - `lerp`
   - Purpose: Performs linear interpolation between `start` and `end` by factor `t`, supporting numerous projection and animation calculations.【F:src/math.js†L4-L4】【F:src/render.js†L780-L812】【F:src/world.js†L503-L510】
   - Inputs: `start`, `end`, `t` numbers; `t` typically within `[0,1]` though not enforced.【F:src/math.js†L4-L4】
@@ -3978,6 +4975,9 @@
   - Determinism: Deterministic given inputs.【F:src/math.js†L4-L4】
   - Keep / change / delete: Keep; ubiquitous interpolation helper.【F:src/math.js†L4-L4】
   - Confidence / assumptions: High confidence.【F:src/math.js†L4-L4】
+
+
+
 - `pctRem`
   - Purpose: Computes the fractional remainder of `value` relative to `total`, returning a normalised modulus often used for wrapping track positions.【F:src/math.js†L5-L5】【F:src/render.js†L1004-L1015】
   - Inputs: `value` number, `total` number (non-zero recommended).【F:src/math.js†L5-L5】
@@ -3991,6 +4991,9 @@
   - Determinism: Deterministic.【F:src/math.js†L5-L5】
   - Keep / change / delete: Keep; concise helper for normalised modular arithmetic.【F:src/math.js†L5-L5】
   - Confidence / assumptions: High confidence.【F:src/math.js†L5-L5】
+
+
+
 - `createEaseIn`
   - Purpose: Factory that returns an easing function raising `clamp01(t)` to a power, producing standard ease-in curves.【F:src/math.js†L7-L8】【F:src/math.js†L17-L23】
   - Inputs: `power` positive number.【F:src/math.js†L7-L7】
@@ -4004,6 +5007,9 @@
   - Determinism: Deterministic.【F:src/math.js†L7-L7】
   - Keep / change / delete: Keep; avoids repeating exponent logic for each curve.【F:src/math.js†L18-L23】
   - Confidence / assumptions: High confidence.【F:src/math.js†L7-L7】
+
+
+
 - `createEaseOut`
   - Purpose: Produces an ease-out function that mirrors ease-in behaviour by flipping and clamping `t`.【F:src/math.js†L8-L8】【F:src/math.js†L17-L23】
   - Inputs: `power` number.【F:src/math.js†L8-L8】
@@ -4017,6 +5023,9 @@
   - Determinism: Deterministic.【F:src/math.js†L8-L8】
   - Keep / change / delete: Keep; complements other ease factories.【F:src/math.js†L19-L23】
   - Confidence / assumptions: High confidence.【F:src/math.js†L8-L8】
+
+
+
 - `createEaseInOut`
   - Purpose: Generates a symmetric ease-in/ease-out curve by applying a power to the first half of the timeline and mirroring it for the second half.【F:src/math.js†L9-L15】
   - Inputs: `power` number.【F:src/math.js†L9-L15】
@@ -4030,6 +5039,9 @@
   - Determinism: Deterministic.【F:src/math.js†L9-L15】
   - Keep / change / delete: Keep; avoids hand-writing mirrored curves.【F:src/math.js†L20-L23】
   - Confidence / assumptions: High confidence.【F:src/math.js†L9-L15】
+
+
+
 - `easeLinear01`
   - Purpose: Identity easing returning `clamp01(t)`, used as the neutral curve in easing tables.【F:src/math.js†L17-L17】【F:src/math.js†L33-L36】
   - Inputs: `t` number.【F:src/math.js†L17-L17】
@@ -4043,6 +5055,9 @@
   - Determinism: Deterministic.【F:src/math.js†L17-L17】
   - Keep / change / delete: Keep; baseline entry in easing map.【F:src/math.js†L33-L42】
   - Confidence / assumptions: High confidence.【F:src/math.js†L17-L17】
+
+
+
 - `easeInQuad01`
   - Purpose: Quadratic ease-in curve produced by `createEaseIn(2)` for smooth acceleration.【F:src/math.js†L18-L18】【F:src/math.js†L33-L36】
   - Inputs: `t` number.【F:src/math.js†L18-L18】
@@ -4056,6 +5071,9 @@
   - Determinism: Deterministic.【F:src/math.js†L18-L18】
   - Keep / change / delete: Keep; part of standard easing set.【F:src/math.js†L33-L48】
   - Confidence / assumptions: High confidence.【F:src/math.js†L18-L18】
+
+
+
 - `easeOutQuad01`
   - Purpose: Quadratic ease-out curve for decelerating transitions.【F:src/math.js†L19-L19】
   - Inputs: `t` number.【F:src/math.js†L19-L19】
@@ -4069,6 +5087,9 @@
   - Determinism: Deterministic.【F:src/math.js†L19-L19】
   - Keep / change / delete: Keep; complements ease-in for smooth curves.【F:src/math.js†L33-L48】
   - Confidence / assumptions: High confidence.【F:src/math.js†L19-L19】
+
+
+
 - `easeInOutQuad01`
   - Purpose: Symmetric quadratic ease-in/out curve for smooth transitions.【F:src/math.js†L20-L20】
   - Inputs: `t` number.【F:src/math.js†L20-L20】
@@ -4082,6 +5103,9 @@
   - Determinism: Deterministic.【F:src/math.js†L20-L20】
   - Keep / change / delete: Keep; key part of smoothing presets.【F:src/math.js†L33-L42】
   - Confidence / assumptions: High confidence.【F:src/math.js†L20-L20】
+
+
+
 - `easeInCub01`
   - Purpose: Cubic ease-in for sharper acceleration.【F:src/math.js†L21-L21】
   - Inputs: `t` number.【F:src/math.js†L21-L21】
@@ -4095,6 +5119,9 @@
   - Determinism: Deterministic.【F:src/math.js†L21-L21】
   - Keep / change / delete: Keep; part of sharper easing family.【F:src/math.js†L33-L48】
   - Confidence / assumptions: High confidence.【F:src/math.js†L21-L21】
+
+
+
 - `easeOutCub01`
   - Purpose: Cubic ease-out curve for quick start/slow finish transitions.【F:src/math.js†L22-L22】
   - Inputs: `t` number.【F:src/math.js†L22-L22】
@@ -4108,6 +5135,9 @@
   - Determinism: Deterministic.【F:src/math.js†L22-L22】
   - Keep / change / delete: Keep.【F:src/math.js†L33-L48】
   - Confidence / assumptions: High confidence.【F:src/math.js†L22-L22】
+
+
+
 - `easeInOutCub01`
   - Purpose: Cubic ease-in/out for sharper yet symmetric transitions.【F:src/math.js†L23-L23】
   - Inputs: `t` number.【F:src/math.js†L23-L23】
@@ -4121,6 +5151,9 @@
   - Determinism: Deterministic.【F:src/math.js†L23-L23】
   - Keep / change / delete: Keep; part of exported easing suite.【F:src/math.js†L73-L74】
   - Confidence / assumptions: High confidence.【F:src/math.js†L23-L23】
+
+
+
 - `createCurveEase`
   - Purpose: Lifts a `[0,1]` easing function into a three-parameter lerp helper returning values between `start` and `end`.【F:src/math.js†L25-L25】
   - Inputs: `fn01` easing function.【F:src/math.js†L25-L25】
@@ -4134,6 +5167,9 @@
   - Determinism: Deterministic.【F:src/math.js†L25-L31】
   - Keep / change / delete: Keep; promotes reuse of easing when interpolating arbitrary values.【F:src/math.js†L25-L31】
   - Confidence / assumptions: High confidence.【F:src/math.js†L25-L31】
+
+
+
 - `easeLinear`
   - Purpose: Interpolates between two values using the linear `[0,1]` easing, serving as a convenience wrapper around `lerp`.【F:src/math.js†L27-L27】
   - Inputs: `start`, `end`, `t`.【F:src/math.js†L27-L27】
@@ -4147,6 +5183,9 @@
   - Determinism: Deterministic.【F:src/math.js†L27-L27】
   - Keep / change / delete: Keep; part of public MathUtil API.【F:src/math.js†L63-L78】
   - Confidence / assumptions: High confidence.【F:src/math.js†L27-L27】
+
+
+
 - `easeInQuad`
   - Purpose: Applies quadratic ease-in between values via `createCurveEase(easeInQuad01)`.【F:src/math.js†L28-L28】
   - Inputs: `start`, `end`, `t`.【F:src/math.js†L28-L28】
@@ -4160,6 +5199,9 @@
   - Determinism: Deterministic.【F:src/math.js†L28-L28】
   - Keep / change / delete: Keep; part of exported easing suite.【F:src/math.js†L63-L78】
   - Confidence / assumptions: High confidence.【F:src/math.js†L28-L28】
+
+
+
 - `easeOutQuad`
   - Purpose: Quadratic ease-out interpolation helper.【F:src/math.js†L29-L29】
   - Inputs: `start` and `end` values with easing factor `t` (clamped internally to `[0,1]`).【F:src/math.js†L25-L29】
@@ -4173,6 +5215,9 @@
   - Determinism: Deterministic.【F:src/math.js†L29-L29】
   - Keep / change / delete: Keep; ensures ease-out API parity.【F:src/math.js†L63-L78】
   - Confidence / assumptions: High confidence.【F:src/math.js†L29-L29】
+
+
+
 - `easeInCub`
   - Purpose: Cubic ease-in interpolation between values.【F:src/math.js†L30-L30】
   - Inputs: `start`, `end`, `t` easing factor (clamped to `[0,1]`).【F:src/math.js†L25-L30】
@@ -4186,6 +5231,9 @@
   - Determinism: Deterministic.【F:src/math.js†L30-L30】
   - Keep / change / delete: Keep; completes cubic easing trio.【F:src/math.js†L63-L78】
   - Confidence / assumptions: High confidence.【F:src/math.js†L30-L30】
+
+
+
 - `easeOutCub`
   - Purpose: Cubic ease-out interpolation helper.【F:src/math.js†L31-L31】
   - Inputs: `start`, `end`, `t` easing factor clamped to `[0,1]`.【F:src/math.js†L25-L31】
@@ -4199,6 +5247,9 @@
   - Determinism: Deterministic.【F:src/math.js†L31-L31】
   - Keep / change / delete: Keep; matches API of other easing helpers.【F:src/math.js†L63-L78】
   - Confidence / assumptions: High confidence.【F:src/math.js†L31-L31】
+
+
+
 - `getEase01`
   - Purpose: Parses strings like `'smooth:io'` and returns the corresponding `[0,1]` easing function from `EASE_CURVES_01`, defaulting gracefully on unknown inputs.【F:src/math.js†L33-L42】
   - Inputs: `spec` string (case-insensitive, expects `curve:mode`).【F:src/math.js†L39-L41】
@@ -4212,6 +5263,9 @@
   - Determinism: Deterministic for a given spec.【F:src/math.js†L39-L42】
   - Keep / change / delete: Keep; centralises easing selection logic.【F:src/math.js†L33-L42】
   - Confidence / assumptions: High confidence.【F:src/math.js†L39-L42】
+
+
+
 - `computeCurvature`
   - Purpose: Calculates curvature κ from first and second derivatives (`dy`, `d2y`) for road profile analysis.【F:src/math.js†L51-L51】
   - Inputs: `dy` slope, `d2y` second derivative.【F:src/math.js†L51-L51】
@@ -4225,6 +5279,9 @@
   - Determinism: Deterministic.【F:src/math.js†L51-L51】
   - Keep / change / delete: Keep; critical for curvature-based logic.【F:src/math.js†L51-L51】
   - Confidence / assumptions: High confidence.【F:src/math.js†L51-L51】
+
+
+
 - `tangentNormalFromSlope`
   - Purpose: Converts a slope `dy` into unit tangent (`tx`,`ty`) and normal (`nx`,`ny`) vectors for physics and rendering alignment.【F:src/math.js†L53-L60】
   - Inputs: `dy` slope (Δy/Δx).【F:src/math.js†L53-L55】
@@ -4240,6 +5297,9 @@
   - Confidence / assumptions: High confidence.【F:src/math.js†L53-L60】
 
 ### 3.11 Testing Utilities (`test/glrenderer.resize.test.js`)
+
+
+
 - `assert`
   - Purpose: Minimal assertion helper for the resize smoke test that throws an `Error` when a condition is false, stopping the test early with a readable message.【F:test/glrenderer.resize.test.js†L1-L5】
   - Inputs: `condition` boolean-like, `message` string.【F:test/glrenderer.resize.test.js†L1-L5】
@@ -4253,6 +5313,9 @@
   - Determinism: Deterministic for given inputs.【F:test/glrenderer.resize.test.js†L1-L5】
   - Keep / change / delete: Keep; lightweight inline assertion avoids pulling external deps. Alternative is Node’s `assert` module, but the custom helper keeps output consistent.【F:test/glrenderer.resize.test.js†L1-L5】
   - Confidence / assumptions: High confidence; trivial guard.【F:test/glrenderer.resize.test.js†L1-L5】
+
+
+
 - `makeRenderer`
   - Purpose: Builds a partially mocked `GLRenderer` instance with stubbed GL calls so the test can run `begin()` without a browser context.【F:test/glrenderer.resize.test.js†L15-L41】
   - Inputs: `width`, `height` numbers for the fake canvas.【F:test/glrenderer.resize.test.js†L15-L19】
@@ -4266,6 +5329,9 @@
   - Determinism: Deterministic; produces identical mocks for given inputs.【F:test/glrenderer.resize.test.js†L15-L41】
   - Keep / change / delete: Keep; encapsulates boilerplate for GL renderer tests. Alternative is to duplicate stub setup within each test.【F:test/glrenderer.resize.test.js†L15-L60】
   - Confidence / assumptions: High confidence; proven by existing smoke test.【F:test/glrenderer.resize.test.js†L15-L60】
+
+
+
 - `gl.viewport`
   - Purpose: Stubbed no-op representing `gl.viewport` so the renderer can call it without throwing during tests.【F:test/glrenderer.resize.test.js†L18-L21】【F:src/gl/renderer.js†L149-L155】
   - Inputs: Same signature as real WebGL (`x`, `y`, `width`, `height`), though the stub ignores them.【F:test/glrenderer.resize.test.js†L18-L21】
@@ -4279,6 +5345,9 @@
   - Determinism: Always no-op.【F:test/glrenderer.resize.test.js†L19-L19】
   - Keep / change / delete: Keep; simplest stub needed for the test. Alternative is to track calls, but viewport changes aren’t asserted here.【F:test/glrenderer.resize.test.js†L18-L21】
   - Confidence / assumptions: High confidence; fits test scope.【F:test/glrenderer.resize.test.js†L18-L21】
+
+
+
 - `gl.clearColor`
   - Purpose: Stub placeholder for `gl.clearColor`, satisfying renderer expectations without touching real GL state.【F:test/glrenderer.resize.test.js†L18-L21】【F:src/gl/renderer.js†L149-L161】
   - Inputs: RGBA floats; ignored by the stub.【F:test/glrenderer.resize.test.js†L20-L20】
@@ -4292,6 +5361,9 @@
   - Determinism: Always no-op.【F:test/glrenderer.resize.test.js†L20-L20】
   - Keep / change / delete: Keep; lightweight stub sufficient for the test. Alternative is to record values if future assertions require it.【F:test/glrenderer.resize.test.js†L18-L58】
   - Confidence / assumptions: High confidence.【F:test/glrenderer.resize.test.js†L20-L20】
+
+
+
 - `gl.clear`
   - Purpose: No-op stub for `gl.clear`, allowing the renderer to invoke buffer clears without a real WebGL context.【F:test/glrenderer.resize.test.js†L18-L21】【F:src/gl/renderer.js†L149-L161】
   - Inputs: Bitmask flags; ignored.【F:test/glrenderer.resize.test.js†L21-L21】
@@ -4305,6 +5377,9 @@
   - Determinism: Always no-op.【F:test/glrenderer.resize.test.js†L21-L21】
   - Keep / change / delete: Keep; minimal stub. Alternative is to track invocation counts if tests need it later.【F:test/glrenderer.resize.test.js†L18-L58】
   - Confidence / assumptions: High confidence.【F:test/glrenderer.resize.test.js†L21-L21】
+
+
+
 - `gl.uniform2f`
   - Purpose: Test stub for `gl.uniform2f` that records calls so the test can assert whether the view-size uniform updates on resize.【F:test/glrenderer.resize.test.js†L22-L24】
   - Inputs: `location`, `x`, `y` parameters mirroring WebGL’s API.【F:test/glrenderer.resize.test.js†L22-L24】
@@ -4318,6 +5393,9 @@
   - Determinism: Deterministic; purely records provided arguments.【F:test/glrenderer.resize.test.js†L22-L59】
   - Keep / change / delete: Keep; core to the resize verification. Alternative would be spying via a test framework, which is overkill here.【F:test/glrenderer.resize.test.js†L22-L59】
   - Confidence / assumptions: High confidence.【F:test/glrenderer.resize.test.js†L22-L59】
+
+
+
 - `gl.uniform1i`
   - Purpose: Stub for integer uniform updates; returns nothing because the test does not need to track fog toggles.【F:test/glrenderer.resize.test.js†L25-L26】【F:src/gl/renderer.js†L149-L169】
   - Inputs: Uniform location and integer value; ignored.【F:test/glrenderer.resize.test.js†L25-L25】
@@ -4331,6 +5409,9 @@
   - Determinism: Always no-op.【F:test/glrenderer.resize.test.js†L25-L25】
   - Keep / change / delete: Keep; simplest stub satisfying renderer calls. Alternative is to push into `calls` if future tests need to inspect fog toggles.【F:test/glrenderer.resize.test.js†L25-L55】
   - Confidence / assumptions: High confidence.【F:test/glrenderer.resize.test.js†L25-L25】
+
+
+
 - `gl.uniform3f`
   - Purpose: Stub for 3-component uniform updates (fog colour) invoked during `begin()`.【F:test/glrenderer.resize.test.js†L26-L26】【F:src/gl/renderer.js†L163-L169】
   - Inputs: Uniform location and three floats; ignored.【F:test/glrenderer.resize.test.js†L26-L26】
@@ -4344,25 +5425,3 @@
   - Determinism: Always no-op.【F:test/glrenderer.resize.test.js†L26-L26】
   - Keep / change / delete: Keep; minimal stub fulfilling renderer requirements. Alternative is to track colour changes if future assertions demand it.【F:test/glrenderer.resize.test.js†L26-L55】
   - Confidence / assumptions: High confidence.【F:test/glrenderer.resize.test.js†L26-L26】
-
-## 4. Cleanup Priorities Aligned to Our Goals
-
-### 4.1 Make the Code Easier to Read
-- Split giant files like `app.js`, `gameplay.js`, and `world.js` into smaller modules with clear names.
-- Add short docs that explain what each module exports and how the pieces connect.
-- Use the same naming style everywhere (for example, always `camelCase` for functions and consistent prefixes like `init` or `create`).
-- Replace hidden globals with explicit imports and exports so we know where values come from.
-
-### 4.2 Trim Repeated or Unused Code
-- Move shared helpers such as HTML escaping or asset URL builders into one place.
-- Remove menu states or debug toggles that no longer run.
-- Consolidate repeated HTML or sprite templates into reusable builders.
-
-### 4.3 Speed Up Runtime
-- Profile the render loop to find slow steps, then batch sprite draws and cut down allocations.
-- Cache expensive calculations (segment projections, easing curves, texture lookups) so we do them once per update.
-- Limit DOM work by batching menu updates and making sure network requests (like leaderboards) run asynchronously.
-- Watch for code that creates lots of short-lived objects and switch to in-place updates where possible.
-
-### 4.4 Future Changes
-- Add a persistence step that writes new leaderboard scores back into `data/leaderboard.csv` so every finished race stays tracked after reloads.
