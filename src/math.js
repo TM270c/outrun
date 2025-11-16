@@ -36,35 +36,16 @@ const EASE_CURVES_01 = {
   sharp: { in: easeInCub01, out: easeOutCub01, io: easeInOutCub01 },
 };
 
-const parseEaseSpec01 = (spec = "smooth:io", fallbackMode = "io") => {
-  const [curveRaw = "smooth", modeRaw = fallbackMode] = spec.toLowerCase().trim().split(":");
-  const family = EASE_CURVES_01[curveRaw] || EASE_CURVES_01.smooth;
-  const mode = family[modeRaw] ? modeRaw : fallbackMode;
-  return { family, mode };
-};
-
-const getEaseFamily01 = (spec = "smooth:io") => {
-  const { family } = parseEaseSpec01(spec);
-  return family;
-};
-
 const getEase01 = (spec = "smooth:io") => {
-  const { family, mode } = parseEaseSpec01(spec);
+  const [curve = "smooth", mode = "io"] = spec.toLowerCase().trim().split(":");
+  const family = EASE_CURVES_01[curve] || EASE_CURVES_01.smooth;
   return family[mode] || family.io;
 };
 
-const createCurveEaseFamily = (family01) => ({
-  in: createCurveEase(family01.in),
-  out: createCurveEase(family01.out),
-  io: createCurveEase(family01.io),
-});
-
-const getCurveEaseFamily = (spec = "smooth:io") => createCurveEaseFamily(getEaseFamily01(spec));
-
 const CURVE_EASE = {
-  linear: getCurveEaseFamily("linear"),
-  smooth: getCurveEaseFamily("smooth"),
-  sharp: getCurveEaseFamily("sharp"),
+  linear: { in: easeLinear, out: easeLinear },
+  smooth: { in: easeInQuad, out: easeOutQuad },
+  sharp: { in: easeInCub, out: easeOutCub },
 };
 
 const computeCurvature = (dy, d2y) => d2y / Math.pow(1 + dy * dy, 1.5);
@@ -91,10 +72,7 @@ window.MathUtil = {
   easeOutCub,
   easeInOutQuad01,
   easeInOutCub01,
-  parseEaseSpec01,
-  getEaseFamily01,
   getEase01,
-  getCurveEaseFamily,
   CURVE_EASE,
   computeCurvature,
   tangentNormalFromSlope,

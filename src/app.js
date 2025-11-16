@@ -35,7 +35,7 @@
     },
   ];
 
-  const settingsMenuKeys = ['back'];
+  const settingsMenuKeys = ['snow', 'back'];
   const IDLE_TIMEOUT_MS = 5000;
   const DEFAULT_VEHICLE_PREVIEW_FRAME_DURATION = 1 / 24;
 
@@ -46,6 +46,7 @@
     settingsMenuIndex: 0,
     vehicleSelectIndex: 0,
     selectedVehicleKey: vehicleOptions.length ? vehicleOptions[0].key : null,
+    settings: { snowEnabled: true, debugEnabled: false },
     lastInteractionAt: Date.now(),
     leaderboard: {
       loading: false,
@@ -290,6 +291,11 @@
   function renderSettings() {
     if (!AppScreens.settingsMenu) return '';
     const options = [
+      {
+        key: 'snow',
+        label: 'Snow Effects',
+        value: state.settings.snowEnabled ? 'ON' : 'OFF',
+      },
       {
         key: 'back',
         label: 'Back',
@@ -556,6 +562,16 @@
     if (idx >= 0) {
       state.vehicleSelectIndex = clampIndex(idx, vehicleOptions.length);
     }
+    const textures = (World && World.assets && World.assets.textures)
+      ? World.assets.textures
+      : null;
+    if (!textures) return;
+    const atlasKey = option.atlasTextureKey;
+    const atlasTexture = atlasKey && textures[atlasKey] ? textures[atlasKey] : null;
+    const fallbackTexture = textures.playerCar || textures.car || null;
+    if (atlasTexture || fallbackTexture) {
+      textures.playerVehicle = atlasTexture || fallbackTexture;
+    }
   }
 
   function showVehicleSelect() {
@@ -667,6 +683,32 @@
     setMode('attract');
   }
 
+  function toggleSnowSetting() {
+    state.settings.snowEnabled = !state.settings.snowEnabled;
+    updateMenuLayer();
+  }
+
+  function applyDebugModeSetting() {
+    if (!Config || !Config.debug || typeof Config.debug !== 'object') {
+      return;
+    }
+    try {
+      Config.debug.mode = state.settings.debugEnabled ? 'fill' : 'off';
+    } catch (err) {
+      console.warn('Failed to update debug mode', err);
+    }
+  }
+
+  function setDebugEnabled(enabled) {
+    state.settings.debugEnabled = !!enabled;
+    applyDebugModeSetting();
+  }
+
+  function toggleDebugSetting() {
+    setDebugEnabled(!state.settings.debugEnabled);
+    updateMenuLayer();
+  }
+
   function resetGameplayInputs() {
     if (!Gameplay || !Gameplay.state || !Gameplay.state.input) return;
     const input = Gameplay.state.input;
@@ -748,7 +790,9 @@
 
   function activateSettingsSelection() {
     const key = settingsMenuKeys[state.settingsMenuIndex];
-    if (key === 'back') {
+    if (key === 'snow') {
+      toggleSnowSetting();
+    } else if (key === 'back') {
       setMode('menu');
     }
   }
@@ -875,6 +919,14 @@
       e.preventDefault();
       return true;
     }
+    if (['ArrowLeft', 'ArrowRight'].includes(e.code)) {
+      const key = settingsMenuKeys[state.settingsMenuIndex];
+      if (key === 'snow') {
+        toggleSnowSetting();
+      }
+      e.preventDefault();
+      return true;
+    }
     if (['Space', 'Enter'].includes(e.code)) {
       activateSettingsSelection();
       e.preventDefault();
@@ -988,6 +1040,15 @@
   }
 
   function handleKeyDown(e) {
+    if (e.code === 'KeyB') {
+      toggleDebugSetting();
+      if (state.mode !== 'playing') {
+        markInteraction();
+      }
+      e.preventDefault();
+      return;
+    }
+
     if (e.code === 'KeyP') {
       if (state.mode === 'playing') {
         setMode('paused');
@@ -1071,8 +1132,17 @@
     state.lastInteractionAt = now();
     resetRaceCompleteState();
     applyVehicleSelection(state.selectedVehicleKey);
+    applyDebugModeSetting();
     setMode('menu');
     requestLeaderboard();
+  }
+
+  function isSnowEnabled() {
+    return !!state.settings.snowEnabled;
+  }
+
+  function isDebugEnabled() {
+    return !!state.settings.debugEnabled;
   }
 
   global.App = {
@@ -1082,5 +1152,7 @@
     handleKeyDown,
     handleKeyUp,
     handleRaceFinish,
+    isSnowEnabled,
+    isDebugEnabled,
   };
 })(window);

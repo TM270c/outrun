@@ -68,6 +68,24 @@ const fog = {
   color: [0.1, 0.5, 0.8],
 };
 
+// Default fallback tint values for world primitives.
+// Snow screen rendering controls.
+const snowScreenDistance = 40;
+const snowScreenDensity = 2;
+const snowScreenSize = 1;
+const snowDensity = .6;
+const snowSize = { min: 0.75, max: 1.25 };
+const snowSpeed = { min: 0.1, max: .2 };
+const snowStretch = 10;
+
+// Debug overlay defaults for development builds.
+const debug = {
+  mode: 'off',
+  span: 3,
+  colors: { a: [1, 1, 1, 1], b: [0.82, 0.9, 1, 1] },
+  textures: true,
+};
+
 // Sprite rendering adjustments.
 const sprites = {
   far: { shrinkTo: 0.1, power: 0.4 },
@@ -80,6 +98,13 @@ const parallaxLayers = [
   { key: 'horizon2', parallaxX: 0.1,  uvSpanX: 1.0, uvSpanY: 1.0 },
   { key: 'horizon3', parallaxX: 0.18, uvSpanX: 1.0, uvSpanY: 1.0 },
 ];
+
+// Road traffic tuning for non-player cars.
+const traffic = {
+  total: 20,
+  edgePad: 0.02,
+  avoidLookaheadSegs: 20,
+};
 
 // Drift boost tuning.
 const drift = {
@@ -113,6 +138,7 @@ const boost = {
       solid: [33 / 255, 150 / 255, 243 / 255, 1],
     },
   },
+  textures: { jump: 'boostJump', drive: 'boostDrive' },
 };
 
 // Lane constraints for vehicles and boost strips.
@@ -145,14 +171,23 @@ window.Config = {
   cliffs,
   failsafe,
   fog,
+  debug,
   sprites,
   parallaxLayers,
+  traffic,
   drift,
   boost,
   lanes,
   tilt,
   nearMiss,
   forceLandingOnCarImpact,
+  snowScreenDistance,
+  snowScreenDensity,
+  snowScreenSize,
+  snowDensity,
+  snowSize,
+  snowSpeed,
+  snowStretch,
 };
 
 Object.freeze(window.Config);

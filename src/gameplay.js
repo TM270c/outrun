@@ -16,6 +16,8 @@
     boost,
     lanes,
     tilt: tiltConfig = {},
+    traffic: trafficConfig = {},
+    nearMiss: nearMissConfig = {},
     forceLandingOnCarImpact = false,
   } = Config;
 
@@ -23,6 +25,26 @@
     base: tiltBase = { tiltDir: 1, tiltCurveWeight: 0, tiltEase: 0.1, tiltSens: 0, tiltMaxDeg: 0 },
     additive: tiltAdd = { tiltAddEnabled: false, tiltAddMaxDeg: null },
   } = tiltConfig;
+
+  const {
+    forwardDistanceScale: nearMissForwardScale = 0.5,
+    forwardDistanceMin: nearMissForwardMinRaw = 5,
+    forwardDistanceFallback: nearMissForwardFallbackRaw = 12,
+  } = nearMissConfig;
+
+  const NEAR_MISS_FORWARD_MIN = Math.max(
+    0,
+    Number.isFinite(nearMissForwardMinRaw) ? nearMissForwardMinRaw : 5,
+  );
+  const NEAR_MISS_FORWARD_FALLBACK = (() => {
+    const fallback = Number.isFinite(nearMissForwardFallbackRaw)
+      ? nearMissForwardFallbackRaw
+      : 12;
+    return Math.max(NEAR_MISS_FORWARD_MIN, fallback);
+  })();
+  const NEAR_MISS_FORWARD_SCALE = Number.isFinite(nearMissForwardScale)
+    ? nearMissForwardScale
+    : 0.5;
 
   const {
     clamp,
@@ -262,24 +284,73 @@
     }
   }
 
+  const DRIFT_SMOKE_INTERVAL = 0.1 / 60;
+  const DRIFT_SMOKE_INTERVAL_JITTER = 0.25;
+  const DRIFT_SMOKE_LIFETIME = 30 / 60;
+  const DRIFT_SMOKE_LONGITUDINAL_JITTER = segmentLength * 0.01;
+  const DRIFT_SMOKE_FORWARD_INHERITANCE = 0.4;
+  const DRIFT_SMOKE_DRAG = 1.75;
+
+  const SPARKS_INTERVAL = .7 / 60;
+  const SPARKS_INTERVAL_JITTER = 4;
+  const SPARKS_LIFETIME = 30 / 60;
+  const SPARKS_LONGITUDINAL_JITTER = segmentLength * 1;
+  const SPARKS_FORWARD_INHERITANCE = 0;
+  const SPARKS_DRAG = 10;
+  const SPARKS_LATERAL_SPEED = { min: -.5, max: 0.5};
+  const SPARKS_SCREEN_LATERAL_SPEED = { min: -1, max: 10};
+  const SPARKS_SCREEN_VERTICAL_SPEED = { min: -600, max: -200 };
+  const SPARKS_SCREEN_GRAVITY = 40;
+  const SPARKS_SCREEN_DRAG = 10;
+
   const DEFAULT_SPRITE_META = {
     PLAYER: {
       wN: 0.35,
       aspect: 1,
       tint: [0.9, 0.22, 0.21, 1],
       atlas: { columns: 9, totalFrames: 81 },
-      tex: () => null,
+      tex() {
+        const textures = (World && World.assets && World.assets.textures)
+          ? World.assets.textures
+          : null;
+        if (!textures) return null;
+        if (textures.playerVehicle) return textures.playerVehicle;
+        if (textures.car) return textures.car;
+        if (textures.playerCar) return textures.playerCar;
+        return null;
+      },
     },
     CAR:    { wN: 0.28, aspect: 1, tint: [0.2, 0.7, 1.0, 1], tex: () => null },
     SEMI:   { wN: 0.34, aspect: 1.6, tint: [0.85, 0.85, 0.85, 1], tex: () => null },
     TREE:   { wN: 0.5,  aspect: 3.0, tint: [1, 1, 1, 1], tex: () => null },
-    SIGN:   { wN: 1.2, aspect: 1.0, tint: [1, 1, 1, 1], tex: () => null },
+    SIGN:   {
+      wN: 1.2,
+      aspect: 1.0,
+      tint: [1, 1, 1, 1],
+      tex() {
+        const textures = (World && World.assets && World.assets.textures)
+          ? World.assets.textures
+          : null;
+        return (textures && textures.sign) || null;
+      },
+    },
     PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
+    DRIFT_SMOKE: { wN: 0.1, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], tex: () => null },
+    SPARKS: { wN: 0.01, aspect: 1.0, tint: [1.0, 0.6, 0.2, 0.9], tex: () => null },
     ANIM_PLATE: {
       wN: 0.1,
       aspect: 1.0,
       tint: [1, 1, 1, 1],
-      tex: () => null,
+      tex(spr) {
+        const textures = (World && World.assets && World.assets.textures)
+          ? World.assets.textures
+          : null;
+        if (!textures) return null;
+        if (spr && spr.textureKey && textures[spr.textureKey]) {
+          return textures[spr.textureKey];
+        }
+        return textures.animPlate01 || textures.animPlate02 || null;
+      },
       frameCount: 16,
       framesPerRow: 4,
       frameUv(frameIndex = 0){
@@ -300,6 +371,7 @@
       wN: 0.2,
       aspect: 1,
       tint: [1, 1, 1, 1],
+      textureKey: null,
       atlas: null,
     });
 
@@ -313,7 +385,19 @@
       wN: base.wN,
       aspect: base.aspect,
       tint: Array.isArray(base.tint) ? base.tint.slice() : [1, 1, 1, 1],
-      tex: () => null,
+      tex(spr) {
+        const textures = (World && World.assets && World.assets.textures)
+          ? World.assets.textures
+          : null;
+        if (!textures) return null;
+        if (spr && spr.assetKey && textures[spr.assetKey]) {
+          return textures[spr.assetKey];
+        }
+        if (base.textureKey && textures[base.textureKey]) {
+          return textures[base.textureKey];
+        }
+        return null;
+      },
       frameUv(frameIndex, spr) {
         const atlasInfo = (spr && spr.atlasInfo) ? spr.atlasInfo : base.atlas;
         if (!atlasInfo) return null;
@@ -741,7 +825,7 @@
       interactable: entry.type === 'trigger' || entry.interaction !== 'static',
       impactable: entry.type === 'solid',
       interacted: false,
-      assetKey: (instance.asset && instance.asset.key) ? instance.asset.key : null,
+      assetKey: (instance.asset && instance.asset.key) ? instance.asset.key : (metrics.textureKey || null),
     };
     if (instance.asset && Array.isArray(instance.asset.frames)) {
       sprite.assetFrames = instance.asset.frames.slice();
@@ -856,12 +940,120 @@
     return spriteDataPromise;
   }
 
+  const driftSmokePool = [];
+  const sparksPool = [];
+
+  function computeDriftSmokeInterval() {
+    const base = Math.max(1e-4, DRIFT_SMOKE_INTERVAL);
+    const jitter = Math.max(0, DRIFT_SMOKE_INTERVAL_JITTER);
+    if (jitter <= 1e-6) return base;
+    const span = base * jitter;
+    return base + (Math.random() * 2 - 1) * span;
+  }
+
+  function allocDriftSmokeSprite() {
+    return driftSmokePool.length ? driftSmokePool.pop() : { kind: 'DRIFT_SMOKE' };
+  }
+
+  function recycleDriftSmokeSprite(sprite) {
+    if (!sprite || sprite.kind !== 'DRIFT_SMOKE') return;
+    sprite.animation = null;
+    sprite.impactState = null;
+    sprite.driftMotion = null;
+    sprite.interactable = false;
+    sprite.interacted = false;
+    sprite.impactable = false;
+    sprite.segIndex = 0;
+    sprite.s = 0;
+    sprite.ttl = 0;
+    sprite.offset = 0;
+    driftSmokePool.push(sprite);
+  }
+
+  function computeSparksInterval() {
+    const base = Math.max(1e-4, SPARKS_INTERVAL);
+    const jitter = Math.max(0, SPARKS_INTERVAL_JITTER);
+    if (jitter <= 1e-6) return base;
+    const span = base * jitter;
+    return base + (Math.random() * 2 - 1) * span;
+  }
+
+  function allocSparksSprite() {
+    return sparksPool.length ? sparksPool.pop() : { kind: 'SPARKS' };
+  }
+
+  function recycleSparksSprite(sprite) {
+    if (!sprite || sprite.kind !== 'SPARKS') return;
+    sprite.animation = null;
+    sprite.impactState = null;
+    sprite.driftMotion = null;
+    sprite.interactable = false;
+    sprite.interacted = false;
+    sprite.impactable = false;
+    sprite.segIndex = 0;
+    sprite.s = 0;
+    sprite.ttl = 0;
+    sprite.offset = 0;
+    sprite.screenOffsetX = 0;
+    sprite.screenOffsetY = 0;
+    sparksPool.push(sprite);
+  }
+
+  function recycleTransientSprite(sprite) {
+    if (!sprite) return;
+    if (sprite.kind === 'DRIFT_SMOKE') recycleDriftSmokeSprite(sprite);
+    if (sprite.kind === 'SPARKS') recycleSparksSprite(sprite);
+  }
+
+  const NPC_DEFAULTS = { total: 20, edgePad: 0.02, avoidLookaheadSegs: 20 };
+  const NPC = { ...NPC_DEFAULTS, ...trafficConfig };
+  const CAR_TYPES = ['CAR', 'SEMI'];
+
+  const CAR_COLLISION_COOLDOWN = 1 / 120;
+  const COLLISION_PUSH_DURATION = 0.45;
+  const NPC_COLLISION_PUSH_FORWARD_MAX_SEGMENTS = 10;
+  const NPC_COLLISION_PUSH_LATERAL_MAX = 0.85;
+  const INTERACTABLE_COLLISION_PUSH_FORWARD_MAX_SEGMENTS = 12;
+  const INTERACTABLE_COLLISION_PUSH_LATERAL_MAX = 1;
+  const CAR_COLLISION_STAMP = Symbol('carCollisionStamp');
+  const CAR_NEAR_MISS_READY = Symbol('carNearMissReady');
+  const NEAR_MISS_LATERAL_SCALE = 1.2;
+  const NEAR_MISS_RESET_SCALE = 1.8;
+  const NEAR_MISS_FORWARD_DISTANCE = (() => {
+    if (
+      Number.isFinite(segmentLength)
+      && segmentLength > 0
+      && NEAR_MISS_FORWARD_SCALE > 0
+    ) {
+      const scaledDistance = segmentLength * NEAR_MISS_FORWARD_SCALE;
+      if (Number.isFinite(scaledDistance) && scaledDistance > 0) {
+        return Math.max(NEAR_MISS_FORWARD_MIN, scaledDistance);
+      }
+    }
+    return NEAR_MISS_FORWARD_FALLBACK > 0
+      ? NEAR_MISS_FORWARD_FALLBACK
+      : Math.max(12, NEAR_MISS_FORWARD_MIN);
+  })();
+  const NEAR_MISS_SPEED_MARGIN = 1;
+  const GUARD_RAIL_HIT_COOLDOWN = 0.5;
+  const OFF_ROAD_THRESHOLD = 1;
+
   const defaultGetKindScale = (kind) => (kind === 'PLAYER' ? player.scale : 1);
 
   function createInitialMetrics() {
     return {
+      npcHits: 0,
+      nearMisses: 0,
+      guardRailHits: 0,
+      guardRailContactTime: 0,
       pickupsCollected: 0,
       airTime: 0,
+      driftTime: 0,
+      topSpeed: 0,
+      respawnCount: 0,
+      offRoadTime: 0,
+      guardRailCooldownTimer: 0,
+      guardRailContactActive: false,
     };
   }
 
@@ -869,6 +1061,13 @@
     phys: { s: 0, y: 0, vx: 0, vy: 0, vtan: 0, grounded: true, t: 0, nextHopTime: 0, boostFlashTimer: 0 },
     playerN: 0,
     camYSmooth: 0,
+    hopHeld: false,
+    driftState: 'idle',
+    driftDirSnapshot: 0,
+    driftCharge: 0,
+    allowedBoost: false,
+    pendingDriftDir: 0,
+    lastSteerDir: 0,
     boostTimer: 0,
     activeDriveZoneId: null,
     lateralRate: 0,
@@ -884,6 +1083,10 @@
       startTime: 0,
       finishTime: null,
     },
+    driftSmokeTimer: 0,
+    driftSmokeNextInterval: computeDriftSmokeInterval(),
+    sparksTimer: 0,
+    sparksNextInterval: computeSparksInterval(),
     cars: [],
     spriteMeta: DEFAULT_SPRITE_META,
     getKindScale: defaultGetKindScale,
@@ -1007,6 +1210,201 @@
     return getSpriteMeta('PLAYER').wN * state.getKindScale('PLAYER') * 0.5;
   }
 
+  function spawnDriftSmokeSprites() {
+    if (!hasSegments()) return;
+    const { phys } = state;
+    if (!phys || !phys.grounded) return;
+    const seg = segmentAtS(phys.s);
+    if (!seg) return;
+    const half = playerHalfWN();
+    const offsets = [state.playerN - half, state.playerN + half];
+    const sprites = ensureArray(seg, 'sprites');
+    const baseS = Number.isFinite(phys.s)
+      ? phys.s
+      : (seg.p1 && seg.p1.world ? seg.p1.world.z : 0);
+    const trackLength = trackLengthRef();
+    const forwardSpeed = Math.max(0, Number.isFinite(phys.vtan) ? phys.vtan : 0);
+    for (const baseOffset of offsets) {
+      const sprite = allocDriftSmokeSprite();
+      const spawnOffset = baseOffset;
+      const sJitter = (Math.random() * 2 - 1) * DRIFT_SMOKE_LONGITUDINAL_JITTER;
+      const spawnS = trackLength > 0 ? wrapDistance(baseS, sJitter, trackLength) : baseS + sJitter;
+      const inheritedForward = forwardSpeed * DRIFT_SMOKE_FORWARD_INHERITANCE * (0.8 + 0.4 * Math.random());
+      sprite.kind = 'DRIFT_SMOKE';
+      sprite.offset = spawnOffset;
+      sprite.segIndex = seg.index;
+      sprite.s = spawnS;
+      sprite.ttl = DRIFT_SMOKE_LIFETIME;
+      sprite.interactable = false;
+      sprite.interacted = false;
+      sprite.impactable = false;
+      sprite.driftMotion = {
+        forwardVel: inheritedForward,
+        drag: DRIFT_SMOKE_DRAG,
+        lateralVel: 0,
+      };
+      sprites.push(sprite);
+    }
+  }
+
+  function spawnSparksSprites(contactSide = 0) {
+    if (!hasSegments()) return;
+    const { phys } = state;
+    if (!phys || !phys.grounded) return;
+    const seg = segmentAtS(phys.s);
+    if (!seg) return;
+    const half = playerHalfWN();
+    const sideSign = contactSide !== 0 ? Math.sign(contactSide) || 0 : (state.playerN >= 0 ? 1 : -1);
+    if (sideSign === 0) return;
+    const offsets = [state.playerN + sideSign * half * 0.85];
+    const sprites = ensureArray(seg, 'sprites');
+    const baseS = Number.isFinite(phys.s)
+      ? phys.s
+      : (seg.p1 && seg.p1.world ? seg.p1.world.z : 0);
+    const trackLength = trackLengthRef();
+    const forwardSpeed = Math.max(0, Number.isFinite(phys.vtan) ? phys.vtan : 0);
+    for (const baseOffset of offsets) {
+      const sprite = allocSparksSprite();
+      const spawnOffset = baseOffset;
+      const sJitter = (Math.random() * 2 - 1) * SPARKS_LONGITUDINAL_JITTER;
+      const spawnS = trackLength > 0 ? wrapDistance(baseS, sJitter, trackLength) : baseS + sJitter;
+      const inheritedForward = forwardSpeed * SPARKS_FORWARD_INHERITANCE * (0.8 + 0.4 * Math.random());
+      const lateralVel = sideSign * lerp(SPARKS_LATERAL_SPEED.min, SPARKS_LATERAL_SPEED.max, Math.random());
+      const screenLateral = sideSign * lerp(SPARKS_SCREEN_LATERAL_SPEED.min, SPARKS_SCREEN_LATERAL_SPEED.max, Math.random());
+      const screenVertical = lerp(SPARKS_SCREEN_VERTICAL_SPEED.min, SPARKS_SCREEN_VERTICAL_SPEED.max, Math.random());
+      sprite.kind = 'SPARKS';
+      sprite.offset = spawnOffset;
+      sprite.segIndex = seg.index;
+      sprite.s = spawnS;
+      sprite.ttl = SPARKS_LIFETIME;
+      sprite.interactable = false;
+      sprite.interacted = false;
+      sprite.impactable = false;
+      sprite.driftMotion = {
+        forwardVel: inheritedForward,
+        drag: SPARKS_DRAG,
+        lateralVel,
+        screenLateralVel: screenLateral,
+        screenDrag: SPARKS_SCREEN_DRAG,
+        verticalVel: screenVertical,
+        verticalGravity: SPARKS_SCREEN_GRAVITY,
+        verticalDrag: SPARKS_SCREEN_DRAG,
+      };
+      sprite.screenOffsetX = 0;
+      sprite.screenOffsetY = 0;
+      sprites.push(sprite);
+    }
+  }
+
+  function applyDriftSmokeMotion(sprite, dt, currentSeg = null) {
+    if (!sprite || sprite.kind !== 'DRIFT_SMOKE') return null;
+    const motion = sprite.driftMotion;
+    if (!motion) return null;
+    const step = Math.max(0, Number.isFinite(dt) ? dt : 0);
+    if (step <= 0) return null;
+
+    const trackLength = trackLengthRef();
+
+    if (Number.isFinite(motion.forwardVel) && motion.forwardVel !== 0) {
+      if (Number.isFinite(sprite.s)) {
+        const nextS = trackLength > 0
+          ? wrapDistance(sprite.s, motion.forwardVel * step, trackLength)
+          : sprite.s + motion.forwardVel * step;
+        sprite.s = nextS;
+      }
+      if (Number.isFinite(motion.drag) && motion.drag > 0) {
+        const decay = Math.max(0, 1 - motion.drag * step);
+        motion.forwardVel *= decay;
+        if (Math.abs(motion.forwardVel) <= 1e-4) motion.forwardVel = 0;
+      }
+    }
+
+    if (Number.isFinite(motion.lateralVel) && motion.lateralVel !== 0) {
+      sprite.offset += motion.lateralVel * step;
+      if (Number.isFinite(motion.drag) && motion.drag > 0) {
+        const decay = Math.max(0, 1 - motion.drag * step);
+        motion.lateralVel *= decay;
+        if (Math.abs(motion.lateralVel) <= 1e-4) motion.lateralVel = 0;
+      }
+    }
+
+    if (trackLength > 0 && Number.isFinite(sprite.s)) {
+      const seg = segmentAtS(sprite.s);
+      if (seg && currentSeg && seg !== currentSeg) {
+        return seg;
+      }
+    }
+
+    return null;
+  }
+
+  function applySparksMotion(sprite, dt, currentSeg = null) {
+    if (!sprite || sprite.kind !== 'SPARKS') return null;
+    const motion = sprite.driftMotion;
+    if (!motion) return null;
+    const step = Math.max(0, Number.isFinite(dt) ? dt : 0);
+    if (step <= 0) return null;
+
+    const trackLength = trackLengthRef();
+
+    if (Number.isFinite(motion.forwardVel) && motion.forwardVel !== 0) {
+      if (Number.isFinite(sprite.s)) {
+        const nextS = trackLength > 0
+          ? wrapDistance(sprite.s, motion.forwardVel * step, trackLength)
+          : sprite.s + motion.forwardVel * step;
+        sprite.s = nextS;
+      }
+      if (Number.isFinite(motion.drag) && motion.drag > 0) {
+        const decay = Math.max(0, 1 - motion.drag * step);
+        motion.forwardVel *= decay;
+        if (Math.abs(motion.forwardVel) <= 1e-4) motion.forwardVel = 0;
+      }
+    }
+
+    if (Number.isFinite(motion.lateralVel) && motion.lateralVel !== 0) {
+      sprite.offset += motion.lateralVel * step;
+      if (Number.isFinite(motion.drag) && motion.drag > 0) {
+        const decay = Math.max(0, 1 - motion.drag * step);
+        motion.lateralVel *= decay;
+        if (Math.abs(motion.lateralVel) <= 1e-4) motion.lateralVel = 0;
+      }
+    }
+
+    if (Number.isFinite(motion.screenLateralVel) && motion.screenLateralVel !== 0) {
+      const currentOffsetX = Number.isFinite(sprite.screenOffsetX) ? sprite.screenOffsetX : 0;
+      sprite.screenOffsetX = currentOffsetX + motion.screenLateralVel * step;
+      if (Number.isFinite(motion.screenDrag) && motion.screenDrag > 0) {
+        const decay = Math.max(0, 1 - motion.screenDrag * step);
+        motion.screenLateralVel *= decay;
+        if (Math.abs(motion.screenLateralVel) <= 1e-2) motion.screenLateralVel = 0;
+      }
+    }
+
+    let verticalVel = Number.isFinite(motion.verticalVel) ? motion.verticalVel : 0;
+    if (Number.isFinite(motion.verticalGravity) && motion.verticalGravity !== 0) {
+      verticalVel += motion.verticalGravity * step;
+    }
+    if (verticalVel !== 0) {
+      const currentOffsetY = Number.isFinite(sprite.screenOffsetY) ? sprite.screenOffsetY : 0;
+      sprite.screenOffsetY = currentOffsetY + verticalVel * step;
+      motion.verticalVel = verticalVel;
+      if (Number.isFinite(motion.verticalDrag) && motion.verticalDrag > 0) {
+        const decay = Math.max(0, 1 - motion.verticalDrag * step);
+        motion.verticalVel *= decay;
+        if (Math.abs(motion.verticalVel) <= 1e-2) motion.verticalVel = 0;
+      }
+    }
+
+    if (trackLength > 0 && Number.isFinite(sprite.s)) {
+      const seg = segmentAtS(sprite.s);
+      if (seg && currentSeg && seg !== currentSeg) {
+        return seg;
+      }
+    }
+
+    return null;
+  }
+
   function carMeta(car) {
     const kind = car && car.type ? car.type : 'CAR';
     return (car && car.meta) ? car.meta : getSpriteMeta(kind);
@@ -1023,7 +1421,154 @@
   }
 
   function npcForwardSpeed(car) {
-    return 0;
+    if (!car || !Number.isFinite(car.speed)) return 0;
+    return Math.max(0, car.speed);
+  }
+
+  function ensureCarNearMissReset(car, combinedHalf, lateralGap) {
+    if (!car) return;
+    if (!Number.isFinite(lateralGap) || !Number.isFinite(combinedHalf) || combinedHalf <= 0) {
+      car[CAR_NEAR_MISS_READY] = true;
+      return;
+    }
+    if (lateralGap >= combinedHalf * NEAR_MISS_RESET_SCALE) {
+      car[CAR_NEAR_MISS_READY] = true;
+    }
+  }
+
+  function tryRegisterCarNearMiss(car, combinedHalf, lateralGap) {
+    if (!car || !state.metrics) return;
+    if (car[CAR_NEAR_MISS_READY] === false) return;
+    if (!Number.isFinite(lateralGap) || !Number.isFinite(combinedHalf) || combinedHalf <= 0) return;
+    if (lateralGap >= combinedHalf * NEAR_MISS_LATERAL_SCALE) return;
+
+    const phys = state.phys || {};
+    const forwardGap = Math.abs(shortestSignedTrackDistance(phys.s || 0, car.z || 0));
+    if (!Number.isFinite(forwardGap) || forwardGap > NEAR_MISS_FORWARD_DISTANCE) return;
+
+    const playerSpeed = currentPlayerForwardSpeed();
+    const npcSpeed = npcForwardSpeed(car);
+    if ((playerSpeed - npcSpeed) < NEAR_MISS_SPEED_MARGIN) return;
+
+    car[CAR_NEAR_MISS_READY] = false;
+    state.metrics.nearMisses += 1;
+  }
+
+  function computeCollisionPush(
+    forwardSpeed,
+    playerOffset,
+    targetOffset,
+    forwardMaxSegments = NPC_COLLISION_PUSH_FORWARD_MAX_SEGMENTS,
+    lateralMax = NPC_COLLISION_PUSH_LATERAL_MAX,
+  ) {
+    const baseSpeed = Math.max(0, Number.isFinite(forwardSpeed) ? forwardSpeed : 0);
+    const maxSpeed = (player && Number.isFinite(player.topSpeed)) ? Math.max(player.topSpeed, 0) : 0;
+    if (baseSpeed <= 1e-4 || maxSpeed <= 1e-4 || !Number.isFinite(segmentLength) || segmentLength <= 0) {
+      return null;
+    }
+
+    const speedRatio = clamp01(baseSpeed / maxSpeed);
+    const forwardDistance = speedRatio * forwardMaxSegments * segmentLength;
+
+    let lateralDistance = 0;
+    let lateralDir = 0;
+    if (Number.isFinite(playerOffset) && Number.isFinite(targetOffset)) {
+      const delta = playerOffset - targetOffset;
+      const absDelta = Math.abs(delta);
+      if (absDelta > 1e-4) {
+        lateralDir = -(Math.sign(delta) || 1);
+        const offsetRatio = 1 - clamp01(absDelta);
+        lateralDistance = speedRatio * lateralMax * offsetRatio;
+      }
+    }
+
+    if (forwardDistance <= 1e-4 && lateralDistance <= 1e-4) return null;
+
+    const duration = Math.max(COLLISION_PUSH_DURATION, 1e-4);
+    return {
+      forwardVel: forwardDistance / duration,
+      lateralVel: (lateralDistance * lateralDir) / duration,
+    };
+  }
+
+  function configureImpactableSprite(sprite) {
+    if (!sprite || !sprite.impactable) return null;
+
+    if (!sprite.impactState) {
+      sprite.impactState = { timer: 0, lateralVel: 0, forwardVel: 0 };
+    }
+
+    const impact = sprite.impactState;
+    if (!Number.isFinite(impact.timer)) impact.timer = 0;
+    if (!Number.isFinite(impact.lateralVel)) impact.lateralVel = 0;
+    if (!Number.isFinite(impact.forwardVel)) impact.forwardVel = 0;
+
+    return impact;
+  }
+
+  function applyImpactPushToSprite(sprite) {
+    if (!sprite || !sprite.impactable) return;
+
+    const impact = configureImpactableSprite(sprite);
+    if (!impact) return;
+
+    const push = computeCollisionPush(
+      currentPlayerForwardSpeed(),
+      state.playerN,
+      sprite.offset,
+      INTERACTABLE_COLLISION_PUSH_FORWARD_MAX_SEGMENTS,
+      INTERACTABLE_COLLISION_PUSH_LATERAL_MAX,
+    );
+    if (!push) return;
+
+    impact.lateralVel = push.lateralVel;
+    impact.forwardVel = push.forwardVel;
+    impact.timer = COLLISION_PUSH_DURATION;
+  }
+
+  function updateImpactableSprite(sprite, dt, currentSeg = null) {
+    if (!sprite || !sprite.impactable) return null;
+    const impact = configureImpactableSprite(sprite);
+    if (!impact) return null;
+
+    let nextSeg = null;
+
+    if (impact.timer > 0 && dt > 0) {
+      const step = Math.min(dt, impact.timer);
+
+      const duration = Math.max(COLLISION_PUSH_DURATION, 1e-4);
+      const startRatio = clamp01(impact.timer / duration);
+      const endRatio = clamp01((impact.timer - step) / duration);
+      const avgRatio = 0.5 * (startRatio + endRatio);
+
+      if (impact.lateralVel) {
+        sprite.offset += impact.lateralVel * avgRatio * step;
+      }
+
+      if (impact.forwardVel) {
+        const trackLength = trackLengthRef();
+        if (trackLength > 0) {
+          const baseSeg = currentSeg || segmentAtIndex(sprite.segIndex ?? 0);
+          const baseS = Number.isFinite(sprite.s)
+            ? sprite.s
+            : (baseSeg ? baseSeg.p1.world.z : state.phys.s);
+          const nextS = wrapDistance(baseS, impact.forwardVel * avgRatio * step, trackLength);
+          sprite.s = nextS;
+          const candidate = segmentAtS(nextS);
+          if (candidate && currentSeg && candidate !== currentSeg) {
+            nextSeg = candidate;
+          }
+        }
+      }
+
+      impact.timer = Math.max(0, impact.timer - step);
+      if (impact.timer <= 0) {
+        impact.lateralVel = 0;
+        impact.forwardVel = 0;
+      }
+    }
+
+    return nextSeg;
   }
 
   function carHitboxHeight(car, s = state.phys.s) {
@@ -1046,7 +1591,23 @@
   }
 
   function applyNpcCollisionPush(car, playerForwardSpeed) {
-    return;
+    if (!car) return;
+
+    const push = computeCollisionPush(
+      playerForwardSpeed,
+      state.playerN,
+      car.offset,
+      NPC_COLLISION_PUSH_FORWARD_MAX_SEGMENTS,
+      NPC_COLLISION_PUSH_LATERAL_MAX,
+    );
+    if (!push) return;
+
+    if (!car.collisionPush) {
+      car.collisionPush = { lateralVel: 0, forwardVel: 0, timer: 0 };
+    }
+    car.collisionPush.lateralVel = push.lateralVel;
+    car.collisionPush.forwardVel = push.forwardVel;
+    car.collisionPush.timer = COLLISION_PUSH_DURATION;
   }
 
   function playerBaseHeight() {
@@ -1059,10 +1620,10 @@
 
   function npcLateralLimit(segIndex, car) {
     const half = carHalfWN(car);
-    const base = 1 - half;
+    const base = 1 - half - NPC.edgePad;
     const seg = segmentAtIndex(segIndex);
     if (seg && seg.features && seg.features.rail) {
-      const railInner = track.railInset - half;
+      const railInner = track.railInset - half - NPC.edgePad;
       return Math.min(base, railInner);
     }
     return base;
@@ -1387,14 +1948,77 @@
         }
       }
 
+      if (spr.impactable) {
+        applyImpactPushToSprite(spr);
+      }
+
       if (remove) {
+        recycleTransientSprite(spr);
         seg.sprites.splice(i, 1);
-        continue;
       }
     }
   }
 
   function resolveCarCollisionsInSeg(seg) {
+    const { phys } = state;
+    if (!seg || !Array.isArray(seg.cars) || !seg.cars.length) return false;
+    const pHalf = playerHalfWN();
+    for (let i = 0; i < seg.cars.length; i += 1) {
+      const car = seg.cars[i];
+      if (!car) continue;
+      const carHalf = carHalfWN(car);
+      const combinedHalf = pHalf + carHalf;
+      const lateralGap = Math.abs(state.playerN - car.offset);
+      ensureCarNearMissReset(car, combinedHalf, lateralGap);
+      if (!overlap(state.playerN, pHalf, car.offset, carHalf, 1)) {
+        tryRegisterCarNearMiss(car, combinedHalf, lateralGap);
+        continue;
+      }
+
+      if (!phys.grounded && playerBaseHeight() >= carHitboxTopY(car)) continue;
+
+      const now = phys.t;
+      const lastHit = car[CAR_COLLISION_STAMP] ?? -Infinity;
+      if ((now - lastHit) <= CAR_COLLISION_COOLDOWN) continue;
+
+      const { dy } = groundProfileAt(car.z);
+      const tangent = tangentNormalFromSlope(dy);
+      const wasGrounded = phys.grounded;
+      const currentVx = phys.vx;
+      const currentVy = phys.vy;
+      const rawPlayerForward = wasGrounded ? phys.vtan : (currentVx * tangent.tx + currentVy * tangent.ty);
+      const playerForwardSpeed = Math.max(0, Number.isFinite(rawPlayerForward) ? rawPlayerForward : 0);
+      const npcForward = npcForwardSpeed(car);
+
+      if (!(playerForwardSpeed > npcForward)) continue;
+
+      const vt = npcForward;
+      phys.vtan = vt;
+
+      const landingProfile = groundProfileAt(phys.s);
+      const landingTangent = tangentNormalFromSlope(landingProfile.dy);
+      let perpComponent = currentVx * landingTangent.nx + currentVy * landingTangent.ny;
+      const shouldForceLanding = forceLandingOnCarImpact && !wasGrounded;
+
+      if (shouldForceLanding) {
+        phys.grounded = true;
+        phys.y = playerFloorHeightAt(phys.s, state.playerN, landingProfile);
+        phys.nextHopTime = phys.t;
+        perpComponent = 0;
+      }
+
+      phys.vx = landingTangent.tx * vt + landingTangent.nx * perpComponent;
+      phys.vy = landingTangent.ty * vt + landingTangent.ny * perpComponent;
+
+      applyNpcCollisionPush(car, playerForwardSpeed);
+
+      car[CAR_COLLISION_STAMP] = now;
+      car[CAR_NEAR_MISS_READY] = true;
+      if (state.metrics) {
+        state.metrics.npcHits += 1;
+      }
+      return true;
+    }
     return false;
   }
 
@@ -1424,6 +2048,22 @@
 
         spr.segIndex = seg.index;
 
+        if (Number.isFinite(spr.ttl)) {
+          spr.ttl -= dt;
+          if (spr.ttl <= 0) {
+            recycleTransientSprite(spr);
+            seg.sprites.splice(i, 1);
+            continue;
+          }
+        }
+
+        let transferSeg = null;
+        if (spr.kind === 'DRIFT_SMOKE') {
+          transferSeg = applyDriftSmokeMotion(spr, dt, seg);
+        } else if (spr.kind === 'SPARKS') {
+          transferSeg = applySparksMotion(spr, dt, seg);
+        }
+
         if (spr.animation && spr.animation.clips) {
           advanceSpriteAnimation(spr, dt);
         } else if (spr.animation) {
@@ -1452,9 +2092,36 @@
           if (anim.frame >= totalFrames) anim.frame = totalFrames - 1;
           spr.animFrame = anim.frame;
         }
+        const impactTransfer = updateImpactableSprite(spr, dt, seg);
+        if (impactTransfer && impactTransfer !== seg) {
+          transferSeg = impactTransfer;
+        }
+        if (transferSeg && transferSeg !== seg) {
+          const destination = ensureArray(transferSeg, 'sprites');
+          seg.sprites.splice(i, 1);
+          destination.push(spr);
+          spr.segIndex = transferSeg.index;
+          continue;
+        }
         i += 1;
       }
     }
+  }
+
+  function collectSegmentsCrossed(startS, endS) {
+    if (!hasSegments() || !Number.isFinite(segmentLength) || segmentLength <= 0) return [];
+    const startIndex = Math.floor(startS / segmentLength);
+    const endIndex = Math.floor(endS / segmentLength);
+    const deltaSegments = endIndex - startIndex;
+    if (deltaSegments === 0) return [];
+    const direction = deltaSegments > 0 ? 1 : -1;
+    const touched = [];
+    for (let step = direction; direction > 0 ? step <= deltaSegments : step >= deltaSegments; step += direction) {
+      const idx = wrapSegmentIndex(startIndex + step);
+      const seg = segmentAtIndex(idx);
+      if (seg) touched.push(seg);
+    }
+    return touched;
   }
 
   function updatePhysics(dt) {
@@ -1462,6 +2129,10 @@
     if (!hasSegments()) return;
 
     const metrics = state.metrics || null;
+    if (metrics && dt > 0) {
+      const cooldown = Number.isFinite(metrics.guardRailCooldownTimer) ? metrics.guardRailCooldownTimer : 0;
+      metrics.guardRailCooldownTimer = Math.max(0, cooldown - dt);
+    }
 
     if (input.hop) {
       doHop();
@@ -1469,11 +2140,24 @@
     }
 
     const steerAxis = (input.left && input.right) ? 0 : (input.left ? -1 : (input.right ? 1 : 0));
+    if (steerAxis !== 0) {
+      state.lastSteerDir = steerAxis;
+      if (state.hopHeld && state.driftState !== 'drifting') {
+        state.pendingDriftDir = steerAxis;
+      }
+    }
     const boosting = state.boostTimer > 0;
     if (boosting) state.boostTimer = Math.max(0, state.boostTimer - dt);
     const speed01 = clamp(Math.abs(phys.vtan) / player.topSpeed, 0, 1);
     let steerDx = dt * player.steerRate * speed01;
-    if (steerAxis !== 0) {
+    if (boosting) steerDx *= drift.steerScale;
+
+    if (state.driftState === 'drifting') {
+      let k = drift.lockBase;
+      if (steerAxis === state.driftDirSnapshot) k = drift.lockWith;
+      else if (steerAxis === -state.driftDirSnapshot) k = drift.lockAgainst;
+      state.playerN += steerDx * k * state.driftDirSnapshot;
+    } else if (steerAxis !== 0) {
       state.playerN += steerDx * steerAxis;
     }
 
@@ -1486,7 +2170,11 @@
     state.playerN = clamp(state.playerN, lanes.road.min, lanes.road.max);
 
     const startS = phys.s;
+    let segmentsCrossedDuringStep = [];
     let segNow = segmentAtS(phys.s);
+    let guardRailContact = false;
+    let guardRailSide = 0;
+    let offRoadNow = false;
     const segFeatures = segNow ? segNow.features : null;
     const zonesHere = boostZonesForPlayer(segNow, state.playerN);
     const hasZonesHere = zonesHere.length > 0;
@@ -1562,6 +2250,58 @@
       }
     }
 
+    const integrationEndS = phys.s;
+    segmentsCrossedDuringStep = collectSegmentsCrossed(startS, integrationEndS);
+
+    if (!prevGrounded && phys.grounded) {
+      if (state.hopHeld && state.pendingDriftDir !== 0) {
+        state.driftState = 'drifting';
+        state.driftDirSnapshot = state.pendingDriftDir;
+        state.driftCharge = 0;
+        state.allowedBoost = false;
+      } else {
+        state.driftState = 'idle';
+        state.driftDirSnapshot = 0;
+        state.driftCharge = 0;
+        state.allowedBoost = false;
+        if (!state.hopHeld) state.pendingDriftDir = 0;
+      }
+    }
+
+    if (state.driftState === 'drifting') {
+      if (state.hopHeld) {
+        if (!state.allowedBoost) {
+          state.driftCharge += dt;
+          if (state.driftCharge >= drift.chargeMin) {
+            state.driftCharge = drift.chargeMin;
+            state.allowedBoost = true;
+          }
+        }
+      } else {
+        state.driftState = 'idle';
+        state.driftDirSnapshot = 0;
+        state.driftCharge = 0;
+        state.allowedBoost = false;
+        state.pendingDriftDir = 0;
+      }
+    }
+
+    if (state.driftState === 'drifting') {
+      state.driftSmokeTimer += dt;
+      let interval = (Number.isFinite(state.driftSmokeNextInterval) && state.driftSmokeNextInterval > 0)
+        ? state.driftSmokeNextInterval
+        : computeDriftSmokeInterval();
+      while (state.driftSmokeTimer >= interval) {
+        spawnDriftSmokeSprites();
+        state.driftSmokeTimer -= interval;
+        interval = computeDriftSmokeInterval();
+      }
+      state.driftSmokeNextInterval = interval;
+    } else {
+      state.driftSmokeTimer = 0;
+      state.driftSmokeNextInterval = computeDriftSmokeInterval();
+    }
+
     phys.t += dt;
 
     const length = trackLengthRef();
@@ -1605,7 +2345,65 @@
     if (segNow) {
       const bound = playerLateralLimit(segNow.index);
       const clampLimit = Number.isFinite(bound) ? bound : Math.abs(state.playerN) + 1;
+      const preClamp = state.playerN;
       state.playerN = clamp(state.playerN, -clampLimit, clampLimit);
+      const scraping = Math.abs(preClamp) > clampLimit - 1e-6 || Math.abs(state.playerN) >= clampLimit - 1e-6;
+      offRoadNow = Math.abs(preClamp) > OFF_ROAD_THRESHOLD || Math.abs(state.playerN) > OFF_ROAD_THRESHOLD;
+      const hasGuardRail = !!(segNow.features && segNow.features.rail);
+      guardRailContact = hasGuardRail && scraping;
+      if (guardRailContact) {
+        guardRailSide = Math.sign(preClamp) || Math.sign(state.playerN) || guardRailSide;
+        const offRoadDecelLimit = player.topSpeed / 4;
+        if (Math.abs(phys.vtan) > offRoadDecelLimit) {
+          const sign = Math.sign(phys.vtan) || 1;
+          phys.vtan -= sign * (player.topSpeed * 0.8) * (1 / 60);
+        }
+      }
+    } else if (metrics) {
+      metrics.guardRailContactActive = false;
+    }
+
+    if (guardRailContact) {
+      state.sparksTimer += dt;
+      let interval = (Number.isFinite(state.sparksNextInterval) && state.sparksNextInterval > 0)
+        ? state.sparksNextInterval
+        : computeSparksInterval();
+      while (state.sparksTimer >= interval) {
+        spawnSparksSprites(guardRailSide);
+        state.sparksTimer -= interval;
+        interval = computeSparksInterval();
+      }
+      state.sparksNextInterval = interval;
+    } else {
+      state.sparksTimer = 0;
+      state.sparksNextInterval = computeSparksInterval();
+    }
+
+    if (metrics) {
+      if (guardRailContact) {
+        metrics.guardRailContactTime += dt;
+        if (!metrics.guardRailContactActive && metrics.guardRailCooldownTimer <= 0) {
+          metrics.guardRailHits += 1;
+          metrics.guardRailCooldownTimer = GUARD_RAIL_HIT_COOLDOWN;
+        }
+        metrics.guardRailContactActive = true;
+      } else {
+        metrics.guardRailContactActive = false;
+      }
+      if (offRoadNow) {
+        metrics.offRoadTime += dt;
+      }
+    }
+
+    for (const seg of segmentsCrossedDuringStep) {
+      if (!seg) continue;
+      if (resolveSegmentCollisions(seg)) {
+        break;
+      }
+    }
+    const landingSeg = segmentAtS(phys.s);
+    if (landingSeg) {
+      resolveSegmentCollisions(landingSeg);
     }
 
     updateSpriteAnimations(dt);
@@ -1622,6 +2420,13 @@
       if (!phys.grounded) {
         metrics.airTime += dt;
       }
+      if (state.driftState === 'drifting') {
+        metrics.driftTime += dt;
+      }
+      const speed = Math.abs(phys.vtan);
+      if (Number.isFinite(speed) && speed > metrics.topSpeed) {
+        metrics.topSpeed = speed;
+      }
     }
   }
 
@@ -1633,16 +2438,104 @@
   }
 
   function spawnCars() {
+    if (!hasSegments()) {
+      state.cars.length = 0;
+      return;
+    }
     clearSegmentCars();
     state.cars.length = 0;
+    const segCount = segments.length;
+    for (let i = 0; i < NPC.total; i += 1) {
+      const s = Math.floor(Math.random() * segCount) * segmentLength;
+      const type = CAR_TYPES[Math.random() < 0.75 ? 0 : 1];
+      const meta = getSpriteMeta(type);
+      const tmpCar = { type, meta };
+      const seg = segmentAtS(s);
+      if (!seg) continue;
+      const b = npcLateralLimit(seg.index, tmpCar);
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const offset = side * (Math.random() * (b * 0.9));
+      const isSemi = type === 'SEMI';
+      const speed = (player.topSpeed / 6) + Math.random() * player.topSpeed / (isSemi ? 5 : 3);
+      const car = { z: s, offset, type, meta, speed };
+      ensureArray(seg, 'cars').push(car);
+      state.cars.push(car);
+    }
   }
 
   function steerAvoidance(car, carSeg, playerSeg, playerW) {
+    if (!carSeg || !playerSeg) return 0;
+    const cHalf = carHalfWN(car);
+    const lookahead = NPC.avoidLookaheadSegs;
+    const segCount = segments.length || 1;
+    if (((carSeg.index - playerSeg.index + segCount) % segCount) > track.drawDistance) {
+      return 0;
+    }
+    for (let i = 1; i < lookahead; i += 1) {
+      const seg = segmentAtIndex(carSeg.index + i);
+      if (!seg) continue;
+      if (seg === playerSeg && (car.speed > Math.abs(state.phys.vtan)) && overlap(state.playerN, playerW, car.offset, cHalf, 1)) {
+        let dir;
+        if (state.playerN > 0.5) dir = -1;
+        else if (state.playerN < -0.5) dir = 1;
+        else dir = (car.offset > state.playerN) ? 1 : -1;
+        return dir * (1 / i) * (car.speed - Math.abs(state.phys.vtan)) / player.topSpeed;
+      }
+      for (let j = 0; j < seg.cars.length; j += 1) {
+        const other = seg.cars[j];
+        if (!other || other === car) continue;
+        if ((car.speed > other.speed) && overlap(car.offset, cHalf, other.offset, carHalfWN(other), 1)) {
+          let dir;
+          if (other.offset > 0.5) dir = -1;
+          else if (other.offset < -0.5) dir = 1;
+          else dir = (car.offset > other.offset) ? 1 : -1;
+          return dir * (1 / i) * (car.speed - other.speed) / player.topSpeed;
+        }
+      }
+    }
+    const b = npcLateralLimit(carSeg.index, car);
+    if (car.offset < -b) return Math.min(0.15, (-b - car.offset) * 0.6);
+    if (car.offset > b) return -Math.min(0.15, (car.offset - b) * 0.6);
     return 0;
   }
 
   function tickCars(dt) {
-    return;
+    if (!hasSegments() || !state.cars.length) return;
+    const playerSeg = segmentAtS(state.phys.s);
+    const segCount = segments.length;
+    for (let n = 0; n < state.cars.length; n += 1) {
+      const car = state.cars[n];
+      if (!car) continue;
+      const oldSeg = segmentAtS(car.z);
+      const avoidance = steerAvoidance(car, oldSeg, playerSeg, playerHalfWN());
+      car.offset += avoidance;
+      let forwardTravel = dt * car.speed;
+      if (car.collisionPush && car.collisionPush.timer > 0) {
+        const push = car.collisionPush;
+        const pushDt = Math.min(dt, push.timer);
+        const duration = Math.max(COLLISION_PUSH_DURATION, 1e-4);
+        const startRatio = clamp01(push.timer / duration);
+        const endRatio = clamp01((push.timer - pushDt) / duration);
+        const avgRatio = 0.5 * (startRatio + endRatio);
+        car.offset += push.lateralVel * avgRatio * pushDt;
+        forwardTravel += push.forwardVel * avgRatio * pushDt;
+        push.timer = Math.max(0, push.timer - pushDt);
+        if (push.timer <= 1e-4) delete car.collisionPush;
+      } else if (car.collisionPush) {
+        delete car.collisionPush;
+      }
+      car.z = wrapDistance(car.z, forwardTravel, trackLengthRef());
+      const newSeg = segmentAtS(car.z);
+      if (oldSeg && newSeg && oldSeg !== newSeg) {
+        const idx = oldSeg.cars.indexOf(car);
+        if (idx >= 0) oldSeg.cars.splice(idx, 1);
+        ensureArray(newSeg, 'cars').push(car);
+      }
+      if (newSeg) {
+        const bNext = npcLateralLimit(newSeg.index, car);
+        car.offset = clamp(car.offset, -bNext, bNext);
+      }
+    }
   }
 
   async function spawnProps() {
@@ -1690,7 +2583,16 @@
     KeyW: keyActionFromFlag('up', true),
     ArrowDown: keyActionFromFlag('down', true),
     KeyS: keyActionFromFlag('down', true),
-    Space: () => { state.input.hop = true; },
+    Space: () => {
+      if (!state.hopHeld) {
+        if (state.phys.grounded && state.phys.t >= state.phys.nextHopTime) {
+          applyJumpZoneBoost(jumpZoneForPlayer());
+        }
+        state.input.hop = true;
+        if (state.lastSteerDir !== 0) state.pendingDriftDir = state.lastSteerDir;
+      }
+      state.hopHeld = true;
+    },
     KeyR: () => { queueReset(); },
     KeyB: () => { if (typeof state.callbacks.onToggleOverlay === 'function') state.callbacks.onToggleOverlay(); },
     KeyL: () => { if (typeof state.callbacks.onResetScene === 'function') state.callbacks.onResetScene(); },
@@ -1705,6 +2607,15 @@
     KeyW: keyActionFromFlag('up', false),
     ArrowDown: keyActionFromFlag('down', false),
     KeyS: keyActionFromFlag('down', false),
+    Space: () => {
+      state.hopHeld = false;
+      if (state.allowedBoost) state.boostTimer = drift.boostTime;
+      state.driftState = 'idle';
+      state.driftDirSnapshot = 0;
+      state.driftCharge = 0;
+      state.allowedBoost = false;
+      state.pendingDriftDir = 0;
+    },
   };
 
   function createKeyHandler(actions) {
@@ -1741,13 +2652,28 @@
 
     state.camYSmooth = phys.y + cameraHeight;
 
+    state.hopHeld = false;
+    state.driftState = 'idle';
+    state.driftDirSnapshot = 0;
+    state.driftCharge = 0;
+    state.allowedBoost = false;
+    state.pendingDriftDir = 0;
+    state.lastSteerDir = 0;
     state.boostTimer = 0;
+    state.driftSmokeTimer = 0;
+    state.driftSmokeNextInterval = computeDriftSmokeInterval();
+    state.sparksTimer = 0;
+    state.sparksNextInterval = computeSparksInterval();
 
     state.camRollDeg = 0;
     state.playerTiltDeg = 0;
     state.prevPlayerN = state.playerN;
     state.lateralRate = 0;
     state.pendingRespawn = null;
+    if (state.metrics) {
+      state.metrics.guardRailContactActive = false;
+      state.metrics.guardRailCooldownTimer = 0;
+    }
   }
 
   function respawnPlayerAt(sTarget, nNorm = 0) {
@@ -1836,7 +2762,11 @@
   function queueRespawn(sAtFail) {
     if (state.resetMatteActive) return;
     const targetS = nearestSegmentCenter(sAtFail);
+    const wasPending = !!state.pendingRespawn;
     state.pendingRespawn = { targetS, targetN: 0 };
+    if (!wasPending && state.metrics) {
+      state.metrics.respawnCount += 1;
+    }
     if (typeof state.callbacks.onQueueRespawn === 'function') {
       state.callbacks.onQueueRespawn(state.pendingRespawn);
     }

@@ -14,9 +14,8 @@
   const {
     clamp01,
     lerp,
-    parseEaseSpec01,
-    getEaseFamily01,
-    getCurveEaseFamily,
+    getEase01,
+    CURVE_EASE,
   } = MathUtil;
 
   function resolveAssetUrl(path){
@@ -43,7 +42,19 @@
     return path;
   }
 
-  const assetManifest = {};
+  const assetManifest = {
+    road:      resolveAssetUrl('tex/road-seg.png'),
+    rail:      resolveAssetUrl('tex/guardrail.png'),
+    cliff:     resolveAssetUrl('tex/cliff.png'),
+    boostJump: resolveAssetUrl('tex/boost.png'),
+    boostDrive:resolveAssetUrl('tex/boost.png'),
+    horizon1:  resolveAssetUrl('tex/paralax-1.png'),
+    horizon2:  resolveAssetUrl('tex/paralax-2.png'),
+    horizon3:  resolveAssetUrl('tex/paralax-3.png'),
+    car:       resolveAssetUrl('tex/player-car.png'),
+    playerVan: resolveAssetUrl('tex/player-van.png'),
+    semi:      resolveAssetUrl('tex/semi.png'),
+  };
 
   const textures = {};
 
@@ -64,6 +75,17 @@
   async function loadTexturesWith(loader = defaultTextureLoader){
     if (typeof loader !== 'function') {
       throw new Error('loader must be a function');
+    }
+
+    await Promise.all(Object.entries(assetManifest).map(async ([key, path]) => {
+      textures[key] = await loader(key, resolveAssetUrl(path));
+    }));
+
+    if (textures.car && !textures.playerCar) {
+      textures.playerCar = textures.car;
+    }
+    if (!textures.playerVehicle) {
+      textures.playerVehicle = textures.playerCar || textures.car || null;
     }
 
     return textures;
@@ -101,6 +123,12 @@
     CLIFF_READY = false;
   }
 
+  function randomSnowScreenColor(){
+    const phase = Math.random() * Math.PI * 2;
+    const sample = (offset) => 0.5 + 0.5 * Math.cos(phase + offset);
+    return [sample(0), sample((2 * Math.PI) / 3), sample((4 * Math.PI) / 3), 1];
+  }
+
   function addSegment(curve, y, features = {}){
     const n = segments.length;
     const prevY = segments.length ? segments[n - 1].p2.world.y : 0;
@@ -116,17 +144,21 @@
       p1: { world: { y: prevY, z: n * segmentLength }, camera: {}, screen: {} },
       p2: { world: { y: y,    z: (n + 1) * segmentLength }, camera: {}, screen: {} },
       sprites: [], cars: [],
+      snowScreen: { color: randomSnowScreenColor() },
     });
   }
+
+  const HEIGHT_EASE_UNIT = {
+    linear: { in: (t) => clamp01(t),          out: (t) => clamp01(t) },
+    smooth: { in: (t) => Math.pow(clamp01(t), 2),
+              out: (t) => 1 - Math.pow(1 - clamp01(t), 2) },
+    sharp:  { in: (t) => Math.pow(clamp01(t), 3),
+              out: (t) => 1 - Math.pow(1 - clamp01(t), 3) },
+  };
 
   function lastY(){
     return segments.length ? segments[segments.length - 1].p2.world.y : 0;
   }
-
-  const easeForSpec01 = (spec, fallbackMode = 'io') => {
-    const { family, mode } = parseEaseSpec01(spec || `smooth:${fallbackMode}`, fallbackMode);
-    return family[mode] || family[fallbackMode] || family.io;
-  };
 
   function addRoad(enter, hold, leave, curve, dyInSegments = 0, elevationProfile = 'smooth', featurePayload = {}){
     const e = Math.max(0, enter | 0), h = Math.max(0, hold | 0), l = Math.max(0, leave | 0);
@@ -195,9 +227,6 @@
       return segFeatures;
     };
 
-    const heightEase = getEaseFamily01(profile);
-    const curveEase = getCurveEaseFamily(profile);
-
     let segOffset = 0;
     const computeY = (progressRaw) => {
       if (!hasElevationChange) return startY;
@@ -208,10 +237,10 @@
       let shaped01;
       if (t < k) {
         const u = t / Math.max(k, 1e-6);
-        shaped01 = 0.5 * heightEase.in(u);
+        shaped01 = 0.5 * HEIGHT_EASE_UNIT[profile].in(u);
       } else {
         const u = (t - k) / Math.max(1 - k, 1e-6);
-        shaped01 = 0.5 + 0.5 * heightEase.out(u);
+        shaped01 = 0.5 + 0.5 * HEIGHT_EASE_UNIT[profile].out(u);
       }
 
       return lerp(startY, endY, shaped01);
@@ -220,7 +249,7 @@
     for (let n = 0; n < e; n++){
       const tCurve = e > 0 ? n / e : 1;
       addSegment(
-        curveEase.in(0, curve, tCurve),
+        CURVE_EASE[profile].in(0, curve, tCurve),
         computeY((0 + n) / total),
         buildFeatures(segOffset),
       );
@@ -239,7 +268,7 @@
     for (let n = 0; n < l; n++){
       const tCurve = l > 0 ? n / l : 1;
       addSegment(
-        curveEase.out(curve, 0, tCurve),
+        CURVE_EASE[profile].out(curve, 0, tCurve),
         computeY((e + h + n) / total),
         buildFeatures(segOffset),
       );
@@ -451,9 +480,9 @@
       const sides = (sideTok==='L'||sideTok==='R') ? [sideTok] : (sideTok==='B' ? ['L','R'] : ['L','R']);
 
       const lenSegments = Math.max(1, toInt(c[1], 1));
-      const aEase = easeForSpec01(c[2], 'io');
+      const aEase = getEase01(c[2]||'smooth:io');
       const aDx   = toNum(c[3], 0), aDy = toNum(c[4], 0);
-      const bEase = easeForSpec01(c[5], 'io');
+      const bEase = getEase01(c[5]||'smooth:io');
       const bDx   = toNum(c[6], 0), bDy = toNum(c[7], 0);
       const mode  = (c[8]||'rel').toLowerCase()==='abs' ? 'abs' : 'rel';
       const reps  = Math.max(1, toInt(c[9], 1));
