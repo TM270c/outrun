@@ -43,19 +43,7 @@
     return path;
   }
 
-  const assetManifest = {
-    road:      resolveAssetUrl('tex/road-seg.png'),
-    rail:      resolveAssetUrl('tex/guardrail.png'),
-    cliff:     resolveAssetUrl('tex/cliff.png'),
-    boostJump: resolveAssetUrl('tex/boost.png'),
-    boostDrive:resolveAssetUrl('tex/boost.png'),
-    horizon1:  resolveAssetUrl('tex/paralax-1.png'),
-    horizon2:  resolveAssetUrl('tex/paralax-2.png'),
-    horizon3:  resolveAssetUrl('tex/paralax-3.png'),
-    car:       resolveAssetUrl('tex/player-car.png'),
-    playerVan: resolveAssetUrl('tex/player-van.png'),
-    semi:      resolveAssetUrl('tex/semi.png'),
-  };
+  const assetManifest = {};
 
   const textures = {};
 
@@ -76,17 +64,6 @@
   async function loadTexturesWith(loader = defaultTextureLoader){
     if (typeof loader !== 'function') {
       throw new Error('loader must be a function');
-    }
-
-    await Promise.all(Object.entries(assetManifest).map(async ([key, path]) => {
-      textures[key] = await loader(key, resolveAssetUrl(path));
-    }));
-
-    if (textures.car && !textures.playerCar) {
-      textures.playerCar = textures.car;
-    }
-    if (!textures.playerVehicle) {
-      textures.playerVehicle = textures.playerCar || textures.car || null;
     }
 
     return textures;

@@ -268,46 +268,18 @@
       aspect: 1,
       tint: [0.9, 0.22, 0.21, 1],
       atlas: { columns: 9, totalFrames: 81 },
-      tex() {
-        const textures = (World && World.assets && World.assets.textures)
-          ? World.assets.textures
-          : null;
-        if (!textures) return null;
-        if (textures.playerVehicle) return textures.playerVehicle;
-        if (textures.car) return textures.car;
-        if (textures.playerCar) return textures.playerCar;
-        return null;
-      },
+      tex: () => null,
     },
     CAR:    { wN: 0.28, aspect: 1, tint: [0.2, 0.7, 1.0, 1], tex: () => null },
     SEMI:   { wN: 0.34, aspect: 1.6, tint: [0.85, 0.85, 0.85, 1], tex: () => null },
     TREE:   { wN: 0.5,  aspect: 3.0, tint: [1, 1, 1, 1], tex: () => null },
-    SIGN:   {
-      wN: 1.2,
-      aspect: 1.0,
-      tint: [1, 1, 1, 1],
-      tex() {
-        const textures = (World && World.assets && World.assets.textures)
-          ? World.assets.textures
-          : null;
-        return (textures && textures.sign) || null;
-      },
-    },
+    SIGN:   { wN: 1.2, aspect: 1.0, tint: [1, 1, 1, 1], tex: () => null },
     PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
     ANIM_PLATE: {
       wN: 0.1,
       aspect: 1.0,
       tint: [1, 1, 1, 1],
-      tex(spr) {
-        const textures = (World && World.assets && World.assets.textures)
-          ? World.assets.textures
-          : null;
-        if (!textures) return null;
-        if (spr && spr.textureKey && textures[spr.textureKey]) {
-          return textures[spr.textureKey];
-        }
-        return textures.animPlate01 || textures.animPlate02 || null;
-      },
+      tex: () => null,
       frameCount: 16,
       framesPerRow: 4,
       frameUv(frameIndex = 0){
@@ -328,7 +300,6 @@
       wN: 0.2,
       aspect: 1,
       tint: [1, 1, 1, 1],
-      textureKey: null,
       atlas: null,
     });
 
@@ -342,19 +313,7 @@
       wN: base.wN,
       aspect: base.aspect,
       tint: Array.isArray(base.tint) ? base.tint.slice() : [1, 1, 1, 1],
-      tex(spr) {
-        const textures = (World && World.assets && World.assets.textures)
-          ? World.assets.textures
-          : null;
-        if (!textures) return null;
-        if (spr && spr.assetKey && textures[spr.assetKey]) {
-          return textures[spr.assetKey];
-        }
-        if (base.textureKey && textures[base.textureKey]) {
-          return textures[base.textureKey];
-        }
-        return null;
-      },
+      tex: () => null,
       frameUv(frameIndex, spr) {
         const atlasInfo = (spr && spr.atlasInfo) ? spr.atlasInfo : base.atlas;
         if (!atlasInfo) return null;
@@ -782,7 +741,7 @@
       interactable: entry.type === 'trigger' || entry.interaction !== 'static',
       impactable: entry.type === 'solid',
       interacted: false,
-      assetKey: (instance.asset && instance.asset.key) ? instance.asset.key : (metrics.textureKey || null),
+      assetKey: (instance.asset && instance.asset.key) ? instance.asset.key : null,
     };
     if (instance.asset && Array.isArray(instance.asset.frames)) {
       sprite.assetFrames = instance.asset.frames.slice();

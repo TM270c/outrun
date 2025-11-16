@@ -83,7 +83,6 @@ const debug = {
   mode: 'off',
   span: 3,
   colors: { a: [1, 1, 1, 1], b: [0.82, 0.9, 1, 1] },
-  textures: true,
 };
 
 // Sprite rendering adjustments.
@@ -131,7 +130,6 @@ const boost = {
       solid: [33 / 255, 150 / 255, 243 / 255, 1],
     },
   },
-  textures: { jump: 'boostJump', drive: 'boostDrive' },
 };
 
 // Lane constraints for vehicles and boost strips.
