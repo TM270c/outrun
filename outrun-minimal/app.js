@@ -4,7 +4,7 @@ import { createRenderer } from './render/scene.js';
 import { colors } from './core/config.js';
 
 const inputState = { throttle: false, brake: false, left: false, right: false, jump: false };
-const viewport = { width: 1024, height: 768 };
+const viewport = { width: 0, height: 0, dpr: 1 };
 
 function setupInput(element) {
   const down = new Set();
@@ -29,20 +29,35 @@ function setupInput(element) {
   });
 }
 
-function createCanvas() {
-  const canvas = document.createElement('canvas');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  canvas.style.width = `${viewport.width}px`;
-  canvas.style.height = `${viewport.height}px`;
+function applyPageStyle() {
+  const background = `rgba(${colors.background[0] * 255}, ${colors.background[1] * 255}, ${colors.background[2] * 255}, 1)`;
+  document.documentElement.style.height = '100%';
+  document.body.style.height = '100%';
   document.body.style.margin = '0';
-  document.body.style.display = 'flex';
-  document.body.style.alignItems = 'center';
-  document.body.style.justifyContent = 'center';
-  document.body.style.minHeight = '100vh';
-  document.body.style.background = `rgba(${colors.background[0] * 255}, ${colors.background[1] * 255}, ${colors.background[2] * 255}, 1)`;
+  document.body.style.background = background;
+  document.body.style.overflow = 'hidden';
+}
+
+function createCanvas() {
+  applyPageStyle();
+  const canvas = document.createElement('canvas');
+  canvas.style.display = 'block';
+  canvas.style.width = '100vw';
+  canvas.style.height = '100vh';
   document.body.appendChild(canvas);
   return canvas;
+}
+
+function resizeCanvas(canvas) {
+  viewport.dpr = window.devicePixelRatio || 1;
+  const width = Math.floor(window.innerWidth);
+  const height = Math.floor(window.innerHeight);
+  viewport.width = width * viewport.dpr;
+  viewport.height = height * viewport.dpr;
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
 }
 
 function run() {
@@ -52,6 +67,8 @@ function run() {
     throw new Error('WebGL not supported');
   }
 
+  resizeCanvas(canvas);
+  window.addEventListener('resize', () => resizeCanvas(canvas));
   setupInput(canvas);
 
   const { segments, length: trackLength } = buildSegments();
@@ -67,11 +84,6 @@ function run() {
 
     stepCar(car, inputState, segments, trackLength, dt);
     const currentSegment = findSegment(segments, car.s);
-
-    if (canvas.width !== viewport.width || canvas.height !== viewport.height) {
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-    }
 
     renderer.render(car, currentSegment);
     requestAnimationFrame(frame);
