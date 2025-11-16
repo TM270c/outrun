@@ -40,7 +40,6 @@
 
   const {
     data,
-    assets,
     roadWidthAt,
     floorElevationAt,
     cliffParamsAt,
@@ -55,9 +54,7 @@
 
   const { padQuad, makeRotatedQuad } = RenderGL;
 
-  const textures = assets ? assets.textures : {};
   const state = Gameplay.state;
-  const areTexturesEnabled = () => debug.mode === 'off' && debug.textures !== false;
 
   const PLAYER_ATLAS_COLUMNS = 9;
   const PLAYER_ATLAS_ROWS = 9;
@@ -188,101 +185,9 @@
   }
 
   function computePlayerSpriteSamples(frame, meta){
-    const timeNow = (state && state.phys && Number.isFinite(state.phys.t)) ? state.phys.t : 0;
-    const prevTime = playerSpriteBlendState.lastTime;
-    const dt = (prevTime != null) ? Math.max(0, timeNow - prevTime) : 0;
-    playerSpriteBlendState.lastTime = timeNow;
-
-    if (!meta || typeof meta.tex !== 'function') {
-      playerSpriteBlendState.initialized = false;
-      return null;
-    }
-
-    if (!areTexturesEnabled()) {
-      playerSpriteBlendState.initialized = false;
-      return null;
-    }
-
-    const texture = meta.tex();
-    if (!texture) {
-      playerSpriteBlendState.initialized = false;
-      return null;
-    }
-
-    const columns = Math.max(1, (meta.atlas && meta.atlas.columns) || PLAYER_ATLAS_COLUMNS);
-    const totalFrames = Math.max(1, (meta.atlas && meta.atlas.totalFrames) || (PLAYER_ATLAS_COLUMNS * PLAYER_ATLAS_ROWS));
-    const rows = Math.max(1, Math.ceil(totalFrames / columns));
-
-    const { phys } = frame;
-    const speedPct = clamp(Math.abs(phys.vtan) / player.topSpeed, 0, 1);
-
-    const input = state.input || {};
-    const steerAxis = (input.left && input.right) ? 0 : (input.left ? -1 : (input.right ? 1 : 0));
-    const lateralNorm = clamp(
-      PLAYER_SPRITE_LATERAL_MAX > 0
-        ? state.lateralRate / PLAYER_SPRITE_LATERAL_MAX
-        : state.lateralRate,
-      -1,
-      1,
-    );
-    const segAhead = segmentAtS(phys.s + state.camera.playerZ) || { curve: 0 };
-    const curveNorm = clamp((segAhead.curve || 0) / 6, -1, 1);
-
-    const steerBlend = clamp(
-      steerAxis * PLAYER_SPRITE_INPUT_WEIGHT
-        + lateralNorm * PLAYER_SPRITE_LATERAL_WEIGHT
-        + curveNorm * PLAYER_SPRITE_CURVE_WEIGHT,
-      -1,
-      1,
-    );
-    const speedScale = clamp(PLAYER_SPRITE_SPEED_FLOOR + (1 - PLAYER_SPRITE_SPEED_FLOOR) * speedPct, 0, 1);
-    const steerRaw = steerBlend * speedScale;
-    const steerTarget = applyDeadzone(clamp(steerRaw, -1, 1), PLAYER_SPRITE_DEADZONE);
-
-    const profile = groundProfileAt ? groundProfileAt(phys.s) : null;
-    let slopeComponent = 0;
-    if (profile && Number.isFinite(profile.dy)) {
-      const slopeAngle = Math.atan(profile.dy);
-      const denom = PLAYER_SPRITE_SLOPE_MAX_ANGLE_RAD > 1e-6
-        ? PLAYER_SPRITE_SLOPE_MAX_ANGLE_RAD
-        : (Math.PI * 0.25);
-      slopeComponent = clamp(slopeAngle / denom, -1, 1);
-    }
-    const tightenedHeight = clamp(slopeComponent * PLAYER_SPRITE_HEIGHT_TIGHTEN, -1, 1);
-    const heightTarget = applyDeadzone(tightenedHeight, PLAYER_SPRITE_HEIGHT_DEADZONE);
-
-    if (!playerSpriteBlendState.initialized) {
-      playerSpriteBlendState.steer = steerTarget;
-      playerSpriteBlendState.height = heightTarget;
-      playerSpriteBlendState.initialized = true;
-    } else {
-      playerSpriteBlendState.steer = smoothTowards(
-        playerSpriteBlendState.steer,
-        steerTarget,
-        dt,
-        PLAYER_SPRITE_SMOOTH_TIME,
-      );
-      playerSpriteBlendState.height = smoothTowards(
-        playerSpriteBlendState.height,
-        heightTarget,
-        dt,
-        PLAYER_SPRITE_SMOOTH_TIME,
-      );
-    }
-
-    const rawSteerValue = clamp(playerSpriteBlendState.steer, -1, 1);
-    const steerValue = clamp(rawSteerValue, -0.5, 0.5);
-    const heightValue = clamp(playerSpriteBlendState.height, -1, 1);
-    const samples = computePlayerAtlasSamples(steerValue, heightValue, columns, rows);
-
-    return {
-      texture,
-      columns,
-      rows,
-      steer: steerValue,
-      height: heightValue,
-      samples,
-    };
+    playerSpriteBlendState.initialized = false;
+    playerSpriteBlendState.lastTime = null;
+    return null;
   }
 
   function createPerfTracker(){
@@ -722,7 +627,7 @@
 
   const BACKDROP_SCALE = 1.25;
 
-  function drawParallaxLayer(tex, cfg){
+  function drawParallaxLayer(cfg){
     if (!glr) return;
     const uOffset = state.playerN * cfg.parallaxX;
     const scaledW = W * BACKDROP_SCALE;
@@ -741,25 +646,16 @@
       x4: centerX - halfScaledW,
       y4: centerY + halfScaledH,
     };
-    const uv = {u1: uOffset, v1: 0, u2: uOffset+cfg.uvSpanX, v2: 0, u3: uOffset+cfg.uvSpanX, v3: cfg.uvSpanY, u4: uOffset, v4: cfg.uvSpanY};
-    const useTextures = areTexturesEnabled() && tex;
-    if (useTextures){
-      glr.drawQuadTextured(tex, quad, uv);
-    } else {
-      glr.drawQuadSolid(quad, randomColorFor(`parallax:${cfg.key || 'layer'}`));
-    }
+    glr.drawQuadSolid(quad, randomColorFor(`parallax:${cfg.key || 'layer'}`));
   }
   function renderHorizon(){
     for (const layer of parallaxLayers){
-      drawParallaxLayer(textures[layer.key], layer);
+      drawParallaxLayer(layer);
     }
   }
 
-  function drawRoadStrip(x1,y1,w1, x2,y2,w2, v0, v1, fogRoad, tex, segIndex){
+  function drawRoadStrip(x1, y1, w1, x2, y2, w2, fogRoad, segIndex){
     if (!glr) return;
-    const texturesEnabled = areTexturesEnabled();
-    let roadTex = tex;
-    if (texturesEnabled) roadTex = roadTex || glr.whiteTex;
     const roadColorKey = `road:${segIndex}`;
 
     const dy   = Math.abs(y1 - y2);
@@ -781,7 +677,6 @@
       const fA  = lerp(fNear, fFar, t0), fB = lerp(fNear, fFar, t1);
 
       for (let j = 0; j < cols; j++){
-        const u0 = j / cols, u1 = (j + 1) / cols;
         const k0 = -1 + 2 * (j / cols);
         const k1 = -1 + 2 * ((j + 1) / cols);
 
@@ -798,21 +693,14 @@
           padLeft:  colPadL,
           padRight: colPadR,
         });
-        const uv = { u1:u0, v1:vv0, u2:u1, v2:vv0, u3:u1, v3:vv1, u4:u0, v4:vv1 };
         const fogValues = [fA, fA, fB, fB];
-        if (texturesEnabled && roadTex){
-          glr.drawQuadTextured(roadTex, quad, uv, undefined, fogValues);
-        } else {
-          glr.drawQuadSolid(quad, randomColorFor(roadColorKey), fogValues);
-        }
+        glr.drawQuadSolid(quad, randomColorFor(roadColorKey), fogValues);
       }
     }
   }
 
   function drawBoostZonesOnStrip(zones, xNear, yNear, xFar, yFar, wNear, wFar, fogRoad, segIndex){
     if (!glr || !zones || !zones.length) return;
-    const texturesEnabled = areTexturesEnabled();
-
     const dy   = Math.abs(yNear - yFar);
     const rows = Math.max(1, Math.min(grid.maxRows, Math.ceil(dy / grid.rowHeightPx)));
     const fNear = fogRoad[0], fFar = fogRoad[2];
@@ -833,8 +721,6 @@
 
       const zoneColors = boost.colors[zone.type] || boost.fallbackColor;
       const solid = Array.isArray(zoneColors.solid) ? zoneColors.solid : boost.fallbackColor.solid;
-      const texKey = boost.textures[zone.type];
-      const tex = texKey ? textures[texKey] : null;
 
       for (let i = 0; i < rows; i++){
         const t0 = i / rows, t1 = (i + 1) / rows;
@@ -864,16 +750,9 @@
           const uv = { u1:u0, v1:t0, u2:u1, v2:t0, u3:u1, v3:t1, u4:u0, v4:t1 };
           const fog = [fA, fA, fB, fB];
 
-          const solidColor = Array.isArray(solid) ? solid : boost.fallbackColor.solid;
-          const fallbackColor = texturesEnabled
-            ? solidColor
-            : randomColorFor(`boost:${segIndex}:${zone.type || 'zone'}`);
+          const fallbackColor = Array.isArray(solid) ? solid : boost.fallbackColor.solid;
           perf.registerBoostQuad();
-          if (texturesEnabled && tex) {
-            glr.drawQuadTextured(tex, quad, uv, undefined, fog);
-          } else {
-            glr.drawQuadSolid(quad, fallbackColor, fog);
-          }
+          glr.drawQuadSolid(quad, fallbackColor, fog);
         }
       }
     }
@@ -886,27 +765,18 @@
     hPx,
     fogZ,
     tint = [1, 1, 1, 1],
-    texture = null,
-    uvOverride = null,
     colorKey = null,
   ){
     if (!glr) return;
-    const texturesEnabled = areTexturesEnabled();
     const x1 = anchorX - wPx/2;
     const x2 = anchorX + wPx/2;
     const y1 = baseY - hPx, y2 = baseY;
-    const uv = uvOverride || {u1:0,v1:0,u2:1,v2:0,u3:1,v3:1,u4:0,v4:1};
     const fog = fogArray(fogZ);
     const quad = {x1:x1, y1:y1, x2:x2, y2:y1, x3:x2, y3:y2, x4:x1, y4:y2};
-    const useTexture = texturesEnabled && texture;
-    if (useTexture) {
-      glr.drawQuadTextured(texture, quad, uv, undefined, fog);
-    } else {
-      const solidTint = Array.isArray(tint)
-        ? tint
-        : randomColorFor(colorKey || 'billboard');
-      glr.drawQuadSolid(quad, solidTint, fog);
-    }
+    const solidTint = Array.isArray(tint)
+      ? tint
+      : randomColorFor(colorKey || 'billboard');
+    glr.drawQuadSolid(quad, solidTint, fog);
   }
 
   function drawBillboardRotated(
@@ -916,27 +786,18 @@
     hPx,
     fogZ,
     tint = [1, 1, 1, 1],
-    texture = null,
-    uvOverride = null,
     colorKey = null,
     angleRad = 0,
   ){
     if (!glr) return;
-    const texturesEnabled = areTexturesEnabled();
-    const uv = uvOverride || { u1: 0, v1: 0, u2: 1, v2: 0, u3: 1, v3: 1, u4: 0, v4: 1 };
     const fog = fogArray(fogZ);
     const centerX = anchorX;
     const centerY = baseY - hPx * 0.5;
     const quad = makeRotatedQuad(centerX, centerY, wPx, hPx, angleRad || 0);
-    const useTexture = texturesEnabled && texture;
-    if (useTexture) {
-      glr.drawQuadTextured(texture, quad, uv, undefined, fog);
-    } else {
-      const solidTint = Array.isArray(tint)
-        ? tint
-        : randomColorFor(colorKey || 'billboard');
-      glr.drawQuadSolid(quad, solidTint, fog);
-    }
+    const solidTint = Array.isArray(tint)
+      ? tint
+      : randomColorFor(colorKey || 'billboard');
+    glr.drawQuadSolid(quad, solidTint, fog);
   }
 
   function segmentAtS(s) {
@@ -1382,8 +1243,6 @@
           item.h,
           item.z,
           item.tint,
-          item.tex,
-          item.uv,
           item.colorKey,
         );
       } else if (item.type === 'prop'){
@@ -1397,8 +1256,6 @@
             item.h,
             item.z,
             item.tint,
-            item.tex,
-            item.uv,
             item.colorKey,
             item.angle,
           );
@@ -1410,8 +1267,6 @@
             item.h,
             item.z,
             item.tint,
-            item.tex,
-            item.uv,
             item.colorKey,
           );
         }
@@ -1545,8 +1400,6 @@
       p2RS,
     } = it;
 
-    const texturesEnabled = areTexturesEnabled();
-
     const x1 = p1.screen.x;
     const y1 = p1.screen.y;
     const x2 = p2.screen.x;
@@ -1559,73 +1412,44 @@
     const rightIsNegative = rightAvgY > roadMidY;
 
     const fogCliff = fogArray(p1.camera.z, p2.camera.z);
-    const group = ((segIndex / debug.span) | 0) % 2;
-    const tint = group ? debug.colors.a : debug.colors.b;
-    const debugFill = debug.mode === 'fill';
-    const cliffTex = texturesEnabled ? (textures.cliff || glr.whiteTex) : null;
-    const fillCliffs = debugFill || !texturesEnabled;
 
     const leftQuadA = padWithSpriteOverlap(L.quadA);
     const leftQuadB = padWithSpriteOverlap(L.quadB);
     const rightQuadA = padWithSpriteOverlap(R.quadA);
     const rightQuadB = padWithSpriteOverlap(R.quadB);
 
-    const drawLeftCliffs = (solid = false) => {
-      const uvA = { ...L.uvA, v1: v0Cliff, v2: v0Cliff, v3: v1Cliff, v4: v1Cliff };
-      const uvB = { ...L.uvB, v1: v0Cliff, v2: v0Cliff, v3: v1Cliff, v4: v1Cliff };
-      if (solid || !cliffTex){
-        const solidTint = debugFill ? tint : randomColorFor(`cliffL:${segIndex}`);
-        glr.drawQuadSolid(leftQuadA, solidTint, fogCliff);
-        glr.drawQuadSolid(leftQuadB, solidTint, fogCliff);
-      } else {
-        glr.drawQuadTextured(cliffTex, leftQuadA, uvA, undefined, fogCliff);
-        glr.drawQuadTextured(cliffTex, leftQuadB, uvB, undefined, fogCliff);
-      }
+    const drawLeftCliffs = () => {
+      const solidTint = randomColorFor(`cliffL:${segIndex}`);
+      glr.drawQuadSolid(leftQuadA, solidTint, fogCliff);
+      glr.drawQuadSolid(leftQuadB, solidTint, fogCliff);
     };
 
-    const drawRightCliffs = (solid = false) => {
-      const uvA = { ...R.uvA, v1: v0Cliff, v2: v0Cliff, v3: v1Cliff, v4: v1Cliff };
-      const uvB = { ...R.uvB, v1: v0Cliff, v2: v0Cliff, v3: v1Cliff, v4: v1Cliff };
-      if (solid || !cliffTex){
-        const solidTint = debugFill ? tint : randomColorFor(`cliffR:${segIndex}`);
-        glr.drawQuadSolid(rightQuadA, solidTint, fogCliff);
-        glr.drawQuadSolid(rightQuadB, solidTint, fogCliff);
-      } else {
-        glr.drawQuadTextured(cliffTex, rightQuadA, uvA, undefined, fogCliff);
-        glr.drawQuadTextured(cliffTex, rightQuadB, uvB, undefined, fogCliff);
-      }
+    const drawRightCliffs = () => {
+      const solidTint = randomColorFor(`cliffR:${segIndex}`);
+      glr.drawQuadSolid(rightQuadA, solidTint, fogCliff);
+      glr.drawQuadSolid(rightQuadB, solidTint, fogCliff);
     };
 
-    if (leftIsNegative) drawLeftCliffs(fillCliffs);
-    if (rightIsNegative) drawRightCliffs(fillCliffs);
+    if (leftIsNegative) drawLeftCliffs();
+    if (rightIsNegative) drawRightCliffs();
 
-    if (debugFill || !texturesEnabled){
-      const quad = {
-        x1: x1 - w1,
-        y1: y1,
-        x2: x1 + w1,
-        y2: y1,
-        x3: x2 + w2,
-        y3: y2,
-        x4: x2 - w2,
-        y4: y2,
-      };
-      const roadTint = debugFill ? tint : randomColorFor(`road:${segIndex}`);
-      glr.drawQuadSolid(quad, roadTint, fogRoad);
-      if (!debugFill && !texturesEnabled){
-        drawBoostZonesOnStrip(boostZones, x1, y1, x2, y2, w1, w2, fogRoad, segIndex);
-      }
-    } else {
-      const roadTex = textures.road || glr.whiteTex;
-      drawRoadStrip(x1, y1, w1, x2, y2, w2, v0Road, v1Road, fogRoad, roadTex, segIndex);
-      drawBoostZonesOnStrip(boostZones, x1, y1, x2, y2, w1, w2, fogRoad, segIndex);
-    }
+    const quad = {
+      x1: x1 - w1,
+      y1: y1,
+      x2: x1 + w1,
+      y2: y1,
+      x3: x2 + w2,
+      y3: y2,
+      x4: x2 - w2,
+      y4: y2,
+    };
+    glr.drawQuadSolid(quad, randomColorFor(`road:${segIndex}`), fogRoad);
+    drawBoostZonesOnStrip(boostZones, x1, y1, x2, y2, w1, w2, fogRoad, segIndex);
 
-    if (!leftIsNegative) drawLeftCliffs(fillCliffs);
-    if (!rightIsNegative) drawRightCliffs(fillCliffs);
+    if (!leftIsNegative) drawLeftCliffs();
+    if (!rightIsNegative) drawRightCliffs();
 
     if (seg && seg.features && seg.features.rail){
-      const texRail = texturesEnabled ? (textures.rail || glr.whiteTex) : null;
 
       const xL1 = x1 - w1 * track.railInset;
       const xL2 = x2 - w2 * track.railInset;
@@ -1635,14 +1459,9 @@
         x3: xL2, y3: y2,
         x4: xL2, y4: p2LS.screen.y,
       };
-      const uvL = { u1: 0, v1: v0Rail, u2: 1, v2: v0Rail, u3: 1, v3: v1Rail, u4: 0, v4: v1Rail };
       const railFogL = fogArray(p1LS.camera.z, p2LS.camera.z);
       const quadLPadded = padWithSpriteOverlap(quadL);
-      if (texturesEnabled && texRail){
-        glr.drawQuadTextured(texRail, quadLPadded, uvL, undefined, railFogL);
-      } else {
-        glr.drawQuadSolid(quadLPadded, randomColorFor(`railL:${segIndex}`), railFogL);
-      }
+      glr.drawQuadSolid(quadLPadded, randomColorFor(`railL:${segIndex}`), railFogL);
 
       const xR1 = x1 + w1 * track.railInset;
       const xR2 = x2 + w2 * track.railInset;
@@ -1656,19 +1475,13 @@
         x4: xR2,
         y4: y2,
       };
-      const uvR = { u1: 0, v1: v0Rail, u2: 1, v2: v0Rail, u3: 1, v3: v1Rail, u4: 0, v4: v1Rail };
       const railFogR = fogArray(p1RS.camera.z, p2RS.camera.z);
       const quadRPadded = padWithSpriteOverlap(quadR);
-      if (texturesEnabled && texRail){
-        glr.drawQuadTextured(texRail, quadRPadded, uvR, undefined, railFogR);
-      } else {
-        glr.drawQuadSolid(quadRPadded, randomColorFor(`railR:${segIndex}`), railFogR);
-      }
+      glr.drawQuadSolid(quadRPadded, randomColorFor(`railR:${segIndex}`), railFogR);
     }
   }
 
   function renderPlayer(item){
-    const texturesEnabled = areTexturesEnabled();
     const fogShadow = fogArray(item.zShadow || 0);
     const fogBody = fogArray(item.zBody || 0);
     const shH = Math.max(3, item.h * 0.06);
@@ -1683,86 +1496,12 @@
     const ang = (state.playerTiltDeg * Math.PI) / 180;
 
     const shQuad = makeRotatedQuad(shCX, shCY, item.w, shH, ang);
-    const shadowColor = texturesEnabled ? [0.13, 0.13, 0.13, 1] : randomColorFor('player:shadow');
-    glr.drawQuadSolid(shQuad, shadowColor, fogShadow);
+    glr.drawQuadSolid(shQuad, [0.13, 0.13, 0.13, 1], fogShadow);
 
     const bodyQuad = makeRotatedQuad(bodyCX, bodyCY, item.w, item.h, ang);
     const meta = (item && item.meta) || (state.spriteMeta && state.spriteMeta.PLAYER) || {};
-    const spriteInfo = item && item.sprite ? item.sprite : null;
-    const texture = spriteInfo && spriteInfo.texture
-      ? spriteInfo.texture
-      : (typeof meta.tex === 'function' ? meta.tex() : null);
-    const atlasColumns = Math.max(1, spriteInfo && spriteInfo.columns
-      ? spriteInfo.columns
-      : ((meta.atlas && meta.atlas.columns) || PLAYER_ATLAS_COLUMNS));
-    const atlasTotalFrames = Math.max(1, spriteInfo && spriteInfo.rows
-      ? spriteInfo.rows * atlasColumns
-      : ((meta.atlas && meta.atlas.totalFrames) || (PLAYER_ATLAS_COLUMNS * PLAYER_ATLAS_ROWS)));
-    const atlasRows = Math.max(1, spriteInfo && spriteInfo.rows
-      ? spriteInfo.rows
-      : Math.ceil(atlasTotalFrames / atlasColumns));
-    const centerCol = Math.floor(atlasColumns * 0.5);
-    const centerRow = Math.floor(atlasRows * 0.5);
-    let samples = spriteInfo && Array.isArray(spriteInfo.samples)
-      ? spriteInfo.samples.slice()
-      : [];
-    if ((!samples || !samples.length) && texture) {
-      samples = [{
-        col: centerCol,
-        row: centerRow,
-        weight: 1,
-        uv: atlasUvFromRowCol(centerRow, centerCol, atlasColumns, atlasRows),
-      }];
-    }
-
-    if (texturesEnabled && texture && samples && samples.length) {
-      const sortedSamples = samples
-        .slice()
-        .sort((a, b) => (b.weight || 0) - (a.weight || 0))
-        .filter((entry) => entry && entry.uv);
-      if (sortedSamples.length) {
-        const gl = glr && glr.gl ? glr.gl : null;
-        if (gl) {
-          const [first, ...rest] = sortedSamples;
-          const firstWeight = clamp(first.weight || 0, 0, 1);
-          if (firstWeight > 1e-4) {
-            gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ZERO);
-            glr.drawQuadTextured(
-              texture,
-              bodyQuad,
-              first.uv,
-              [firstWeight, firstWeight, firstWeight, 1],
-              fogBody,
-            );
-          }
-          if (rest.length) {
-            gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE, gl.ZERO, gl.ONE);
-            for (const sample of rest) {
-              const weight = clamp(sample.weight || 0, 0, 1);
-              if (weight <= 1e-4) continue;
-              glr.drawQuadTextured(
-                texture,
-                bodyQuad,
-                sample.uv,
-                [weight, weight, weight, 1],
-                fogBody,
-              );
-            }
-          }
-          gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        } else {
-          const sample = sortedSamples[0];
-          glr.drawQuadTextured(texture, bodyQuad, sample.uv, undefined, fogBody);
-        }
-      } else {
-        const fallbackTint = Array.isArray(meta.tint) ? meta.tint : [1, 1, 1, 1];
-        glr.drawQuadSolid(bodyQuad, fallbackTint, fogBody);
-      }
-    } else {
-      const fallbackTint = Array.isArray(meta.tint) ? meta.tint : [1, 1, 1, 1];
-      const bodyColor = texturesEnabled ? fallbackTint : randomColorFor('player:body');
-      glr.drawQuadSolid(bodyQuad, bodyColor, fogBody);
-    }
+    const fallbackTint = Array.isArray(meta.tint) ? meta.tint : [1, 1, 1, 1];
+    glr.drawQuadSolid(bodyQuad, fallbackTint, fogBody);
   }
 
   function computeDebugPanels(){

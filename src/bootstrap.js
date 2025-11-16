@@ -27,13 +27,7 @@ async function loadManifestTextures(manifest) {
   }));
 }
 
-async function loadAssets() {
-  await loadManifestTextures(World.assets.manifest);
-  if (globalThis.SpriteCatalog && typeof globalThis.SpriteCatalog.getTextureManifest === 'function') {
-    const spriteManifest = globalThis.SpriteCatalog.getTextureManifest();
-    await loadManifestTextures(spriteManifest);
-  }
-}
+async function loadAssets() {}
 
 function setupCallbacks() {
   Gameplay.state.callbacks.onQueueReset = () => {

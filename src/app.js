@@ -562,16 +562,6 @@
     if (idx >= 0) {
       state.vehicleSelectIndex = clampIndex(idx, vehicleOptions.length);
     }
-    const textures = (World && World.assets && World.assets.textures)
-      ? World.assets.textures
-      : null;
-    if (!textures) return;
-    const atlasKey = option.atlasTextureKey;
-    const atlasTexture = atlasKey && textures[atlasKey] ? textures[atlasKey] : null;
-    const fallbackTexture = textures.playerCar || textures.car || null;
-    if (atlasTexture || fallbackTexture) {
-      textures.playerVehicle = atlasTexture || fallbackTexture;
-    }
   }
 
   function showVehicleSelect() {

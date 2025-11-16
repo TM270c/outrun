@@ -1,18 +1,12 @@
 (function(global){
   const { World } = global;
 
-  const TEXTURE_MANIFEST = Object.freeze({
-    tree: 'tex/tree.png',
-    sign: 'tex/rockwall.png',
-    animPlate01: 'tex/anim-plate-01.png',
-    animPlate02: 'tex/anim-plate-02.png',
-  });
+  const TEXTURE_MANIFEST = Object.freeze({});
 
   const METRIC_FALLBACK = Object.freeze({
     wN: 0.2,
     aspect: 1,
     tint: [1, 1, 1, 1],
-    textureKey: null,
     atlas: null,
   });
 
@@ -46,7 +40,6 @@
     wN: 1,
     aspect: 1.0,
     tint: [1, 1, 1, 1],
-    textureKey: 'tree',
     atlas: { columns: 4, totalFrames: 16 },
   };
 
@@ -63,7 +56,6 @@
     wN: 0.1,
     aspect: 1.0,
     tint: [1, 0.92, 0.2, 1],
-    textureKey: 'animPlate01',
     atlas: { columns: 4, totalFrames: 16 },
   };
 
@@ -126,7 +118,6 @@
       wN: entry.metrics.wN,
       aspect: entry.metrics.aspect,
       tint: Array.isArray(entry.metrics.tint) ? Object.freeze(entry.metrics.tint.slice()) : Object.freeze([1, 1, 1, 1]),
-      textureKey: entry.metrics.textureKey || null,
       atlas: entry.metrics.atlas ? Object.freeze({
         columns: entry.metrics.atlas.columns,
         totalFrames: entry.metrics.atlas.totalFrames,
