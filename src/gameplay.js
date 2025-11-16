@@ -71,8 +71,11 @@
   } = lane;
 
   const segments = data.segments;
+  const boostZoneDefs = data.boostZones;
   const segmentLength = track.segmentSize;
   const trackLengthRef = () => data.trackLength || 0;
+
+  const RAIL_MASK = Object.freeze({ none: 0, left: 1, right: 2, both: 3 });
 
   const hasSegments = () => segments.length > 0;
 
@@ -1162,9 +1165,11 @@
   }
 
   function boostZonesOnSegment(seg) {
-    if (!seg || !seg.features) return [];
-    const zones = seg.features.boostZones;
-    return Array.isArray(zones) ? zones : [];
+    if (!seg || !seg.features || !Array.isArray(seg.features.boostZoneIds)) return [];
+    if (!Array.isArray(boostZoneDefs)) return [];
+    return seg.features.boostZoneIds
+      .map((id) => boostZoneDefs[id])
+      .filter(Boolean);
   }
 
   function playerWithinBoostZone(zone, nNorm) {
@@ -1618,15 +1623,24 @@
     return phys.y;
   }
 
+  const hasLeftRail = (seg) => !!(seg && seg.features && (seg.features.railMask & RAIL_MASK.left));
+  const hasRightRail = (seg) => !!(seg && seg.features && (seg.features.railMask & RAIL_MASK.right));
+
+  function railLimits(seg, halfWidth, pad){
+    const base = 1 - halfWidth - pad;
+    const mask = seg && seg.features && Number.isFinite(seg.features.railMask)
+      ? seg.features.railMask
+      : RAIL_MASK.none;
+    const leftLimit = (mask & RAIL_MASK.left) ? Math.min(base, track.railInset - halfWidth - pad) : base;
+    const rightLimit = (mask & RAIL_MASK.right) ? Math.min(base, track.railInset - halfWidth - pad) : base;
+    return { left: leftLimit, right: rightLimit, mask };
+  }
+
   function npcLateralLimit(segIndex, car) {
     const half = carHalfWN(car);
-    const base = 1 - half - NPC.edgePad;
     const seg = segmentAtIndex(segIndex);
-    if (seg && seg.features && seg.features.rail) {
-      const railInner = track.railInset - half - NPC.edgePad;
-      return Math.min(base, railInner);
-    }
-    return base;
+    const limits = railLimits(seg, half, NPC.edgePad);
+    return limits;
   }
 
   function slopeAngleDeg(slope) {
@@ -1906,15 +1920,15 @@
     const baseLimit = Math.min(Math.abs(lanes.road.min), Math.abs(lanes.road.max));
     const base = baseLimit - halfW - 0.015;
     const seg = segmentAtIndex(segIndex);
-    if (seg && seg.features && seg.features.rail) {
-      const railInner = track.railInset - halfW - 0.015;
-      return Math.min(base, railInner);
-    }
+    const limits = railLimits(seg, halfW, 0.015);
+    let left = Math.min(base, limits.left);
+    let right = Math.min(base, limits.right);
     if (segmentHasSteepCliff(segIndex)) {
       const cliffBound = Math.max(0, 1 - halfW - 0.015);
-      return Math.min(base, cliffBound);
+      left = Math.min(left, cliffBound);
+      right = Math.min(right, cliffBound);
     }
-    return base;
+    return { left, right, mask: limits.mask };
   }
 
   function resolveSpriteInteractionsInSeg(seg) {
@@ -2344,15 +2358,21 @@
     segNow = segmentAtS(phys.s);
     if (segNow) {
       const bound = playerLateralLimit(segNow.index);
-      const clampLimit = Number.isFinite(bound) ? bound : Math.abs(state.playerN) + 1;
+      const clampLeft = Number.isFinite(bound.left) ? bound.left : Math.abs(state.playerN) + 1;
+      const clampRight = Number.isFinite(bound.right) ? bound.right : Math.abs(state.playerN) + 1;
       const preClamp = state.playerN;
-      state.playerN = clamp(state.playerN, -clampLimit, clampLimit);
-      const scraping = Math.abs(preClamp) > clampLimit - 1e-6 || Math.abs(state.playerN) >= clampLimit - 1e-6;
+      state.playerN = clamp(state.playerN, -clampLeft, clampRight);
+      const scrapingLeft = preClamp < -clampLeft + 1e-6 || state.playerN <= -clampLeft + 1e-6;
+      const scrapingRight = preClamp > clampRight - 1e-6 || state.playerN >= clampRight - 1e-6;
+      const scraping = scrapingLeft || scrapingRight;
       offRoadNow = Math.abs(preClamp) > OFF_ROAD_THRESHOLD || Math.abs(state.playerN) > OFF_ROAD_THRESHOLD;
-      const hasGuardRail = !!(segNow.features && segNow.features.rail);
-      guardRailContact = hasGuardRail && scraping;
+      const hasGuardRailLeft = !!(bound.mask & RAIL_MASK.left);
+      const hasGuardRailRight = !!(bound.mask & RAIL_MASK.right);
+      guardRailContact = (scrapingLeft && hasGuardRailLeft) || (scrapingRight && hasGuardRailRight);
       if (guardRailContact) {
-        guardRailSide = Math.sign(preClamp) || Math.sign(state.playerN) || guardRailSide;
+        if (scrapingLeft && hasGuardRailLeft) guardRailSide = -1;
+        else if (scrapingRight && hasGuardRailRight) guardRailSide = 1;
+        else guardRailSide = Math.sign(preClamp) || Math.sign(state.playerN) || guardRailSide;
         const offRoadDecelLimit = player.topSpeed / 4;
         if (Math.abs(phys.vtan) > offRoadDecelLimit) {
           const sign = Math.sign(phys.vtan) || 1;
@@ -2454,7 +2474,8 @@
       if (!seg) continue;
       const b = npcLateralLimit(seg.index, tmpCar);
       const side = Math.random() < 0.5 ? -1 : 1;
-      const offset = side * (Math.random() * (b * 0.9));
+      const limit = side < 0 ? b.left : b.right;
+      const offset = side * (Math.random() * (limit * 0.9));
       const isSemi = type === 'SEMI';
       const speed = (player.topSpeed / 6) + Math.random() * player.topSpeed / (isSemi ? 5 : 3);
       const car = { z: s, offset, type, meta, speed };
@@ -2494,8 +2515,8 @@
       }
     }
     const b = npcLateralLimit(carSeg.index, car);
-    if (car.offset < -b) return Math.min(0.15, (-b - car.offset) * 0.6);
-    if (car.offset > b) return -Math.min(0.15, (car.offset - b) * 0.6);
+    if (car.offset < -b.left) return Math.min(0.15, (-b.left - car.offset) * 0.6);
+    if (car.offset > b.right) return -Math.min(0.15, (car.offset - b.right) * 0.6);
     return 0;
   }
 
@@ -2533,7 +2554,7 @@
       }
       if (newSeg) {
         const bNext = npcLateralLimit(newSeg.index, car);
-        car.offset = clamp(car.offset, -bNext, bNext);
+        car.offset = clamp(car.offset, -bNext.left, bNext.right);
       }
     }
   }
@@ -2682,7 +2703,7 @@
     const seg = segmentAtS(sWrapped);
     const segIdx = seg ? seg.index : 0;
     const bound = playerLateralLimit(segIdx);
-    const nextPlayerN = clamp(nNorm, -bound, bound);
+    const nextPlayerN = clamp(nNorm, -bound.left, bound.right);
     resetPlayerState({ s: sWrapped, playerN: nextPlayerN });
   }
 
