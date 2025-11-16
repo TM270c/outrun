@@ -4,6 +4,7 @@ import { createRenderer } from './render/scene.js';
 import { colors } from './core/config.js';
 
 const inputState = { throttle: false, brake: false, left: false, right: false, jump: false };
+const viewport = { width: 1024, height: 768 };
 
 function setupInput(element) {
   const down = new Set();
@@ -30,9 +31,15 @@ function setupInput(element) {
 
 function createCanvas() {
   const canvas = document.createElement('canvas');
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  canvas.style.width = `${viewport.width}px`;
+  canvas.style.height = `${viewport.height}px`;
   document.body.style.margin = '0';
+  document.body.style.display = 'flex';
+  document.body.style.alignItems = 'center';
+  document.body.style.justifyContent = 'center';
+  document.body.style.minHeight = '100vh';
   document.body.style.background = `rgba(${colors.background[0] * 255}, ${colors.background[1] * 255}, ${colors.background[2] * 255}, 1)`;
   document.body.appendChild(canvas);
   return canvas;
@@ -61,9 +68,9 @@ function run() {
     stepCar(car, inputState, segments, trackLength, dt);
     const currentSegment = findSegment(segments, car.s);
 
-    if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+    if (canvas.width !== viewport.width || canvas.height !== viewport.height) {
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
     }
 
     renderer.render(car, currentSegment);
