@@ -518,9 +518,7 @@
   }
 
   const segments = data.segments;
-  const boostZoneDefs = data.boostZones;
   const segmentLength = track.segmentSize;
-  const RAIL_MASK = Object.freeze({ none: 0, left: 1, right: 2, both: 3 });
 
   const SPRITE_PAD = {
     padLeft: sprites.overlap.x,
@@ -629,14 +627,32 @@
     if (beyond <= 1e-6) return { o: 0 };
 
     const left = offset < 0;
-    const section = left ? params.left : params.right;
-    const width = Math.max(0, Math.abs(section && section.dx));
+    const sectionA = left ? params.leftA : params.rightA;
+    const sectionB = left ? params.leftB : params.rightB;
+    const widthA = Math.max(0, Math.abs(sectionA && sectionA.dx));
+    const widthB = Math.max(0, Math.abs(sectionB && sectionB.dx));
+    const totalWidth = widthA + widthB;
 
-    if (width <= 1e-6) return { o: fallback };
+    if (totalWidth <= 1e-6) return { o: fallback };
 
-    const span = Math.min(beyond, width);
-    const coverage = clamp(span / Math.max(width, 1e-6), 0, 1);
-    return { o: coverage };
+    const span = Math.min(beyond, totalWidth);
+
+    if (widthA > 1e-6) {
+      if (span <= widthA || widthB <= 1e-6) {
+        const coverageA = clamp(span / Math.max(widthA, 1e-6), 0, 1);
+        return { o: coverageA };
+      }
+      const remain = span - widthA;
+      const coverageB = clamp(remain / Math.max(widthB, 1e-6), 0, 1);
+      return { o: clamp(1 + coverageB, 0, 2) };
+    }
+
+    if (widthB > 1e-6) {
+      const coverageB = clamp(span / Math.max(widthB, 1e-6), 0, 1);
+      return { o: clamp(1 + coverageB, 0, 2) };
+    }
+
+    return { o: fallback };
   }
 
   function fogArray(zNear, zFar = zNear){
@@ -958,11 +974,9 @@
   }
 
   function boostZonesOnSegment(seg) {
-    if (!seg || !seg.features || !Array.isArray(seg.features.boostZoneIds)) return [];
-    if (!Array.isArray(boostZoneDefs)) return [];
-    return seg.features.boostZoneIds
-      .map((id) => boostZoneDefs[id])
-      .filter(Boolean);
+    if (!seg || !seg.features) return [];
+    const zones = seg.features.boostZones;
+    return Array.isArray(zones) ? zones : [];
   }
 
   function zonesFor(key){
@@ -1080,14 +1094,14 @@
       const cliffStart = cliffParamsAt(idx, 0);
       const cliffEnd = cliffParamsAt(idx, 1);
 
-      const leftA1 = cliffStart.left.dy * yScale1;
-      const leftA2 = cliffEnd.left.dy * yScale2;
-      const leftB1 = cliffStart.left.dy * yScale1;
-      const leftB2 = cliffEnd.left.dy * yScale2;
-      const rightA1 = cliffStart.right.dy * yScale1;
-      const rightA2 = cliffEnd.right.dy * yScale2;
-      const rightB1 = rightA1;
-      const rightB2 = rightA2;
+      const leftA1 = cliffStart.leftA.dy * yScale1;
+      const leftA2 = cliffEnd.leftA.dy * yScale2;
+      const leftB1 = (cliffStart.leftA.dy + cliffStart.leftB.dy) * yScale1;
+      const leftB2 = (cliffEnd.leftA.dy + cliffEnd.leftB.dy) * yScale2;
+      const rightA1 = cliffStart.rightA.dy * yScale1;
+      const rightA2 = cliffEnd.rightA.dy * yScale2;
+      const rightB1 = (cliffStart.rightA.dy + cliffStart.rightB.dy) * yScale1;
+      const rightB2 = (cliffEnd.rightA.dy + cliffEnd.rightB.dy) * yScale2;
 
       const p1LA = projectSegPoint(seg.p1, leftA1, camX1, camY, camSRef);
       const p2LA = projectSegPoint(seg.p2, leftA2, camX2, camY, camSRef);
@@ -1109,8 +1123,8 @@
         w2,
         p1LA.screen.y, p2LA.screen.y,
         p1LB.screen.y, p2LB.screen.y,
-        cliffStart.left.dx, cliffEnd.left.dx,
-        0, 0,
+        cliffStart.leftA.dx, cliffEnd.leftA.dx,
+        cliffStart.leftB.dx, cliffEnd.leftB.dx,
         0, 1,
         rw1, rw2
       );
@@ -1120,8 +1134,8 @@
         w2,
         p1RA.screen.y, p2RA.screen.y,
         p1RB.screen.y, p2RB.screen.y,
-        cliffStart.right.dx, cliffEnd.right.dx,
-        0, 0,
+        cliffStart.rightA.dx, cliffEnd.rightA.dx,
+        cliffStart.rightB.dx, cliffEnd.rightB.dx,
         0, 1,
         rw1, rw2
       );
@@ -1613,50 +1627,45 @@
     if (!leftIsNegative) drawLeftCliffs(fillCliffs);
     if (!rightIsNegative) drawRightCliffs(fillCliffs);
 
-    if (seg && seg.features){
-      const mask = seg.features.railMask || RAIL_MASK.none;
+    if (seg && seg.features && seg.features.rail){
       const texRail = texturesEnabled ? (textures.rail || glr.whiteTex) : null;
 
-      if (mask & RAIL_MASK.left) {
-        const xL1 = x1 - w1 * track.railInset;
-        const xL2 = x2 - w2 * track.railInset;
-        const quadL = {
-          x1: xL1, y1: p1LS.screen.y,
-          x2: xL1, y2: y1,
-          x3: xL2, y3: y2,
-          x4: xL2, y4: p2LS.screen.y,
-        };
-        const uvL = { u1: 0, v1: v0Rail, u2: 1, v2: v0Rail, u3: 1, v3: v1Rail, u4: 0, v4: v1Rail };
-        const railFogL = fogArray(p1LS.camera.z, p2LS.camera.z);
-        const quadLPadded = padWithSpriteOverlap(quadL);
-        if (texturesEnabled && texRail){
-          glr.drawQuadTextured(texRail, quadLPadded, uvL, undefined, railFogL);
-        } else {
-          glr.drawQuadSolid(quadLPadded, randomColorFor(`railL:${segIndex}`), railFogL);
-        }
+      const xL1 = x1 - w1 * track.railInset;
+      const xL2 = x2 - w2 * track.railInset;
+      const quadL = {
+        x1: xL1, y1: p1LS.screen.y,
+        x2: xL1, y2: y1,
+        x3: xL2, y3: y2,
+        x4: xL2, y4: p2LS.screen.y,
+      };
+      const uvL = { u1: 0, v1: v0Rail, u2: 1, v2: v0Rail, u3: 1, v3: v1Rail, u4: 0, v4: v1Rail };
+      const railFogL = fogArray(p1LS.camera.z, p2LS.camera.z);
+      const quadLPadded = padWithSpriteOverlap(quadL);
+      if (texturesEnabled && texRail){
+        glr.drawQuadTextured(texRail, quadLPadded, uvL, undefined, railFogL);
+      } else {
+        glr.drawQuadSolid(quadLPadded, randomColorFor(`railL:${segIndex}`), railFogL);
       }
 
-      if (mask & RAIL_MASK.right) {
-        const xR1 = x1 + w1 * track.railInset;
-        const xR2 = x2 + w2 * track.railInset;
-        const quadR = {
-          x1: xR1,
-          y1: y1,
-          x2: xR1,
-          y2: p1RS.screen.y,
-          x3: xR2,
-          y3: p2RS.screen.y,
-          x4: xR2,
-          y4: y2,
-        };
-        const uvR = { u1: 0, v1: v0Rail, u2: 1, v2: v0Rail, u3: 1, v3: v1Rail, u4: 0, v4: v1Rail };
-        const railFogR = fogArray(p1RS.camera.z, p2RS.camera.z);
-        const quadRPadded = padWithSpriteOverlap(quadR);
-        if (texturesEnabled && texRail){
-          glr.drawQuadTextured(texRail, quadRPadded, uvR, undefined, railFogR);
-        } else {
-          glr.drawQuadSolid(quadRPadded, randomColorFor(`railR:${segIndex}`), railFogR);
-        }
+      const xR1 = x1 + w1 * track.railInset;
+      const xR2 = x2 + w2 * track.railInset;
+      const quadR = {
+        x1: xR1,
+        y1: y1,
+        x2: xR1,
+        y2: p1RS.screen.y,
+        x3: xR2,
+        y3: p2RS.screen.y,
+        x4: xR2,
+        y4: y2,
+      };
+      const uvR = { u1: 0, v1: v0Rail, u2: 1, v2: v0Rail, u3: 1, v3: v1Rail, u4: 0, v4: v1Rail };
+      const railFogR = fogArray(p1RS.camera.z, p2RS.camera.z);
+      const quadRPadded = padWithSpriteOverlap(quadR);
+      if (texturesEnabled && texRail){
+        glr.drawQuadTextured(texRail, quadRPadded, uvR, undefined, railFogR);
+      } else {
+        glr.drawQuadSolid(quadRPadded, randomColorFor(`railR:${segIndex}`), railFogR);
       }
     }
   }

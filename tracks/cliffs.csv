@@ -1,3 +1,4 @@
-# Columns: side(L/R/B),lengthSegments,dx,dy,repeats
-# Baseline additive cliff offsets per side.
-B,1,2000,400,1
+# side,len,aEase,aDx,aDy,bEase,bDx,bDy,mode,repeats
+# Baseline geometry for each side
+L,1,linear:io, 2000,400,     linear:io, 400000,0,  abs,1
+R,1,linear:io, 2000,400,  linear:io,400000,0,    abs,1
