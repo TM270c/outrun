@@ -68,13 +68,6 @@ const fog = {
   color: [0.1, 0.5, 0.8],
 };
 
-// Debug overlay defaults for development builds.
-const debug = {
-  mode: 'off',
-  span: 3,
-  colors: { a: [1, 1, 1, 1], b: [0.82, 0.9, 1, 1] },
-};
-
 // Sprite rendering adjustments.
 const sprites = {
   far: { shrinkTo: 0.1, power: 0.4 },
@@ -152,7 +145,6 @@ window.Config = {
   cliffs,
   failsafe,
   fog,
-  debug,
   sprites,
   parallaxLayers,
   drift,
