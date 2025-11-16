@@ -15,7 +15,6 @@
     sprites,
     parallaxLayers,
     boost,
-    drift,
     tilt: tiltConfig = {},
     build = {},
     snowScreenDistance = 0,
@@ -272,9 +271,7 @@
     }
 
     const rawSteerValue = clamp(playerSpriteBlendState.steer, -1, 1);
-    const isDrifting = state && state.driftState === 'drifting';
-    const steerLimit = isDrifting ? 1 : 0.5;
-    const steerValue = clamp(rawSteerValue, -steerLimit, steerLimit);
+    const steerValue = clamp(rawSteerValue, -0.5, 0.5);
     const heightValue = clamp(playerSpriteBlendState.height, -1, 1);
     const samples = computePlayerAtlasSamples(steerValue, heightValue, columns, rows);
 
@@ -1961,7 +1958,6 @@
         `Guardrail time: ${fmtSeconds(metrics.guardRailContactTime)}`,
         `Pickups: ${fmtCount(metrics.pickupsCollected)}`,
         `Air time: ${fmtSeconds(metrics.airTime)}`,
-        `Drift time: ${fmtSeconds(metrics.driftTime)}`,
         `Top speed: ${fmtSpeed(metrics.topSpeed)} u/s`,
         `Respawns: ${fmtCount(metrics.respawnCount)}`,
         `Off-road time: ${fmtSeconds(metrics.offRoadTime)}`,
@@ -2014,12 +2010,11 @@
     const { dy, d2y } = groundProfileAt(state.phys.s);
     const kap = computeCurvature(dy, d2y);
     const boostingHUD = (state.boostTimer>0) ? `boost:${state.boostTimer.toFixed(2)}s ` : '';
-    const driftHUD = `drift:${state.driftState}${state.driftState==='drifting'?' dir='+state.driftDirSnapshot:''} charge:${state.driftCharge.toFixed(2)}/${drift.chargeMin} armed:${state.allowedBoost}`;
     const buildVersion = (typeof build.version === 'string' && build.version.length > 0)
       ? build.version
       : null;
     const versionHUD = buildVersion ? `ver:${buildVersion}  ` : '';
-    const hud = `${versionHUD}${boostingHUD}${driftHUD}  vtan:${state.phys.vtan.toFixed(1)}  grounded:${state.phys.grounded}  kappa:${kap.toFixed(5)}  n:${state.playerN.toFixed(2)}  cars:${state.cars.length}`;
+    const hud = `${versionHUD}${boostingHUD}vtan:${state.phys.vtan.toFixed(1)}  grounded:${state.phys.grounded}  kappa:${kap.toFixed(5)}  n:${state.playerN.toFixed(2)}  cars:${state.cars.length}`;
     ctxSide.fillStyle = '#fff';
     ctxSide.strokeStyle = '#000';
     ctxSide.lineWidth = 3;
