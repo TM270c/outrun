@@ -5,10 +5,10 @@ const build = Object.freeze({
 
 // Core handling and tuning for the player car.
 const player = {
-  accelForce: 3000,     // forward push strength
-  brakeForce: 3000,     // braking strength
-  topSpeed: 7000,       // on-road speed cap
-  gravity: 6400,        // vertical pull amount
+  accelForce: 4000,     // forward push strength
+  brakeForce: 4000,     // braking strength
+  topSpeed: 9000,       // on-road speed cap
+  gravity: 9000,        // vertical pull amount
   rollDrag: 0.3,        // sideways speed dampener
   airDrag: 0,           // airborne drag factor
   steerRate: 2.0,       // base steering response
