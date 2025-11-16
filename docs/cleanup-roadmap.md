@@ -2847,270 +2847,1062 @@
 
 
 - `queueRespawn`
+  - Purpose: Queues a respawn by snapping to the nearest segment center and defers the actual reset to the matte flow.【F:src/gameplay.js†L2762-L2773】
+  - Inputs: `sAtFail` — longitudinal S position where the failure occurred (can be non-finite).【F:src/gameplay.js†L2762-L2766】
+  - Outputs: None; schedules data on `state.pendingRespawn`.【F:src/gameplay.js†L2764-L2767】
+  - Side effects: Updates pending respawn data, bumps the respawn metric on first queue, and notifies callbacks.【F:src/gameplay.js†L2765-L2772】
+  - Shared state touched and where it’s used: Writes `state.pendingRespawn`, reads `state.resetMatteActive` to early-out, increments `state.metrics.respawnCount`, and triggers `state.callbacks.onQueueRespawn`. Downstream reset logic consumes the pending data when matte completes.【F:src/gameplay.js†L2762-L2772】【F:src/render.js†L2032-L2055】
+  - Dependencies: Uses `nearestSegmentCenter` for snapping and relies on callback presence checks.【F:src/gameplay.js†L2762-L2767】
+  - Edge cases it handles or misses: No-ops while reset matte is active; otherwise assumes `state.metrics` exists when counting respawns.【F:src/gameplay.js†L2762-L2769】
+  - Performance: Constant-time.【F:src/gameplay.js†L2762-L2773】
+  - Units / spaces: Operates in track S units for respawn positioning.【F:src/gameplay.js†L2762-L2766】
+  - Determinism: Deterministic aside from callback behaviour.【F:src/gameplay.js†L2762-L2772】
+  - Keep / change / delete: Keep; centralizes respawn queuing without duplicating metric/callback handling.
+  - Confidence / assumptions: High confidence; assumes matte flow will read `state.pendingRespawn`.
 
 
 
 - `startRaceSession`
+  - Purpose: Activates a race session with a validated lap target and stamps the start time.【F:src/gameplay.js†L2775-L2781】
+  - Inputs: Destructured options object with `laps` (defaults to 1).【F:src/gameplay.js†L2775-L2777】
+  - Outputs: None; mutates race state.【F:src/gameplay.js†L2777-L2781】
+  - Side effects: Marks racing active, zeroes laps completed, records start time, and clears finish time.【F:src/gameplay.js†L2777-L2781】
+  - Shared state touched and where it’s used: Writes `state.race` values that drive HUD and win-check logic elsewhere.【F:src/gameplay.js†L2777-L2781】【F:src/render.js†L2032-L2055】
+  - Dependencies: Uses `state.phys.t` for the starting clock and `Math.floor` to sanitize lap counts.【F:src/gameplay.js†L2775-L2780】
+  - Edge cases it handles or misses: Falls back to a single lap when `laps` is non-finite or non-positive.【F:src/gameplay.js†L2775-L2777】
+  - Performance: Constant-time.【F:src/gameplay.js†L2775-L2781】
+  - Units / spaces: Lap counts are integers; start time uses simulation seconds from physics state.【F:src/gameplay.js†L2775-L2781】
+  - Determinism: Deterministic given the same inputs and physics clock.【F:src/gameplay.js†L2775-L2781】
+  - Keep / change / delete: Keep; succinctly encapsulates race start initialization.
+  - Confidence / assumptions: High confidence; assumes `state.phys.t` tracks elapsed simulation time.
 
 
 
 - `step`
+  - Purpose: Advances gameplay for a frame by running physics and car AI ticks.【F:src/gameplay.js†L2784-L2786】
+  - Inputs: `dt` — time delta in seconds passed from the render loop.【F:src/gameplay.js†L2784-L2786】【F:src/render.js†L2114-L2120】
+  - Outputs: None.【F:src/gameplay.js†L2784-L2786】
+  - Side effects: Mutates player state via `updatePhysics` and NPC state via `tickCars`.【F:src/gameplay.js†L2784-L2786】【F:src/render.js†L2114-L2120】
+  - Shared state touched and where it’s used: Indirectly updates `state.phys`, `state.cars`, and related metrics consumed by rendering and HUD logic.【F:src/gameplay.js†L2784-L2786】【F:src/render.js†L873-L887】
+  - Dependencies: Delegates to `updatePhysics` and `tickCars`.【F:src/gameplay.js†L2784-L2786】
+  - Edge cases it handles or misses: Assumes `dt` is provided; no internal guards for zero/negative deltas.【F:src/gameplay.js†L2784-L2786】
+  - Performance: Linear in the complexity of physics and car updates; wrapper itself is constant-time.【F:src/gameplay.js†L2784-L2786】
+  - Units / spaces: Uses seconds for `dt`.【F:src/gameplay.js†L2784-L2786】
+  - Determinism: Follows determinism of underlying update functions and any RNG they use.【F:src/gameplay.js†L2784-L2786】
+  - Keep / change / delete: Keep; provides a narrow stepping API for the render loop.
+  - Confidence / assumptions: High confidence; assumes upstream caller normalizes `dt`.
 
 ### 3.5 Sprite Placement, RNG, & Effects (`src/gameplay.js`)
 
 
 
 - `splitCsvLine`
+  - Purpose: Splits a CSV row into trimmed cells with quote and escape handling.【F:src/gameplay.js†L412-L440】
+  - Inputs: `line` — raw CSV line string.【F:src/gameplay.js†L412-L413】
+  - Outputs: Array of trimmed cell strings preserving embedded commas inside quotes.【F:src/gameplay.js†L412-L440】
+  - Side effects: None.【F:src/gameplay.js†L412-L440】
+  - Shared state touched and where it’s used: None directly; consumed by `parseCsvWithHeader` when loading sprite CSVs.【F:src/gameplay.js†L442-L470】
+  - Dependencies: String traversal and quote escaping logic only.【F:src/gameplay.js†L412-L440】
+  - Edge cases it handles or misses: Handles doubled quotes inside quoted fields; trims whitespace; does not enforce consistent column counts.【F:src/gameplay.js†L412-L440】
+  - Performance: Linear in line length.【F:src/gameplay.js†L412-L440】
+  - Units / spaces: Works on raw text lines.【F:src/gameplay.js†L412-L440】
+  - Determinism: Deterministic for a given string input.【F:src/gameplay.js†L412-L440】
+  - Keep / change / delete: Keep; encapsulates CSV parsing quirks.
+  - Confidence / assumptions: High confidence; assumes UTF-8 text and simple CSV quoting.
 
 
 
 - `parseCsvWithHeader`
+  - Purpose: Parses sprite placement CSV text, optionally extracting a header row, and returns normalized records.【F:src/gameplay.js†L442-L470】
+  - Inputs: `text` — full CSV contents as a string.【F:src/gameplay.js†L442-L446】
+  - Outputs: Object `{ header, rows }` where `header` is an array or `null`, and `rows` are arrays or keyed objects based on header presence.【F:src/gameplay.js†L442-L470】
+  - Side effects: None.【F:src/gameplay.js†L442-L470】
+  - Shared state touched and where it’s used: None directly; upstream loaders feed placements into sprite spawning.【F:src/gameplay.js†L2567-L2570】
+  - Dependencies: Uses `splitCsvLine` for tokenization and lowercases cells to detect headers containing sprite-related columns.【F:src/gameplay.js†L451-L456】
+  - Edge cases it handles or misses: Skips blank/comment lines; tolerates missing headers by returning raw cell arrays; assumes header appears before data.【F:src/gameplay.js†L442-L470】
+  - Performance: Linear in line count and cell count.【F:src/gameplay.js†L442-L470】
+  - Units / spaces: Operates on text; column names are case-insensitive for detection.【F:src/gameplay.js†L451-L456】
+  - Determinism: Deterministic for given text input.【F:src/gameplay.js†L442-L470】
+  - Keep / change / delete: Keep; simplifies ingesting authored CSV with comments and optional headers.
+  - Confidence / assumptions: High confidence; assumes sprite placement files follow the expected naming conventions.
 
 
 
 - `parseNumberRange`
+  - Purpose: Converts a single value or `a-b` token into a numeric range object.【F:src/gameplay.js†L472-L487】
+  - Inputs: `value` (any) plus optional `{ allowFloat }` to control parsing mode.【F:src/gameplay.js†L472-L477】
+  - Outputs: `{ start, end }` when parsing succeeds, otherwise `null`.【F:src/gameplay.js†L479-L487】
+  - Side effects: None.【F:src/gameplay.js†L472-L487】
+  - Shared state touched and where it’s used: None directly; upstream parsing feeds sprite placement ranges.【F:src/gameplay.js†L886-L897】
+  - Dependencies: Uses regex matching and `parseFloat`/`parseInt` based on `allowFloat`.【F:src/gameplay.js†L476-L479】
+  - Edge cases it handles or misses: Trims whitespace; accepts negative numbers; returns `null` on NaN values; treats single numbers as degenerate ranges.【F:src/gameplay.js†L472-L487】
+  - Performance: Constant-time for fixed-length strings.【F:src/gameplay.js†L472-L487】
+  - Units / spaces: Generic numeric ranges (segments, lanes, scales).【F:src/gameplay.js†L472-L487】
+  - Determinism: Deterministic.【F:src/gameplay.js†L472-L487】
+  - Keep / change / delete: Keep; avoids duplicated range parsing logic.
+  - Confidence / assumptions: High confidence; assumes well-formed numeric text.
 
 
 
 - `parseNumericRange`
+  - Purpose: Normalizes a parsed number range into an ordered `[min, max]` tuple.【F:src/gameplay.js†L489-L495】
+  - Inputs: `value` (any) forwarded to `parseNumberRange` with float parsing enabled.【F:src/gameplay.js†L489-L491】
+  - Outputs: Array `[min, max]` or `null` when parsing fails.【F:src/gameplay.js†L491-L495】
+  - Side effects: None.【F:src/gameplay.js†L489-L495】
+  - Shared state touched and where it’s used: None directly; consumed by sprite placement parsing for scales and jitters.【F:src/gameplay.js†L893-L897】
+  - Dependencies: Relies on `parseNumberRange`.【F:src/gameplay.js†L489-L491】
+  - Edge cases it handles or misses: Swaps start/end so order does not matter; returns `null` for invalid input.【F:src/gameplay.js†L491-L495】
+  - Performance: Constant-time.【F:src/gameplay.js†L489-L495】
+  - Units / spaces: Numeric ranges for scale/jitter values.【F:src/gameplay.js†L489-L495】
+  - Determinism: Deterministic.【F:src/gameplay.js†L489-L495】
+  - Keep / change / delete: Keep; provides concise normalization.
+  - Confidence / assumptions: High confidence; assumes caller validates semantics.
 
 
 
 - `parseSpritePool`
+  - Purpose: Converts a comma-delimited sprite identifier list into an array.【F:src/gameplay.js†L497-L504】
+  - Inputs: `value` — string/number/array-like convertible to string.【F:src/gameplay.js†L497-L500】
+  - Outputs: Array of trimmed, non-empty sprite IDs.【F:src/gameplay.js†L501-L504】
+  - Side effects: None.【F:src/gameplay.js†L497-L504】
+  - Shared state touched and where it’s used: None directly; used by placement parsing before catalog lookups.【F:src/gameplay.js†L885-L888】
+  - Dependencies: String split and trim only.【F:src/gameplay.js†L500-L503】
+  - Edge cases it handles or misses: Returns empty array for nullish input; drops empty tokens.【F:src/gameplay.js†L497-L504】
+  - Performance: Linear in token count.【F:src/gameplay.js†L497-L504】
+  - Units / spaces: Sprite ID strings.【F:src/gameplay.js†L497-L504】
+  - Determinism: Deterministic.【F:src/gameplay.js†L497-L504】
+  - Keep / change / delete: Keep; small helper keeps parsing readable.
+  - Confidence / assumptions: High confidence; assumes IDs are comma-separated.
 
 
 
 - `parsePlacementMode`
+  - Purpose: Normalizes placement mode strings into canonical enum values for tapering logic.【F:src/gameplay.js†L506-L525】
+  - Inputs: `value` — placement mode token (string/any).【F:src/gameplay.js†L506-L508】
+  - Outputs: One of `uniform`, `taperScale`, `taperAtlas`, or `taperBoth`.【F:src/gameplay.js†L509-L525】
+  - Side effects: None.【F:src/gameplay.js†L506-L525】
+  - Shared state touched and where it’s used: None directly; used while parsing sprite placements to control bias application.【F:src/gameplay.js†L897-L899】【F:src/gameplay.js†L774-L776】
+  - Dependencies: String normalization only.【F:src/gameplay.js†L506-L525】
+  - Edge cases it handles or misses: Accepts several delimiter variants; defaults to `uniform` for unknown input or nullish values.【F:src/gameplay.js†L506-L525】
+  - Performance: Constant-time.【F:src/gameplay.js†L506-L525】
+  - Units / spaces: String tokens.【F:src/gameplay.js†L506-L525】
+  - Determinism: Deterministic.【F:src/gameplay.js†L506-L525】
+  - Keep / change / delete: Keep; centralizes allowed mode aliases.
+  - Confidence / assumptions: High confidence; assumes future modes would extend this mapping.
 
 
 
 - `normalizeSeed`
+  - Purpose: Produces a non-zero unsigned seed from numeric input or coordinate hashes for deterministic RNG.【F:src/gameplay.js†L528-L537】
+  - Inputs: `seed` plus optional `a`, `b` numbers to mix when `seed` is non-finite.【F:src/gameplay.js†L528-L535】
+  - Outputs: Unsigned 32-bit integer seed, defaulting to 1 when zero would result.【F:src/gameplay.js†L529-L536】
+  - Side effects: None.【F:src/gameplay.js†L528-L536】
+  - Shared state touched and where it’s used: None directly; feeds `createRng` for sprite placement randomness.【F:src/gameplay.js†L760-L763】
+  - Dependencies: Bitwise mixing constants and `Math.floor`.【F:src/gameplay.js†L529-L535】
+  - Edge cases it handles or misses: Handles null/NaN by hashing coordinates; forces non-zero seed to avoid degenerate RNG state.【F:src/gameplay.js†L528-L536】
+  - Performance: Constant-time.【F:src/gameplay.js†L528-L536】
+  - Units / spaces: Unitless seeds.【F:src/gameplay.js†L528-L536】
+  - Determinism: Deterministic given inputs.【F:src/gameplay.js†L528-L536】
+  - Keep / change / delete: Keep; protects RNG from zero state.
+  - Confidence / assumptions: High confidence; assumes coordinate hashes stay within 32-bit math.
 
 
 
 - `createRng`
+  - Purpose: Returns a xorshift-like PRNG seeded with a non-zero integer for deterministic sampling.【F:src/gameplay.js†L539-L546】
+  - Inputs: `seed` — unsigned integer seed (defaults to 1 when falsy).【F:src/gameplay.js†L539-L540】
+  - Outputs: Function generating floats in [0,1).【F:src/gameplay.js†L541-L546】
+  - Side effects: Maintains internal `state` closure variable.【F:src/gameplay.js†L540-L546】
+  - Shared state touched and where it’s used: None global; used throughout sprite instance generation for repeatable randomness.【F:src/gameplay.js†L760-L764】
+  - Dependencies: Integer arithmetic and bitwise mixing constants.【F:src/gameplay.js†L541-L545】
+  - Edge cases it handles or misses: Forces non-zero default state; no overflow guards beyond 32-bit ops.【F:src/gameplay.js†L539-L546】
+  - Performance: Constant-time per sample.【F:src/gameplay.js†L541-L546】
+  - Units / spaces: Unitless random samples.【F:src/gameplay.js†L541-L546】
+  - Determinism: Deterministic for a given seed sequence.【F:src/gameplay.js†L541-L546】
+  - Keep / change / delete: Keep; lightweight deterministic RNG avoids global `Math.random` variability.
+  - Confidence / assumptions: High confidence; assumes consumers reseed as needed.
 
 
 
 - `randomInRange`
+  - Purpose: Samples a float within a numeric range using the provided RNG or `Math.random`.【F:src/gameplay.js†L549-L556】
+  - Inputs: `range` array `[min,max]`, optional `rng` function, and `fallback` default.【F:src/gameplay.js†L549-L556】
+  - Outputs: Sampled number or fallback when inputs are invalid.【F:src/gameplay.js†L549-L556】
+  - Side effects: None.【F:src/gameplay.js†L549-L556】
+  - Shared state touched and where it’s used: None; used for jitter sampling in sprite placement.【F:src/gameplay.js†L791-L794】
+  - Dependencies: Relies on provided RNG and arithmetic only.【F:src/gameplay.js†L549-L556】
+  - Edge cases it handles or misses: Returns fallback for bad ranges, degenerates to endpoints when widths are ~0.【F:src/gameplay.js†L549-L556】
+  - Performance: Constant-time.【F:src/gameplay.js†L549-L556】
+  - Units / spaces: Same units as input range (segments, lanes, scale).【F:src/gameplay.js†L549-L556】
+  - Determinism: Depends on RNG input; deterministic with deterministic RNG.【F:src/gameplay.js†L549-L556】
+  - Keep / change / delete: Keep; concise reusable sampler.
+  - Confidence / assumptions: High confidence; assumes caller validates range semantics.
 
 
 
 - `computeAxisScaleWeight`
+  - Purpose: Calculates a taper weight favoring central items along an axis for scale modulation.【F:src/gameplay.js†L559-L570】
+  - Inputs: `count` — total slots; `index` — current slot index.【F:src/gameplay.js†L559-L566】
+  - Outputs: Clamped weight in [0,1] (default 1).【F:src/gameplay.js†L564-L570】
+  - Side effects: None.【F:src/gameplay.js†L559-L570】
+  - Shared state touched and where it’s used: None directly; combined in `computePlacementBias` to bias sprite scale.【F:src/gameplay.js†L589-L606】
+  - Dependencies: Uses `clamp` and `clamp01` utilities and simple math.【F:src/gameplay.js†L562-L570】
+  - Edge cases it handles or misses: Returns neutral weight when counts <3 or non-finite indices; avoids divide-by-zero via epsilon guards.【F:src/gameplay.js†L559-L570】
+  - Performance: Constant-time.【F:src/gameplay.js†L559-L570】
+  - Units / spaces: Slot indices (unitless).【F:src/gameplay.js†L559-L570】
+  - Determinism: Deterministic.【F:src/gameplay.js†L559-L570】
+  - Keep / change / delete: Keep; reusable for both segment and lane tapering.
+  - Confidence / assumptions: High confidence; assumes counts are modest integers.
 
 
 
 - `computeAxisAtlasBias`
+  - Purpose: Computes a normalized bias factor to steer atlas frame selection toward edges or center based on position.【F:src/gameplay.js†L573-L586】
+  - Inputs: `count` total slots; `index` current slot.【F:src/gameplay.js†L573-L578】
+  - Outputs: Bias in [0,1] (defaults to 0.5).【F:src/gameplay.js†L574-L586】
+  - Side effects: None.【F:src/gameplay.js†L573-L586】
+  - Shared state touched and where it’s used: Used by `computePlacementBias` to derive atlas bias per axis.【F:src/gameplay.js†L589-L606】
+  - Dependencies: Clamp helpers and power falloff math.【F:src/gameplay.js†L574-L586】
+  - Edge cases it handles or misses: Returns neutral 0.5 for small or invalid counts; clamps indices and distances with epsilon to avoid zero-division.【F:src/gameplay.js†L573-L586】
+  - Performance: Constant-time.【F:src/gameplay.js†L573-L586】
+  - Units / spaces: Unitless slots.【F:src/gameplay.js†L573-L586】
+  - Determinism: Deterministic.【F:src/gameplay.js†L573-L586】
+  - Keep / change / delete: Keep; supports tapered atlas sampling.
+  - Confidence / assumptions: High confidence; assumes counts are integers.
 
 
 
 - `computePlacementBias`
+  - Purpose: Combines axis scale weights and atlas biases to produce per-placement bias values.【F:src/gameplay.js†L589-L606】
+  - Inputs: Segment count/index and lane count/index.【F:src/gameplay.js†L589-L605】
+  - Outputs: Object `{ scale, atlas }` or `null` when no axis meets bias criteria.【F:src/gameplay.js†L603-L606】
+  - Side effects: None.【F:src/gameplay.js†L589-L606】
+  - Shared state touched and where it’s used: Used inside sprite instance generation to taper scales and atlas frame selection.【F:src/gameplay.js†L788-L795】
+  - Dependencies: `computeAxisScaleWeight` and `computeAxisAtlasBias`.【F:src/gameplay.js†L591-L605】
+  - Edge cases it handles or misses: Returns `null` when both axes lack sufficient slots; clamps indices inside helper functions.【F:src/gameplay.js†L589-L606】
+  - Performance: Constant-time.【F:src/gameplay.js†L589-L606】
+  - Units / spaces: Slot counts/indices.【F:src/gameplay.js†L589-L606】
+  - Determinism: Deterministic.【F:src/gameplay.js†L589-L606】
+  - Keep / change / delete: Keep; central bias aggregator.
+  - Confidence / assumptions: High confidence; assumes non-negative slot counts.
 
 
 
 - `biasedRandom01`
+  - Purpose: Blends a random sample toward a provided weight to bias values in [0,1].【F:src/gameplay.js†L609-L616】
+  - Inputs: `weight` (0–1 bias) and optional `rng` function.【F:src/gameplay.js†L609-L615】
+  - Outputs: Clamped float in [0,1].【F:src/gameplay.js†L609-L616】
+  - Side effects: None.【F:src/gameplay.js†L609-L616】
+  - Shared state touched and where it’s used: None directly; applied when tapering sprite scale sampling.【F:src/gameplay.js†L618-L626】
+  - Dependencies: `clamp01` and optional RNG.【F:src/gameplay.js†L613-L616】
+  - Edge cases it handles or misses: Falls back to unbiased random when weight is non-finite; averages sample and bias then clamps.【F:src/gameplay.js†L609-L616】
+  - Performance: Constant-time.【F:src/gameplay.js†L609-L616】
+  - Units / spaces: Unitless normalized values.【F:src/gameplay.js†L609-L616】
+  - Determinism: Deterministic given RNG sequence.【F:src/gameplay.js†L609-L616】
+  - Keep / change / delete: Keep; small helper for taper shapes.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `sampleScaleValue`
+  - Purpose: Picks a sprite scale within a range, optionally tapered by bias for gradual transitions.【F:src/gameplay.js†L618-L626】
+  - Inputs: `scaleRange` `[min,max]`, optional `rng`, `bias`, and `useTaper` flag.【F:src/gameplay.js†L618-L625】
+  - Outputs: Number representing chosen scale.【F:src/gameplay.js†L618-L626】
+  - Side effects: None.【F:src/gameplay.js†L618-L626】
+  - Shared state touched and where it’s used: Used during sprite instance generation to size sprites per placement mode.【F:src/gameplay.js†L788-L795】
+  - Dependencies: `randomInRange`, `biasedRandom01`, and `lerp`.【F:src/gameplay.js†L621-L626】
+  - Edge cases it handles or misses: Falls back to `min` when invalid or zero span; ignores bias when taper disabled.【F:src/gameplay.js†L618-L626】
+  - Performance: Constant-time.【F:src/gameplay.js†L618-L626】
+  - Units / spaces: Scale multipliers (unitless).【F:src/gameplay.js†L618-L626】
+  - Determinism: Deterministic with deterministic RNG.【F:src/gameplay.js†L618-L626】
+  - Keep / change / delete: Keep; encapsulates taper-aware sampling.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `sampleUniformIndex`
+  - Purpose: Samples a uniform integer index within `[0, count)`.【F:src/gameplay.js†L629-L634】
+  - Inputs: `count` — total options; optional `rng` function.【F:src/gameplay.js†L629-L633】
+  - Outputs: Integer index (defaults to 0 when invalid).【F:src/gameplay.js†L629-L634】
+  - Side effects: None.【F:src/gameplay.js†L629-L634】
+  - Shared state touched and where it’s used: None; used for random frame/asset selection when no bias provided.【F:src/gameplay.js†L722-L727】
+  - Dependencies: Optional RNG and `clamp`.【F:src/gameplay.js†L631-L634】
+  - Edge cases it handles or misses: Returns 0 for non-finite or small counts; modulus prevents overflow but not bias from non-uniform RNG.【F:src/gameplay.js†L629-L633】
+  - Performance: Constant-time.【F:src/gameplay.js†L629-L634】
+  - Units / spaces: Index units.【F:src/gameplay.js†L629-L634】
+  - Determinism: Deterministic with deterministic RNG.【F:src/gameplay.js†L629-L634】
+  - Keep / change / delete: Keep; standard uniform picker.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `sampleBiasedIndex`
+  - Purpose: Samples an index with controllable skew toward lower or higher indices via bias shaping.【F:src/gameplay.js†L636-L653】
+  - Inputs: `count`, optional `rng`, and `bias` in [0,1].【F:src/gameplay.js†L636-L648】
+  - Outputs: Integer index (0 when invalid).【F:src/gameplay.js†L636-L653】
+  - Side effects: None.【F:src/gameplay.js†L636-L653】
+  - Shared state touched and where it’s used: Used for atlas frame and asset selection when tapering is enabled.【F:src/gameplay.js†L723-L726】【F:src/gameplay.js†L710-L715】
+  - Dependencies: `clamp01`, `sampleUniformIndex`, `Math.pow`.【F:src/gameplay.js†L639-L653】
+  - Edge cases it handles or misses: Falls back to uniform when bias invalid; clamps bias; protects exponent with epsilon.【F:src/gameplay.js†L636-L653】
+  - Performance: Constant-time.【F:src/gameplay.js†L636-L653】
+  - Units / spaces: Index units.【F:src/gameplay.js†L636-L653】
+  - Determinism: Deterministic given RNG and bias.【F:src/gameplay.js†L636-L653】
+  - Keep / change / delete: Keep; enables nuanced tapering.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `computeLaneStep`
+  - Purpose: Determines the lateral step size between lane placements based on range and repeat hints.【F:src/gameplay.js†L656-L662】
+  - Inputs: `range` with `start`/`end`, and `repeatLane` override.【F:src/gameplay.js†L656-L660】
+  - Outputs: Step value (0 when degenerate).【F:src/gameplay.js†L656-L662】
+  - Side effects: None.【F:src/gameplay.js†L656-L662】
+  - Shared state touched and where it’s used: None directly; used when generating lane position lists for sprite placement.【F:src/gameplay.js†L755-L758】
+  - Dependencies: Math only.【F:src/gameplay.js†L656-L662】
+  - Edge cases it handles or misses: Returns 0 for zero-width ranges; respects positive repeat overrides when provided.【F:src/gameplay.js†L656-L662】
+  - Performance: Constant-time.【F:src/gameplay.js†L656-L662】
+  - Units / spaces: Lane units (normalized lateral positions).【F:src/gameplay.js†L656-L662】
+  - Determinism: Deterministic.【F:src/gameplay.js†L656-L662】
+  - Keep / change / delete: Keep; small helper clarifies spacing rules.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `dedupePositions`
+  - Purpose: Filters a list of numeric positions, removing near-duplicate entries within an epsilon.【F:src/gameplay.js†L664-L672】
+  - Inputs: `values` — iterable of numbers.【F:src/gameplay.js†L664-L667】
+  - Outputs: Array of unique positions.【F:src/gameplay.js†L664-L672】
+  - Side effects: None.【F:src/gameplay.js†L664-L672】
+  - Shared state touched and where it’s used: Used by lane position generation to avoid redundant placements.【F:src/gameplay.js†L674-L696】
+  - Dependencies: Iteration and absolute difference checks.【F:src/gameplay.js†L665-L669】
+  - Edge cases it handles or misses: Skips non-finite values; treats positions within 1e-6 as duplicates.【F:src/gameplay.js†L664-L672】
+  - Performance: O(n²) in worst case due to nested `some` checks, but small lists expected.【F:src/gameplay.js†L664-L672】
+  - Units / spaces: Position units mirror input.【F:src/gameplay.js†L664-L672】
+  - Determinism: Deterministic.【F:src/gameplay.js†L664-L672】
+  - Keep / change / delete: Keep; adequate for small placement arrays.
+  - Confidence / assumptions: High confidence; assumes small n prevents perf issues.
 
 
 
 - `computeLanePositions`
+  - Purpose: Generates an ordered set of lane offsets between start and end using a given step, deduping endpoints.【F:src/gameplay.js†L674-L696】
+  - Inputs: `start`, `end`, and `step`.【F:src/gameplay.js†L674-L681】
+  - Outputs: Array of lane positions.【F:src/gameplay.js†L674-L696】
+  - Side effects: None.【F:src/gameplay.js†L674-L696】
+  - Shared state touched and where it’s used: Feeds placement generation to determine lateral spawn points.【F:src/gameplay.js†L755-L758】
+  - Dependencies: Relies on `dedupePositions`.【F:src/gameplay.js†L677-L696】
+  - Edge cases it handles or misses: Returns empty array when bounds invalid; caps loop iterations to 1024; handles directionality and near-end rounding.【F:src/gameplay.js†L674-L696】
+  - Performance: Linear up to the iteration cap.【F:src/gameplay.js†L682-L695】
+  - Units / spaces: Lane offsets (normalized road units).【F:src/gameplay.js†L674-L696】
+  - Determinism: Deterministic.【F:src/gameplay.js†L674-L696】
+  - Keep / change / delete: Keep; encapsulates stepping and dedupe logic.
+  - Confidence / assumptions: High confidence; assumes small lane sets.
 
 
 
 - `clampSegmentRange`
+  - Purpose: Clamps a user-provided segment range to valid indices within the current track length.【F:src/gameplay.js†L698-L706】
+  - Inputs: `range` with `start`/`end`, and `segCount` total segments.【F:src/gameplay.js†L698-L703】
+  - Outputs: Normalized `{ start, end }` or `null` when invalid.【F:src/gameplay.js†L698-L705】
+  - Side effects: None.【F:src/gameplay.js†L698-L706】
+  - Shared state touched and where it’s used: Consumed by sprite instance generation to avoid out-of-bounds placements.【F:src/gameplay.js†L752-L754】
+  - Dependencies: Math floor/clamp operations.【F:src/gameplay.js†L698-L704】
+  - Edge cases it handles or misses: Handles negative/oversized bounds; returns null when segment count missing or non-positive.【F:src/gameplay.js†L698-L705】
+  - Performance: Constant-time.【F:src/gameplay.js†L698-L706】
+  - Units / spaces: Segment indices.【F:src/gameplay.js†L698-L705】
+  - Determinism: Deterministic.【F:src/gameplay.js†L698-L706】
+  - Keep / change / delete: Keep; prevents invalid segment access.
+  - Confidence / assumptions: High confidence; assumes segment count reflects active track.
 
 
 
 - `selectAsset`
+  - Purpose: Chooses a sprite asset variant from an array, optionally biased for atlas tapering.【F:src/gameplay.js†L708-L716】
+  - Inputs: `assets` array, optional `rng`, and `options.atlasBias`.【F:src/gameplay.js†L708-L714】
+  - Outputs: Shallow-cloned asset object with frames copied, or `null`.【F:src/gameplay.js†L708-L716】
+  - Side effects: None.【F:src/gameplay.js†L708-L716】
+  - Shared state touched and where it’s used: None directly; used during sprite instance materialization to pick textures.【F:src/gameplay.js†L794-L795】
+  - Dependencies: Relies on `sampleBiasedIndex` when multiple assets are available.【F:src/gameplay.js†L712-L714】
+  - Edge cases it handles or misses: Returns null for empty arrays; defaults to first asset when selection fails.【F:src/gameplay.js†L708-L715】
+  - Performance: Constant-time.【F:src/gameplay.js†L708-L716】
+  - Units / spaces: Asset objects as authored in catalog.【F:src/gameplay.js†L708-L716】
+  - Determinism: Deterministic with deterministic RNG.【F:src/gameplay.js†L708-L716】
+  - Keep / change / delete: Keep; isolates selection and cloning concerns.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `determineInitialFrame`
+  - Purpose: Picks the starting animation frame for a sprite instance using clips or atlas frames with optional bias.【F:src/gameplay.js†L718-L730】
+  - Inputs: `entry` catalog record, `asset`, optional `rng`, and `options.atlasBias`.【F:src/gameplay.js†L718-L725】
+  - Outputs: Frame index number.【F:src/gameplay.js†L718-L730】
+  - Side effects: None.【F:src/gameplay.js†L718-L730】
+  - Shared state touched and where it’s used: Invoked during sprite instance creation to seed animation state.【F:src/gameplay.js†L794-L804】【F:src/gameplay.js†L848-L855】
+  - Dependencies: Uses `sampleUniformIndex`/`sampleBiasedIndex` for atlas frames and checks base clip frames first.【F:src/gameplay.js†L719-L727】
+  - Edge cases it handles or misses: Falls back to 0 when no frames available; honors provided base clip when present.【F:src/gameplay.js†L718-L730】
+  - Performance: Constant-time.【F:src/gameplay.js†L718-L730】
+  - Units / spaces: Frame indices.【F:src/gameplay.js†L718-L730】
+  - Determinism: Deterministic with deterministic RNG and inputs.【F:src/gameplay.js†L718-L730】
+  - Keep / change / delete: Keep; centralizes initial frame policy.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `buildSpriteMetaOverrides`
+  - Purpose: Builds per-sprite metric overrides from the catalog to merge with defaults.【F:src/gameplay.js†L732-L739】
+  - Inputs: `catalog` map with sprite entries and optional metrics.【F:src/gameplay.js†L732-L735】
+  - Outputs: Plain object mapping sprite IDs to meta entries.【F:src/gameplay.js†L732-L739】
+  - Side effects: None.【F:src/gameplay.js†L732-L739】
+  - Shared state touched and where it’s used: Output merged into `state.spriteMeta` before spawning props.【F:src/gameplay.js†L2550-L2560】【F:src/gameplay.js†L2563-L2566】
+  - Dependencies: `createSpriteMetaEntry` and catalog iteration.【F:src/gameplay.js†L734-L738】
+  - Edge cases it handles or misses: Returns empty object when catalog missing or non-iterable.【F:src/gameplay.js†L732-L735】
+  - Performance: O(n) over catalog entries.【F:src/gameplay.js†L732-L739】
+  - Units / spaces: Sprite metric fields (scale, aspect, tint).【F:src/gameplay.js†L732-L739】
+  - Determinism: Deterministic.【F:src/gameplay.js†L732-L739】
+  - Keep / change / delete: Keep; separates catalog ingestion from runtime state.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `generateSpriteInstances`
+  - Purpose: Expands placement specs into concrete sprite instances with positions, scales, assets, and frames.【F:src/gameplay.js†L742-L808】
+  - Inputs: `catalog` map, `placements` array.【F:src/gameplay.js†L742-L748】
+  - Outputs: Array of instance objects ready for creation.【F:src/gameplay.js†L742-L808】
+  - Side effects: None; pure assembly.【F:src/gameplay.js†L742-L808】
+  - Shared state touched and where it’s used: Later consumed by `createSpriteFromInstance` when spawning props.【F:src/gameplay.js†L2559-L2566】【F:src/gameplay.js†L785-L805】
+  - Dependencies: Uses numerous helpers (`clampSegmentRange`, `computeLanePositions`, `normalizeSeed`, `createRng`, `computePlacementBias`, `sampleScaleValue`, `randomInRange`, `selectAsset`, `determineInitialFrame`).【F:src/gameplay.js†L753-L805】
+  - Edge cases it handles or misses: Skips invalid specs, empty pools, or out-of-range segments; defaults lane positions when missing; direction-aware stepping with guard for overshoot.【F:src/gameplay.js†L747-L805】
+  - Performance: O(placements × segments × lanes); loops bounded by placement specs and segment list size.【F:src/gameplay.js†L742-L806】
+  - Units / spaces: Segment indices, lane offsets, scale multipliers, jitter ranges in segment units.【F:src/gameplay.js†L747-L805】
+  - Determinism: Deterministic given catalog, placements, and seeded RNGs.【F:src/gameplay.js†L760-L795】
+  - Keep / change / delete: Keep; core expansion step for prop spawning.
+  - Confidence / assumptions: Medium-high; assumes helper outputs are validated.
 
 
 
 - `createSpriteFromInstance`
+  - Purpose: Instantiates a runtime sprite object from a placement instance, attaching animation/meta and registering to segments.【F:src/gameplay.js†L811-L865】
+  - Inputs: `instance` containing entry, indices, offsets, scale, asset, and frame info.【F:src/gameplay.js†L811-L858】
+  - Outputs: Sprite object or `null` when creation fails.【F:src/gameplay.js†L811-L865】
+  - Side effects: Pushes sprite into the owning segment, configures impact data, and initializes UV/animation state.【F:src/gameplay.js†L857-L864】【F:src/gameplay.js†L848-L856】
+  - Shared state touched and where it’s used: Mutates segment sprite arrays and uses track length for S wrapping; resulting sprites participate in rendering and collision/interactions.【F:src/gameplay.js†L815-L864】【F:src/render.js†L873-L887】
+  - Dependencies: `segmentAtIndex`, `wrapDistance`, `trackLengthRef`, `createSpriteAnimationState`, `configureImpactableSprite`, `updateSpriteUv`, and ensureArray util.【F:src/gameplay.js†L813-L863】
+  - Edge cases it handles or misses: Returns null when instance/segment missing; falls back to defaults for offsets, scale, and frames; handles atlas info from metrics or asset.【F:src/gameplay.js†L811-L855】
+  - Performance: Constant-time per instance (aside from helper costs).【F:src/gameplay.js†L811-L865】
+  - Units / spaces: Segment indices, world S positions, normalized offsets, scale multipliers.【F:src/gameplay.js†L817-L847】
+  - Determinism: Deterministic given inputs and helpers.【F:src/gameplay.js†L811-L865】
+  - Keep / change / delete: Keep; necessary bridge from catalog data to runtime sprites.
+  - Confidence / assumptions: High confidence; assumes `segmentAtIndex` uses current track data.
 
 
 
 - `loadSpriteCsv`
+  - Purpose: Fetches a CSV file relative to the asset base, returning its text.【F:src/gameplay.js†L870-L878】
+  - Inputs: `relativePath` string.【F:src/gameplay.js†L870-L872】
+  - Outputs: Promise resolving to CSV text; rejects on HTTP errors.【F:src/gameplay.js†L874-L878】
+  - Side effects: Network request via `fetch`.【F:src/gameplay.js†L874-L878】
+  - Shared state touched and where it’s used: None directly; used by `ensureSpriteDataLoaded` to load placement data.【F:src/gameplay.js†L931-L934】
+  - Dependencies: `World.resolveAssetUrl` when available, otherwise raw path.【F:src/gameplay.js†L870-L873】
+  - Edge cases it handles or misses: Throws on non-OK responses; no retry/backoff; cache disabled via `no-store`.【F:src/gameplay.js†L874-L878】
+  - Performance: Dependent on network; minimal processing otherwise.【F:src/gameplay.js†L874-L878】
+  - Units / spaces: URL strings and raw text.【F:src/gameplay.js†L870-L878】
+  - Determinism: Deterministic given network responses.【F:src/gameplay.js†L874-L878】
+  - Keep / change / delete: Keep; thin IO wrapper.
+  - Confidence / assumptions: High confidence; assumes fetch is available.
 
 
 
 - `parseSpritePlacements`
+  - Purpose: Converts CSV text into structured sprite placement specs including ranges, seeds, jitter, and modes.【F:src/gameplay.js†L881-L922】
+  - Inputs: `text` — CSV contents.【F:src/gameplay.js†L881-L884】
+  - Outputs: Array of placement objects with normalized numeric fields.【F:src/gameplay.js†L900-L919】
+  - Side effects: None.【F:src/gameplay.js†L881-L922】
+  - Shared state touched and where it’s used: Used by `ensureSpriteDataLoaded` to populate placement lists for spawning props.【F:src/gameplay.js†L931-L934】【F:src/gameplay.js†L2557-L2560】
+  - Dependencies: `parseCsvWithHeader`, `parseSpritePool`, `parseNumberRange`, `parseNumericRange`, `parsePlacementMode`, and numeric parsing helpers.【F:src/gameplay.js†L881-L918】
+  - Edge cases it handles or misses: Skips rows lacking sprite IDs; defaults repeat counts and seeds; supports both headered and headerless CSVs; ignores invalid numeric fields.【F:src/gameplay.js†L885-L919】
+  - Performance: Linear in row count.【F:src/gameplay.js†L881-L922】
+  - Units / spaces: Segment indices, lane offsets, jitter/scale ranges in their respective units.【F:src/gameplay.js†L900-L918】
+  - Determinism: Deterministic for given CSV text.【F:src/gameplay.js†L881-L922】
+  - Keep / change / delete: Keep; central CSV ingestion step.
+  - Confidence / assumptions: High confidence; assumes CSV authored per expected columns.
 
 
 
 - `ensureSpriteDataLoaded`
+  - Purpose: Lazily loads sprite catalog and placement data once, caching results for reuse.【F:src/gameplay.js†L924-L941】
+  - Inputs: None.【F:src/gameplay.js†L924-L936】
+  - Outputs: Promise resolving to `{ catalog, placements }`.【F:src/gameplay.js†L928-L935】
+  - Side effects: Triggers fetch of placement CSV and catalog retrieval; caches results and resets promise on errors.【F:src/gameplay.js†L927-L940】
+  - Shared state touched and where it’s used: Writes `spriteDataCache`/`spriteDataPromise`; used by `spawnProps` to obtain placement info.【F:src/gameplay.js†L924-L940】【F:src/gameplay.js†L2538-L2559】
+  - Dependencies: `SpriteCatalog.getCatalog`, `loadSpriteCsv`, `parseSpritePlacements`.【F:src/gameplay.js†L928-L934】
+  - Edge cases it handles or misses: Returns cached data on repeat calls; resets promise on failure to allow retry; assumes catalog getter exists or falls back to empty map.【F:src/gameplay.js†L924-L940】
+  - Performance: Single IO sequence; subsequent calls constant-time due to cache.【F:src/gameplay.js†L924-L940】
+  - Units / spaces: Data structures for sprites and placements.【F:src/gameplay.js†L928-L934】
+  - Determinism: Deterministic aside from network/catalog content.【F:src/gameplay.js†L927-L934】
+  - Keep / change / delete: Keep; necessary lazy loader.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `computeDriftSmokeInterval`
+  - Purpose: Computes the next spawn interval for drift smoke with optional jitter around a base value.【F:src/gameplay.js†L946-L952】
+  - Inputs: None; uses constants `DRIFT_SMOKE_INTERVAL` and `_JITTER`.【F:src/gameplay.js†L946-L951】
+  - Outputs: Positive interval in seconds.【F:src/gameplay.js†L946-L952】
+  - Side effects: None.【F:src/gameplay.js†L946-L952】
+  - Shared state touched and where it’s used: Initializes and updates `state.driftSmokeNextInterval`.【F:src/gameplay.js†L966-L972】【F:src/gameplay.js†L1080-L1087】
+  - Dependencies: `Math.random` and configuration constants.【F:src/gameplay.js†L947-L951】
+  - Edge cases it handles or misses: Clamps base to small positive value; zero jitter returns base; jitter applied symmetrically.【F:src/gameplay.js†L946-L951】
+  - Performance: Constant-time.【F:src/gameplay.js†L946-L952】
+  - Units / spaces: Seconds.【F:src/gameplay.js†L946-L952】
+  - Determinism: Non-deterministic due to `Math.random`.【F:src/gameplay.js†L946-L952】
+  - Keep / change / delete: Keep; small helper for effect pacing.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `allocDriftSmokeSprite`
+  - Purpose: Retrieves a drift-smoke sprite from the pool or creates a new placeholder object.【F:src/gameplay.js†L954-L956】
+  - Inputs: None.【F:src/gameplay.js†L954-L955】
+  - Outputs: Sprite object with `kind: 'DRIFT_SMOKE'`.【F:src/gameplay.js†L954-L956】
+  - Side effects: Pops from `driftSmokePool` when available.【F:src/gameplay.js†L954-L956】
+  - Shared state touched and where it’s used: Uses `driftSmokePool`; consumers add returned sprites to segments for rendering.【F:src/gameplay.js†L954-L956】【F:src/gameplay.js†L1188-L1218】
+  - Dependencies: None beyond pool array.【F:src/gameplay.js†L954-L956】
+  - Edge cases it handles or misses: Always returns an object; no pool size limit enforcement.【F:src/gameplay.js†L954-L956】
+  - Performance: Constant-time.【F:src/gameplay.js†L954-L956】
+  - Units / spaces: Sprite objects.【F:src/gameplay.js†L954-L956】
+  - Determinism: Deterministic.【F:src/gameplay.js†L954-L956】
+  - Keep / change / delete: Keep; basic pooling helper.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `recycleDriftSmokeSprite`
+  - Purpose: Resets and returns a drift-smoke sprite to the pool for reuse.【F:src/gameplay.js†L958-L971】
+  - Inputs: `sprite` object.【F:src/gameplay.js†L958-L959】
+  - Outputs: None.【F:src/gameplay.js†L958-L971】
+  - Side effects: Clears sprite state fields and pushes back into `driftSmokePool`.【F:src/gameplay.js†L958-L971】
+  - Shared state touched and where it’s used: Manages pooled sprites consumed by drift smoke spawning logic.【F:src/gameplay.js†L958-L971】【F:src/gameplay.js†L1188-L1218】
+  - Dependencies: None beyond pool access.【F:src/gameplay.js†L958-L971】
+  - Edge cases it handles or misses: No-ops on null or wrong-kind sprites.【F:src/gameplay.js†L958-L959】
+  - Performance: Constant-time.【F:src/gameplay.js†L958-L971】
+  - Units / spaces: Sprite objects.【F:src/gameplay.js†L958-L971】
+  - Determinism: Deterministic.【F:src/gameplay.js†L958-L971】
+  - Keep / change / delete: Keep; standard pool recycler.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `computeSparksInterval`
+  - Purpose: Computes spawn interval for spark effects with jitter around a base constant.【F:src/gameplay.js†L973-L979】
+  - Inputs: None.【F:src/gameplay.js†L973-L978】
+  - Outputs: Positive interval in seconds.【F:src/gameplay.js†L973-L979】
+  - Side effects: None.【F:src/gameplay.js†L973-L979】
+  - Shared state touched and where it’s used: Initializes `state.sparksNextInterval` timing for collision sparks.【F:src/gameplay.js†L1008-L1010】【F:src/gameplay.js†L1262-L1289】
+  - Dependencies: `Math.random` and configured jitter constants.【F:src/gameplay.js†L973-L978】
+  - Edge cases it handles or misses: Clamps base positive; zero jitter returns base; jitter symmetric.【F:src/gameplay.js†L973-L978】
+  - Performance: Constant-time.【F:src/gameplay.js†L973-L979】
+  - Units / spaces: Seconds.【F:src/gameplay.js†L973-L979】
+  - Determinism: Non-deterministic due to random sampling.【F:src/gameplay.js†L973-L979】
+  - Keep / change / delete: Keep; mirrors drift smoke helper.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `allocSparksSprite`
+  - Purpose: Pulls a sparks sprite from the pool or creates a new placeholder.【F:src/gameplay.js†L981-L983】
+  - Inputs: None.【F:src/gameplay.js†L981-L982】
+  - Outputs: Sprite object with `kind: 'SPARKS'`.【F:src/gameplay.js†L981-L983】
+  - Side effects: Pops from `sparksPool` when available.【F:src/gameplay.js†L981-L983】
+  - Shared state touched and where it’s used: Uses `sparksPool`; spawned during collision feedback effects.【F:src/gameplay.js†L981-L983】【F:src/gameplay.js†L1214-L1244】
+  - Dependencies: None beyond pool array.【F:src/gameplay.js†L981-L983】
+  - Edge cases it handles or misses: Always returns an object; no pool cap.【F:src/gameplay.js†L981-L983】
+  - Performance: Constant-time.【F:src/gameplay.js†L981-L983】
+  - Units / spaces: Sprite objects.【F:src/gameplay.js†L981-L983】
+  - Determinism: Deterministic.【F:src/gameplay.js†L981-L983】
+  - Keep / change / delete: Keep; paired with recycler.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `recycleSparksSprite`
+  - Purpose: Resets a sparks sprite’s state and returns it to the pool.【F:src/gameplay.js†L985-L1000】
+  - Inputs: `sprite` object.【F:src/gameplay.js†L985-L986】
+  - Outputs: None.【F:src/gameplay.js†L985-L1000】
+  - Side effects: Clears state fields, offsets, and pushes into `sparksPool`.【F:src/gameplay.js†L986-L999】
+  - Shared state touched and where it’s used: Supports pooling for collision spark effects and transient cleanup.【F:src/gameplay.js†L985-L1000】【F:src/gameplay.js†L1214-L1244】
+  - Dependencies: Pool array only.【F:src/gameplay.js†L985-L1000】
+  - Edge cases it handles or misses: No-ops on null/wrong kind; resets screen offsets in addition to world data.【F:src/gameplay.js†L985-L999】
+  - Performance: Constant-time.【F:src/gameplay.js†L985-L1000】
+  - Units / spaces: Sprite objects.【F:src/gameplay.js†L985-L1000】
+  - Determinism: Deterministic.【F:src/gameplay.js†L985-L1000】
+  - Keep / change / delete: Keep; complements allocator.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `recycleTransientSprite`
+  - Purpose: Dispatches sprite recycling to the correct pool based on kind (smoke or sparks).【F:src/gameplay.js†L1002-L1006】
+  - Inputs: `sprite` object (possibly null).【F:src/gameplay.js†L1002-L1003】
+  - Outputs: None.【F:src/gameplay.js†L1002-L1006】
+  - Side effects: May recycle sprites into pools; otherwise no-op.【F:src/gameplay.js†L1002-L1006】
+  - Shared state touched and where it’s used: Used when transient effects expire to reuse pooled objects.【F:src/gameplay.js†L1002-L1006】【F:src/gameplay.js†L1188-L1244】
+  - Dependencies: `recycleDriftSmokeSprite`, `recycleSparksSprite`.【F:src/gameplay.js†L1003-L1005】
+  - Edge cases it handles or misses: Safely ignores unknown kinds and null inputs.【F:src/gameplay.js†L1002-L1006】
+  - Performance: Constant-time.【F:src/gameplay.js†L1002-L1006】
+  - Units / spaces: Sprite objects.【F:src/gameplay.js†L1002-L1006】
+  - Determinism: Deterministic.【F:src/gameplay.js†L1002-L1006】
+  - Keep / change / delete: Keep; central transient cleanup helper.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `keyActionFromFlag`
+  - Purpose: Generates a keyboard handler that sets a specific input flag to a value.【F:src/gameplay.js†L2567-L2572】
+  - Inputs: `flag` string (input key) and `value` boolean to assign.【F:src/gameplay.js†L2567-L2570】
+  - Outputs: Function that mutates `state.input[flag]`.【F:src/gameplay.js†L2567-L2572】
+  - Side effects: Updates gameplay input state when invoked.【F:src/gameplay.js†L2567-L2572】
+  - Shared state touched and where it’s used: Used to build `keydownActions`/`keyupActions` mappings for event handlers.【F:src/gameplay.js†L2578-L2609】
+  - Dependencies: Relies on closure over `state`.【F:src/gameplay.js†L2567-L2572】
+  - Edge cases it handles or misses: Assumes flag exists on input object; no validation of event objects.【F:src/gameplay.js†L2567-L2572】
+  - Performance: Constant-time.【F:src/gameplay.js†L2567-L2572】
+  - Units / spaces: Boolean input flags.【F:src/gameplay.js†L2567-L2572】
+  - Determinism: Deterministic side effects when called.【F:src/gameplay.js†L2567-L2572】
+  - Keep / change / delete: Keep; reduces boilerplate for input mapping.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `createKeyHandler`
+  - Purpose: Wraps a lookup map of key codes into an event handler that invokes mapped actions.【F:src/gameplay.js†L2627-L2633】
+  - Inputs: `actions` object keyed by `KeyboardEvent.code`.【F:src/gameplay.js†L2627-L2628】
+  - Outputs: Function accepting an event and dispatching if a handler exists.【F:src/gameplay.js†L2627-L2633】
+  - Side effects: Executes action callbacks which may mutate gameplay state.【F:src/gameplay.js†L2627-L2633】【F:src/gameplay.js†L2578-L2609】
+  - Shared state touched and where it’s used: Used to produce `keydownHandler` and `keyupHandler` registered by the app for input processing.【F:src/gameplay.js†L2635-L2640】【F:src/app.js†L722-L767】
+  - Dependencies: Action map supplied by caller.【F:src/gameplay.js†L2627-L2633】
+  - Edge cases it handles or misses: Ignores unmapped keys; no preventDefault or repeat handling inside.【F:src/gameplay.js†L2627-L2633】
+  - Performance: Constant-time per event (map lookup).【F:src/gameplay.js†L2627-L2633】
+  - Units / spaces: KeyboardEvent codes.【F:src/gameplay.js†L2627-L2633】
+  - Determinism: Deterministic given the action map.【F:src/gameplay.js†L2627-L2633】
+  - Keep / change / delete: Keep; cleanly encapsulates event dispatch.
+  - Confidence / assumptions: High confidence.
 
 ### 3.6 Track & Environment Management (`src/world.js`)
 
 
 
 - `resolveAssetUrl`
+  - Purpose: Resolves asset paths to absolute URLs, preferring browser extension APIs and falling back to document location or raw path.【F:src/world.js†L21-L42】
+  - Inputs: `path` string (may be relative).【F:src/world.js†L21-L22】
+  - Outputs: Resolved URL string or original path when resolution fails.【F:src/world.js†L21-L42】
+  - Side effects: None; catches errors silently.【F:src/world.js†L24-L40】
+  - Shared state touched and where it’s used: Used throughout asset manifest and CSV loading to locate resources.【F:src/world.js†L45-L57】【F:src/world.js†L451-L454】
+  - Dependencies: Optional `chrome.runtime.getURL`, `global.location`, and `URL` constructor.【F:src/world.js†L24-L37】
+  - Edge cases it handles or misses: Returns input unchanged for invalid strings; ignores errors from unavailable APIs; may throw only if all fallbacks fail unexpectedly.【F:src/world.js†L21-L42】
+  - Performance: Constant-time aside from URL parsing.【F:src/world.js†L21-L42】
+  - Units / spaces: URL strings.【F:src/world.js†L21-L42】
+  - Determinism: Deterministic given environment state.【F:src/world.js†L24-L40】
+  - Keep / change / delete: Keep; centralizes path resolution across targets.
+  - Confidence / assumptions: High confidence; assumes either Chrome API or window location is available.
 
 
 
 - `loadImage`
+  - Purpose: Loads an image resource asynchronously and resolves with the DOM `Image` element.【F:src/world.js†L61-L68】
+  - Inputs: `url` string.【F:src/world.js†L61-L62】
+  - Outputs: Promise resolving to loaded `Image` or rejecting on error.【F:src/world.js†L61-L68】
+  - Side effects: Creates a new `Image` element and starts network load.【F:src/world.js†L62-L67】
+  - Shared state touched and where it’s used: None directly; used by texture loader to validate asset availability.【F:src/world.js†L70-L73】
+  - Dependencies: Browser `Image` API.【F:src/world.js†L61-L67】
+  - Edge cases it handles or misses: Relies on browser events; no timeout handling.【F:src/world.js†L62-L67】
+  - Performance: Network-bound.【F:src/world.js†L61-L68】
+  - Units / spaces: URL strings.【F:src/world.js†L61-L68】
+  - Determinism: Depends on network/cache state.【F:src/world.js†L61-L68】
+  - Keep / change / delete: Keep; minimal promise wrapper for image loading.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `defaultTextureLoader`
+  - Purpose: Baseline loader that preloads an image and returns its URL for use as a texture reference.【F:src/world.js†L70-L73】
+  - Inputs: `_key` (ignored) and `url`.【F:src/world.js†L70-L71】
+  - Outputs: Promise resolving to the provided URL after the image loads.【F:src/world.js†L70-L73】
+  - Side effects: Triggers image download via `loadImage`.【F:src/world.js†L70-L72】
+  - Shared state touched and where it’s used: Used as default in `loadTexturesWith` when no custom loader supplied.【F:src/world.js†L75-L92】
+  - Dependencies: `loadImage`.【F:src/world.js†L70-L72】
+  - Edge cases it handles or misses: Does not validate keys or transform data; fails if image load fails.【F:src/world.js†L70-L73】
+  - Performance: Network-bound.【F:src/world.js†L70-L73】
+  - Units / spaces: URL strings.【F:src/world.js†L70-L73】
+  - Determinism: Depends on network/cache state.【F:src/world.js†L70-L73】
+  - Keep / change / delete: Keep; simple default usable in browsers.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `loadTexturesWith`
+  - Purpose: Loads all manifest textures using a provided loader and prepares player vehicle fallbacks.【F:src/world.js†L75-L92】
+  - Inputs: `loader` function (defaults to `defaultTextureLoader`).【F:src/world.js†L75-L76】
+  - Outputs: Promise resolving to populated `textures` map.【F:src/world.js†L75-L92】
+  - Side effects: Populates `textures` object, including aliases for player car assets.【F:src/world.js†L80-L89】
+  - Shared state touched and where it’s used: Writes to `World.assets.textures`, consumed by rendering and sprite meta lookups.【F:src/world.js†L45-L57】【F:src/gameplay.js†L388-L401】
+  - Dependencies: Asset manifest, `resolveAssetUrl`, provided loader, and `Promise.all`.【F:src/world.js†L80-L88】
+  - Edge cases it handles or misses: Throws if loader not a function; fills `playerVehicle` fallback when missing specific asset keys.【F:src/world.js†L75-L89】
+  - Performance: Parallel loads; overall time bound by slowest asset fetch.【F:src/world.js†L80-L92】
+  - Units / spaces: Texture URL strings mapped by key.【F:src/world.js†L45-L57】【F:src/world.js†L80-L92】
+  - Determinism: Deterministic given loader behaviour and network responses.【F:src/world.js†L75-L92】
+  - Keep / change / delete: Keep; central texture bootstrap.
+  - Confidence / assumptions: High confidence; assumes manifest entries are valid URLs.
 
 
 
 - `resetCliffSeries`
+  - Purpose: Clears cliff profile arrays for all segments, resetting readiness before rebuilding.【F:src/world.js†L111-L124】
+  - Inputs: None (uses current `segments` length).【F:src/world.js†L111-L118】
+  - Outputs: None.【F:src/world.js†L111-L124】
+  - Side effects: Resizes and zeroes all cliff series arrays; marks `CLIFF_READY` false.【F:src/world.js†L111-L124】
+  - Shared state touched and where it’s used: Prepares `CLIFF_SERIES` for CSV-driven updates; called before cliff CSV parsing.【F:src/world.js†L445-L448】
+  - Dependencies: `segments` length and helper `clear` closure.【F:src/world.js†L111-L119】
+  - Edge cases it handles or misses: Assumes `segments` already sized; no-op if length zero aside from marking not ready.【F:src/world.js†L111-L124】
+  - Performance: O(n) in number of section slots.【F:src/world.js†L111-L121】
+  - Units / spaces: Cliff deltas per section.【F:src/world.js†L111-L124】
+  - Determinism: Deterministic.【F:src/world.js†L111-L124】
+  - Keep / change / delete: Keep; required before repopulating cliff data.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `randomSnowScreenColor`
+  - Purpose: Generates a randomised RGB color (with alpha 1) for per-segment snow screen shading.【F:src/world.js†L126-L130】
+  - Inputs: None.【F:src/world.js†L126-L129】
+  - Outputs: Array `[r,g,b,a]` with cosine-based variation.【F:src/world.js†L126-L130】
+  - Side effects: None.【F:src/world.js†L126-L130】
+  - Shared state touched and where it’s used: Assigned to each segment when created for snow effects.【F:src/world.js†L132-L148】
+  - Dependencies: `Math.random`, `Math.cos`, `Math.PI`.【F:src/world.js†L126-L129】
+  - Edge cases it handles or misses: Always returns alpha 1; purely stochastic without seed.【F:src/world.js†L126-L130】
+  - Performance: Constant-time.【F:src/world.js†L126-L130】
+  - Units / spaces: Normalized color components.【F:src/world.js†L126-L130】
+  - Determinism: Non-deterministic due to randomness.【F:src/world.js†L126-L130】
+  - Keep / change / delete: Keep; simple color jitter for snow overlay variety.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `roadWidthAt`
+  - Purpose: Accessor returning configured road width (currently constant).【F:src/world.js†L94-L95】
+  - Inputs: None; ignores position.【F:src/world.js†L94-L95】
+  - Outputs: Numeric road width from config.【F:src/world.js†L94-L95】
+  - Side effects: None.【F:src/world.js†L94-L95】
+  - Shared state touched and where it’s used: Used by cliff sampling and gameplay to compute widths and offsets.【F:src/world.js†L744-L746】【F:src/gameplay.js†L1681-L1684】
+  - Dependencies: `track.roadWidth` config field.【F:src/world.js†L94-L95】
+  - Edge cases it handles or misses: Assumes config provides a finite width; no per-segment variation here.【F:src/world.js†L94-L95】
+  - Performance: Constant-time.【F:src/world.js†L94-L95】
+  - Units / spaces: World lateral units.【F:src/world.js†L94-L95】
+  - Determinism: Deterministic.【F:src/world.js†L94-L95】
+  - Keep / change / delete: Keep; simple accessor for potential future variation.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `addSegment`
+  - Purpose: Appends a road segment with geometry, features, and snow color to the track list.【F:src/world.js†L132-L149】
+  - Inputs: `curve`, `y`, and optional `features` object.【F:src/world.js†L132-L138】
+  - Outputs: None (mutates `segments`).【F:src/world.js†L132-L149】
+  - Side effects: Clones feature flags, ensures rail/defaults, sets boost flags, initializes sprite/car arrays, assigns snow color.【F:src/world.js†L135-L148】
+  - Shared state touched and where it’s used: Extends `segments`, later consumed by rendering and gameplay systems.【F:src/world.js†L132-L149】【F:src/gameplay.js†L741-L749】
+  - Dependencies: `segmentLength`, `randomSnowScreenColor`, feature cloning utilities.【F:src/world.js†L132-L148】
+  - Edge cases it handles or misses: Defaults rail to true when unspecified; copies boost arrays if present.【F:src/world.js†L135-L148】
+  - Performance: Constant-time per segment creation.【F:src/world.js†L132-L149】
+  - Units / spaces: Segment indices, world y/z coordinates, feature flags.【F:src/world.js†L132-L149】
+  - Determinism: Deterministic aside from snow color randomness.【F:src/world.js†L126-L148】
+  - Keep / change / delete: Keep; fundamental builder for track segments.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `lastY`
+  - Purpose: Returns the world Y of the final segment’s end point for chaining new segments.【F:src/world.js†L159-L161】
+  - Inputs: None.【F:src/world.js†L159-L161】
+  - Outputs: Number (0 when no segments).【F:src/world.js†L159-L161】
+  - Side effects: None.【F:src/world.js†L159-L161】
+  - Shared state touched and where it’s used: Used by `addRoad` to anchor elevation continuity.【F:src/world.js†L163-L174】
+  - Dependencies: `segments` list.【F:src/world.js†L159-L161】
+  - Edge cases it handles or misses: Safe when list empty (returns 0).【F:src/world.js†L159-L161】
+  - Performance: Constant-time.【F:src/world.js†L159-L161】
+  - Units / spaces: World Y units.【F:src/world.js†L159-L161】
+  - Determinism: Deterministic.【F:src/world.js†L159-L161】
+  - Keep / change / delete: Keep; simple helper.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `addRoad`
+  - Purpose: Constructs a series of segments representing a road section with curvature, elevation, and optional boost/rail features.【F:src/world.js†L163-L238】【F:src/world.js†L209-L239】
+  - Inputs: `enter`, `hold`, `leave` counts; `curve`; `dyInSegments`; `elevationProfile`; `featurePayload`.【F:src/world.js†L163-L209】
+  - Outputs: None directly; appends segments via `addSegment`.【F:src/world.js†L187-L239】
+  - Side effects: Calculates elevation profile, boost zones, and rail presence; calls `addSegment` repeatedly, incrementing global boost ID counter when needed.【F:src/world.js†L190-L238】
+  - Shared state touched and where it’s used: Extends `segments`, updates `boostZoneIdCounter`; output drives gameplay physics and rendering lanes/boosts.【F:src/world.js†L190-L238】【F:src/gameplay.js†L741-L749】
+  - Dependencies: Helpers `clampBoostLane`, `pushZone` via features, `HEIGHT_EASE_UNIT`, `CURVE_EASE`, and `lastY`.【F:src/world.js†L168-L238】
+  - Edge cases it handles or misses: No-op when total segments <=0; scales hill steepness for short sections; ensures boost ranges validated and defaults rails when unspecified.【F:src/world.js†L163-L238】
+  - Performance: O(total segments) due to looped additions.【F:src/world.js†L230-L239】
+  - Units / spaces: Segment counts, world Y delta expressed in segment lengths, curve magnitudes.【F:src/world.js†L163-L239】
+  - Determinism: Deterministic given inputs (aside from snow color randomness in `addSegment`).【F:src/world.js†L132-L148】【F:src/world.js†L163-L239】
+  - Keep / change / delete: Keep; core track construction routine.
+  - Confidence / assumptions: High confidence; assumes config constants are valid.
 
 
 
 - `buildTrackFromCSV`
+  - Purpose: Parses track CSV to generate all road segments with curves, elevation, boost zones, and repeats.【F:src/world.js†L300-L443】
+  - Inputs: `url` to CSV file.【F:src/world.js†L333-L339】【F:src/world.js†L320-L324】
+  - Outputs: Promise that builds segments and sets `trackLength`; throws on empty results.【F:src/world.js†L300-L443】
+  - Side effects: Fetches CSV, resets segments/boost counters, and appends segments via `addRoad`.【F:src/world.js†L320-L443】
+  - Shared state touched and where it’s used: Populates `segments` and `trackLength` consumed by gameplay/world rendering; updates boost IDs.【F:src/world.js†L321-L443】【F:src/gameplay.js†L742-L749】
+  - Dependencies: `resolveAssetUrl`, `fetch`, parsing helpers for ints/floats/bools, `parseBoostZoneType`, `parseBoostLaneValue`, `clampBoostLane`, `addRoad`.【F:src/world.js†L340-L438】
+  - Edge cases it handles or misses: Skips comments/blank lines; handles aliasing for types; builds boost zones from explicit columns or legacy ranges; throws when no segments built.【F:src/world.js†L320-L443】
+  - Performance: O(lines + segments) with network overhead.【F:src/world.js†L320-L443】
+  - Units / spaces: Segment counts, curves, elevation in segment units, lane indices for boost zones.【F:src/world.js†L347-L443】
+  - Determinism: Deterministic given CSV content and config (random snow still per segment).【F:src/world.js†L132-L148】【F:src/world.js†L320-L443】
+  - Keep / change / delete: Keep; primary track ingestion path.
+  - Confidence / assumptions: Medium-high; assumes CSV schema matches expectations.
 
 
 
 - `buildCliffsFromCSV_Lite`
+  - Purpose: Loads simplified cliff profile CSV and fills cliff series arrays for both sides of the road.【F:src/world.js†L445-L544】
+  - Inputs: `url` to cliff CSV.【F:src/world.js†L451-L455】
+  - Outputs: None; mutates cliff series and readiness flag.【F:src/world.js†L445-L544】
+  - Side effects: Fetches CSV, logs warning on failure, populates `CLIFF_SERIES`, and sets `CLIFF_READY` true.【F:src/world.js†L445-L544】
+  - Shared state touched and where it’s used: Writes to `CLIFF_SERIES`, `CLIFF_READY`; used by gameplay cliff sampling for push forces and visuals.【F:src/world.js†L445-L544】【F:src/gameplay.js†L1724-L1801】
+  - Dependencies: `resolveAssetUrl`, `fetch`, easing utilities `getEase01`, and math helpers `lerp`.【F:src/world.js†L451-L518】【F:src/world.js†L502-L511】
+  - Edge cases it handles or misses: Gracefully degrades to flat cliffs when CSV missing; supports absolute/relative modes, repeats, and side selection; wraps indices modulo total sections.【F:src/world.js†L445-L544】
+  - Performance: O(lines × sectionsPerSeg × repeats); iterates through all cliff slots.【F:src/world.js†L473-L544】
+  - Units / spaces: Section-wise dx/dy offsets per side per segment fraction.【F:src/world.js†L465-L544】
+  - Determinism: Deterministic given CSV and easing functions.【F:src/world.js†L473-L544】
+  - Keep / change / delete: Keep; necessary for cliff shaping.
+  - Confidence / assumptions: Medium-high; assumes CSV authoring matches expected columns.
 
 
 
 - `enforceCliffWrap`
+  - Purpose: Copies trailing cliff samples to the start to ensure seamless wrap-around when looping the track.【F:src/world.js†L546-L563】
+  - Inputs: `copySpan` (segments to mirror).【F:src/world.js†L546-L551】
+  - Outputs: None.【F:src/world.js†L546-L563】
+  - Side effects: Mutates `CLIFF_SERIES` arrays for the first `copySpan` segments when ready.【F:src/world.js†L546-L563】
+  - Shared state touched and where it’s used: Run after cliff build to avoid visual seams; influences gameplay cliff sampling.【F:src/world.js†L546-L563】【F:src/gameplay.js†L1724-L1801】
+  - Dependencies: `CLIFF_SERIES`, `segments.length`, arithmetic helpers.【F:src/world.js†L546-L562】
+  - Edge cases it handles or misses: No-op when cliffs not ready or no segments; clamps copy span to available sections.【F:src/world.js†L546-L563】
+  - Performance: O(copySpan × sectionsPerSeg).【F:src/world.js†L556-L563】
+  - Units / spaces: Cliff sample arrays per section.【F:src/world.js†L546-L563】
+  - Determinism: Deterministic.【F:src/world.js†L546-L563】
+  - Keep / change / delete: Keep; ensures looping continuity.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `pushZone`
+  - Purpose: Adds a texture zone descriptor to a stack with start/end indices and tiling info.【F:src/world.js†L565-L569】
+  - Inputs: `stack` array, `start`, `end`, optional `tile` repeat.【F:src/world.js†L565-L568】
+  - Outputs: None; mutates stack.【F:src/world.js†L565-L569】
+  - Side effects: Pushes normalized zone object onto stack.【F:src/world.js†L565-L569】
+  - Shared state touched and where it’s used: Used during scene reset to seed road/rail/cliff texture zones for rendering.【F:src/world.js†L565-L569】【F:src/gameplay.js†L2722-L2735】
+  - Dependencies: Basic math for ordering and tiling clamp.【F:src/world.js†L565-L568】
+  - Edge cases it handles or misses: Swaps start/end when reversed; clamps tile to at least 1.【F:src/world.js†L565-L569】
+  - Performance: Constant-time.【F:src/world.js†L565-L569】
+  - Units / spaces: Segment indices and tile counts.【F:src/world.js†L565-L569】
+  - Determinism: Deterministic.【F:src/world.js†L565-L569】
+  - Keep / change / delete: Keep; simple helper for zone prep.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `findZone`
+  - Purpose: Finds the last zone covering a segment index within a stack (LIFO search).【F:src/world.js†L571-L574】
+  - Inputs: `stack` of zones, `segIndex`.【F:src/world.js†L571-L573】
+  - Outputs: Matching zone or `null`.【F:src/world.js†L571-L574】
+  - Side effects: None.【F:src/world.js†L571-L574】
+  - Shared state touched and where it’s used: Supports texture V-span computation in `vSpanForSeg`.【F:src/world.js†L576-L582】
+  - Dependencies: Reverse iteration over stack.【F:src/world.js†L571-L574】
+  - Edge cases it handles or misses: Returns null when none cover index; assumes zones have `start`/`end`.【F:src/world.js†L571-L574】
+  - Performance: O(n) in stack length.【F:src/world.js†L571-L574】
+  - Units / spaces: Segment indices.【F:src/world.js†L571-L574】
+  - Determinism: Deterministic.【F:src/world.js†L571-L574】
+  - Keep / change / delete: Keep; straightforward search helper.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `vSpanForSeg`
+  - Purpose: Computes the V texture span for a segment based on its containing zone tiling.【F:src/world.js†L576-L582】
+  - Inputs: `zones` stack and `segIndex`.【F:src/world.js†L576-L579】
+  - Outputs: Tuple `[v0, v1]` normalized within [0,1].【F:src/world.js†L576-L582】
+  - Side effects: None.【F:src/world.js†L576-L582】
+  - Shared state touched and where it’s used: Used during rendering to map texture coordinates per segment.【F:src/world.js†L576-L582】【F:src/render.js†L873-L887】
+  - Dependencies: `findZone` and arithmetic on tile count.【F:src/world.js†L576-L582】
+  - Edge cases it handles or misses: Defaults to full span when no zone found; guards tile with max(1).【F:src/world.js†L576-L582】
+  - Performance: Constant-time.【F:src/world.js†L576-L582】
+  - Units / spaces: Normalized texture V coordinates.【F:src/world.js†L576-L582】
+  - Determinism: Deterministic.【F:src/world.js†L576-L582】
+  - Keep / change / delete: Keep; small utility for UV mapping.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `clampBoostLane`
+  - Purpose: Clamps a boost lane value to configured min/max bounds.【F:src/world.js†L584-L592】
+  - Inputs: `v` number (or null).【F:src/world.js†L584-L585】
+  - Outputs: Clamped lane or original null.【F:src/world.js†L584-L592】
+  - Side effects: None.【F:src/world.js†L584-L592】
+  - Shared state touched and where it’s used: Used when parsing boost lanes and determining zone bounds.【F:src/world.js†L408-L418】【F:src/world.js†L602-L620】
+  - Dependencies: Config `lanes.boost`.【F:src/world.js†L584-L592】
+  - Edge cases it handles or misses: Returns null for nullish; clamps otherwise.【F:src/world.js†L584-L592】
+  - Performance: Constant-time.【F:src/world.js†L584-L592】
+  - Units / spaces: Boost lane indices (could be fractional).【F:src/world.js†L584-L592】
+  - Determinism: Deterministic.【F:src/world.js†L584-L592】
+  - Keep / change / delete: Keep; central lane guard.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `clampRoadLane`
+  - Purpose: Clamps a road lane value to configured road bounds with optional fallback.【F:src/world.js†L594-L600】
+  - Inputs: `v` number (nullable) and `fallback`.【F:src/world.js†L594-L596】
+  - Outputs: Clamped lane or fallback when nullish.【F:src/world.js†L594-L600】
+  - Side effects: None.【F:src/world.js†L594-L600】
+  - Shared state touched and where it’s used: Used by lane conversions and gameplay clamping of player offsets.【F:src/world.js†L602-L612】【F:src/gameplay.js†L2680-L2686】
+  - Dependencies: Config `lanes.road`.【F:src/world.js†L594-L600】
+  - Edge cases it handles or misses: Accepts fallback when `v` null; clamps otherwise.【F:src/world.js†L594-L600】
+  - Performance: Constant-time.【F:src/world.js†L594-L600】
+  - Units / spaces: Road lane indices.【F:src/world.js†L594-L600】
+  - Determinism: Deterministic.【F:src/world.js†L594-L600】
+  - Keep / change / delete: Keep; basic lane guard.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `laneToCenterOffset`
+  - Purpose: Converts a lane index to a center-offset distance using road lane bounds.【F:src/world.js†L602-L604】
+  - Inputs: `n` lane index, optional fallback.【F:src/world.js†L602-L603】
+  - Outputs: Half-lane-scaled offset value.【F:src/world.js†L602-L604】
+  - Side effects: None.【F:src/world.js†L602-L604】
+  - Shared state touched and where it’s used: Used in boost zone bounds and gameplay to translate lanes to offsets.【F:src/world.js†L605-L612】【F:src/gameplay.js†L1664-L1668】
+  - Dependencies: `clampRoadLane`.【F:src/world.js†L602-L603】
+  - Edge cases it handles or misses: Uses fallback when lane invalid.【F:src/world.js†L602-L604】
+  - Performance: Constant-time.【F:src/world.js†L602-L604】
+  - Units / spaces: Normalized lateral offsets (half-lane spacing).【F:src/world.js†L602-L604】
+  - Determinism: Deterministic.【F:src/world.js†L602-L604】
+  - Keep / change / delete: Keep; simple conversion helper.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `laneToRoadRatio`
+  - Purpose: Expresses a lane index as a 0–1 ratio across the road width.【F:src/world.js†L605-L607】
+  - Inputs: `n` lane index, optional fallback.【F:src/world.js†L605-L606】
+  - Outputs: Normalized ratio between min and max lanes.【F:src/world.js†L605-L607】
+  - Side effects: None.【F:src/world.js†L605-L607】
+  - Shared state touched and where it’s used: Used when computing boost lane bounds for rendering/physics.【F:src/world.js†L608-L620】
+  - Dependencies: `clampRoadLane` and config lane limits.【F:src/world.js†L605-L607】
+  - Edge cases it handles or misses: Assumes lane range not zero-width; relies on config consistency.【F:src/world.js†L605-L607】
+  - Performance: Constant-time.【F:src/world.js†L605-L607】
+  - Units / spaces: Normalized ratios.【F:src/world.js†L605-L607】
+  - Determinism: Deterministic.【F:src/world.js†L605-L607】
+  - Keep / change / delete: Keep; useful for UV/placement calculations.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `getZoneLaneBounds`
+  - Purpose: Computes clamped lane and offset bounds for a boost zone, including derived ratios.【F:src/world.js†L608-L620】
+  - Inputs: `zone` object with `nStart`/`nEnd` and visibility flag.【F:src/world.js†L608-L614】
+  - Outputs: Bounds object with start/end lanes, min/max lanes, center offsets, and road ratios, or `null` if invisible.【F:src/world.js†L608-L620】
+  - Side effects: None.【F:src/world.js†L608-L620】
+  - Shared state touched and where it’s used: Supports boost zone rendering and gameplay checks for lane limits.【F:src/world.js†L608-L620】【F:src/gameplay.js†L1205-L1217】
+  - Dependencies: `clampBoostLane`, `laneToCenterOffset`, `laneToRoadRatio`.【F:src/world.js†L612-L620】
+  - Edge cases it handles or misses: Returns null for invisible zones; defaults lanes when missing via fallbacks.【F:src/world.js†L608-L620】
+  - Performance: Constant-time.【F:src/world.js†L608-L620】
+  - Units / spaces: Lane indices, offsets, and ratios.【F:src/world.js†L608-L620】
+  - Determinism: Deterministic.【F:src/world.js†L608-L620】
+  - Keep / change / delete: Keep; consolidates repeated lane math.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `parseBoostZoneType`
+  - Purpose: Normalizes boost type tokens from CSV into configured boost type constants.【F:src/world.js†L636-L642】
+  - Inputs: `raw` value (string/any).【F:src/world.js†L636-L637】
+  - Outputs: Boost type constant or `null`.【F:src/world.js†L640-L642】
+  - Side effects: None.【F:src/world.js†L636-L642】
+  - Shared state touched and where it’s used: Used while parsing track CSV boost zones.【F:src/world.js†L381-L433】
+  - Dependencies: Config `boost.types` and string normalization.【F:src/world.js†L636-L641】
+  - Edge cases it handles or misses: Accepts multiple aliases; returns null on unknown tokens.【F:src/world.js†L636-L642】
+  - Performance: Constant-time.【F:src/world.js†L636-L642】
+  - Units / spaces: String tokens to enum values.【F:src/world.js†L636-L642】
+  - Determinism: Deterministic.【F:src/world.js†L636-L642】
+  - Keep / change / delete: Keep; avoids repeated token checks.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `parseBoostLaneValue`
+  - Purpose: Parses and clamps a numeric lane value for boost zones from CSV tokens.【F:src/world.js†L645-L653】
+  - Inputs: `raw` value (string/any).【F:src/world.js†L645-L646】
+  - Outputs: Clamped lane number or `null`.【F:src/world.js†L645-L653】
+  - Side effects: None.【F:src/world.js†L645-L653】
+  - Shared state touched and where it’s used: Used while building boost zone specs during track CSV parsing.【F:src/world.js†L381-L433】
+  - Dependencies: `Number.parseFloat`, lane config bounds.【F:src/world.js†L647-L653】
+  - Edge cases it handles or misses: Returns null on invalid tokens; clamps to min/max inclusive.【F:src/world.js†L645-L653】
+  - Performance: Constant-time.【F:src/world.js†L645-L653】
+  - Units / spaces: Lane indices.【F:src/world.js†L645-L653】
+  - Determinism: Deterministic.【F:src/world.js†L645-L653】
+  - Keep / change / delete: Keep; small parsing helper.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `segmentAtS`
+  - Purpose: Returns the segment object containing a given longitudinal distance along the looped track.【F:src/world.js†L656-L661】
+  - Inputs: `s` distance along track (can be negative).【F:src/world.js†L656-L658】
+  - Outputs: Segment or `null` when track invalid.【F:src/world.js†L656-L661】
+  - Side effects: None.【F:src/world.js†L656-L661】
+  - Shared state touched and where it’s used: Widely used by gameplay for sampling height, cliffs, collisions, etc.【F:src/world.js†L663-L670】【F:src/gameplay.js†L1681-L1684】
+  - Dependencies: `segments`, `trackLength`, `segmentLength`.【F:src/world.js†L656-L660】
+  - Edge cases it handles or misses: Handles wrapping for negative/overflowing `s`; returns null when no segments or non-positive length.【F:src/world.js†L656-L661】
+  - Performance: Constant-time.【F:src/world.js†L656-L661】
+  - Units / spaces: World S units (meters/segments).【F:src/world.js†L656-L660】
+  - Determinism: Deterministic.【F:src/world.js†L656-L661】
+  - Keep / change / delete: Keep; essential accessor.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `elevationAt`
+  - Purpose: Computes interpolated ground elevation at a longitudinal position along the track.【F:src/world.js†L663-L670】
+  - Inputs: `s` distance.【F:src/world.js†L663-L667】
+  - Outputs: Elevation value (Y).【F:src/world.js†L668-L670】
+  - Side effects: None.【F:src/world.js†L663-L670】
+  - Shared state touched and where it’s used: Used by gameplay physics for height queries and cliff sampling.【F:src/world.js†L663-L670】【F:src/gameplay.js†L1657-L1660】
+  - Dependencies: `segmentAtS`, `lerp`, `segmentLength`.【F:src/world.js†L663-L670】
+  - Edge cases it handles or misses: Handles negative `s` via wrapping; returns 0 when no segments or invalid length.【F:src/world.js†L663-L670】
+  - Performance: Constant-time.【F:src/world.js†L663-L670】
+  - Units / spaces: World Y units.【F:src/world.js†L663-L670】
+  - Determinism: Deterministic.【F:src/world.js†L663-L670】
+  - Keep / change / delete: Keep; core height sampler.
+  - Confidence / assumptions: High confidence.
 
 
 
 - `cliffParamsAt`
+  - Purpose: Samples interpolated cliff geometry parameters for a segment at a longitudinal fraction `t`.【F:src/world.js†L673-L712】
+  - Inputs: `segIndex`, optional `t` in [0,1].【F:src/world.js†L673-L691】
+  - Outputs: Object with `leftA/leftB/rightA/rightB` dx/dy pairs.【F:src/world.js†L687-L712】
+  - Side effects: None.【F:src/world.js†L673-L712】
+  - Shared state touched and where it’s used: Feeds gameplay cliff sampling for pushback and tilt calculations.【F:src/world.js†L715-L760】【F:src/gameplay.js†L1724-L1780】
+  - Dependencies: `CLIFF_SERIES`, `clamp01`, `lerp`, and `segments` length.【F:src/world.js†L673-L705】
+  - Edge cases it handles or misses: Returns flat zero params when cliffs not ready or no sections; handles wrapping indices and missing samples by falling back to neighbor values.【F:src/world.js†L673-L712】
+  - Performance: Constant-time.【F:src/world.js†L673-L712】
+  - Units / spaces: Cliff widths/deltas in world units per section.【F:src/world.js†L673-L712】
+  - Determinism: Deterministic.【F:src/world.js†L673-L712】
+  - Keep / change / delete: Keep; core cliff data accessor.
+  - Confidence / assumptions: High confidence; assumes `CLIFF_READY` set appropriately.
   
   
   
