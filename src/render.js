@@ -17,13 +17,6 @@
     boost,
     tilt: tiltConfig = {},
     build = {},
-    snowScreenDistance = 0,
-    snowScreenDensity = 1,
-    snowDensity = 1,
-    snowSize = { min: 1, max: 1.5 },
-    snowSpeed = { min: 0.1, max: 0.2 },
-    snowStretch = 1,
-    snowScreenSize = 1,
   } = Config;
 
   const {
@@ -202,8 +195,6 @@
       npcCount: 0,
       propCount: 0,
       playerCount: 0,
-      snowScreenCount: 0,
-      snowQuadCount: 0,
       boostQuadCount: 0,
       physicsSteps: 0,
       segments: 0,
@@ -284,12 +275,6 @@
         else if (kind === 'prop') stats.current.propCount += 1;
         else if (kind === 'player') stats.current.playerCount += 1;
       },
-      registerSnowScreen(){
-        stats.current.snowScreenCount += 1;
-      },
-      registerSnowQuad(){
-        stats.current.snowQuadCount += 1;
-      },
       registerBoostQuad(){
         stats.current.boostQuadCount += 1;
       },
@@ -315,63 +300,6 @@
 
   const perf = createPerfTracker();
 
-  function isSnowFeatureEnabled(){
-    const app = global.App;
-    if (app && typeof app.isSnowEnabled === 'function') {
-      try {
-        return !!app.isSnowEnabled();
-      } catch (err) {
-        console.warn('App.isSnowEnabled threw', err);
-        return true;
-      }
-    }
-    return true;
-  }
-
-  function numericOr(value, fallback){
-    const num = Number(value);
-    return Number.isFinite(num) ? num : fallback;
-  }
-
-  function orderedRange(minVal, maxVal){
-    return minVal <= maxVal
-      ? { min: minVal, max: maxVal }
-      : { min: maxVal, max: minVal };
-  }
-
-  function rangeFromConfig(value, fallbackMin, fallbackMax){
-    if (Array.isArray(value) && value.length >= 2){
-      const minVal = numericOr(value[0], fallbackMin);
-      const maxVal = numericOr(value[1], fallbackMax);
-      return orderedRange(minVal, maxVal);
-    }
-    if (value && typeof value === 'object'){
-      const minVal = numericOr(value.min, fallbackMin);
-      const maxVal = numericOr(value.max, fallbackMax);
-      return orderedRange(minVal, maxVal);
-    }
-    return orderedRange(fallbackMin, numericOr(value, fallbackMax));
-  }
-  const snowSizeRange = rangeFromConfig(snowSize, 10, 30);
-  const snowSpeedRange = rangeFromConfig(snowSpeed, 0.3, 1.0);
-  const snowDensityFactor = Math.max(0, numericOr(snowDensity, 1));
-  const snowStretchFactor = Math.max(0, numericOr(snowStretch, 1));
-  const snowScreenSizeFactor = Math.max(0, numericOr(snowScreenSize, 1));
-  const SNOW_SCREEN_MIN_RADIUS = 12;
-  const SNOW_SCREEN_FOOTPRINT_SCALE = 0.8;
-  const SNOW_SCREEN_BASE_EXPANSION = 5; // expand the base snow screen footprint without altering per-axis scaling math
-  const SNOW_FIELD_POOL_SIZE = 12;
-  const SNOW_FIELD_SEED_STEP = 0x45d9f3b;
-  const EMPTY_SNOW_FIELD = { flakes: [], phaseOffset: 0 };
-
-  function computeSnowScreenBaseRadius(scale, roadWidth){
-    const base = Math.max(
-      SNOW_SCREEN_MIN_RADIUS,
-      scale * roadWidth * HALF_VIEW * SNOW_SCREEN_FOOTPRINT_SCALE,
-    );
-    return base * SNOW_SCREEN_BASE_EXPANSION * snowScreenSizeFactor;
-  }
-
   function mulberry32(seed){
     let t = seed >>> 0;
     return function(){
@@ -380,43 +308,6 @@
       r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
       return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
     };
-  }
-
-  const snowFieldPool = [];
-
-  function buildSnowField(seed){
-    const rng = mulberry32(seed);
-    const baseCount = 80 * snowDensityFactor;
-    const variance = 40 * snowDensityFactor;
-    const flakeCount = Math.max(0, Math.round(baseCount + rng() * variance));
-    const flakes = new Array(flakeCount);
-    for (let i = 0; i < flakeCount; i++){
-      flakes[i] = {
-        baseX: rng(),
-        baseY: rng(),
-        speed: lerp(snowSpeedRange.min, snowSpeedRange.max, rng()),
-        swayAmp: 0.05 + rng() * 0.08,
-        swayFreq: 0.5 + rng() * 1.5,
-        phase: rng() * Math.PI * 2,
-        size: rng(),
-      };
-    }
-    return { flakes, phaseOffset: rng() * 1000 };
-  }
-
-  function ensureSnowFieldPool(){
-    if (snowFieldPool.length > 0) return;
-    for (let i = 0; i < SNOW_FIELD_POOL_SIZE; i++){
-      const seed = 0x9E3779B9 ^ ((i + 1) * SNOW_FIELD_SEED_STEP);
-      snowFieldPool.push(buildSnowField(seed));
-    }
-  }
-
-  function snowFieldFor(segIndex = 0){
-    ensureSnowFieldPool();
-    if (snowFieldPool.length === 0) return EMPTY_SNOW_FIELD;
-    const idx = Math.abs(segIndex) % snowFieldPool.length;
-    return snowFieldPool[idx] || EMPTY_SNOW_FIELD;
   }
 
   const segments = data.segments;
@@ -911,10 +802,6 @@
     const drawList = [];
     const trackLength = getTrackLength();
     const SPRITE_META = state.spriteMeta;
-    const snowMaxSegments = Number.isFinite(snowScreenDistance)
-      ? Math.max(0, Math.floor(snowScreenDistance))
-      : track.drawDistance;
-    const snowStride = Math.max(1, Math.floor(snowScreenDensity || 1));
     let x = 0;
     let dx = -(baseSeg.curve * basePct);
 
@@ -1028,36 +915,6 @@
         p1RS,
         p2RS,
       });
-
-      const snowScreenActive =
-        isSnowFeatureEnabled()
-        && seg && seg.snowScreen && snowMaxSegments > 0 && n < snowMaxSegments && (seg.index % snowStride === 0);
-      if (snowScreenActive){
-        const midT = 0.5;
-        const scaleMid = lerp(p1.screen.scale, p2.screen.scale, midT);
-        const rwMid = lerp(rw1, rw2, midT);
-        const centerX = lerp(p1.screen.x, p2.screen.x, midT);
-        const centerY = lerp(p1.screen.y, p2.screen.y, midT);
-        const zMid = lerp(p1.camera.z, p2.camera.z, midT);
-        const farScale = spriteFarScaleFromZ(zMid);
-        const baseRadius = computeSnowScreenBaseRadius(scaleMid, rwMid);
-        const sizePx = baseRadius * farScale * 2;
-        const color = (seg.snowScreen && Array.isArray(seg.snowScreen.color))
-          ? seg.snowScreen.color
-          : [1, 1, 1, 1];
-        if (sizePx > 0){
-          drawList.push({
-            type: 'snowScreen',
-            depth: zMid + 1e-3,
-            x: centerX,
-            y: centerY,
-            size: sizePx,
-            color,
-            z: zMid,
-            segIndex: seg.index,
-          });
-        }
-      }
 
       for (let i = 0; i < seg.cars.length; i++){
         const car = seg.cars[i];
@@ -1270,108 +1127,10 @@
             item.colorKey,
           );
         }
-      } else if (item.type === 'snowScreen'){
-        perf.registerSnowScreen();
-        renderSnowScreen(item);
       } else if (item.type === 'player'){
         perf.registerSprite('player');
         renderPlayer(item);
       }
-    }
-  }
-
-  function renderSnowScreen(item){
-    if (!glr) return;
-    if (!isSnowFeatureEnabled()) return;
-    const { x, y, size, color = [1, 1, 1, 1], z, segIndex } = item;
-    if (size <= 0) return;
-    const radius = size * 0.5;
-    const diameter = radius * 2;
-
-    const fogVals = fogArray(z || 0);
-    const { flakes, phaseOffset } = snowFieldFor(segIndex);
-    const time = (state && state.phys && typeof state.phys.t === 'number')
-      ? state.phys.t
-      : ((typeof performance !== 'undefined' && typeof performance.now === 'function')
-        ? performance.now() / 1000
-        : 0);
-    const animTime = time + phaseOffset;
-    const alpha = Array.isArray(color) && color.length >= 4 ? color[3] : 1;
-    const flakeColor = [1, 1, 1, alpha];
-
-    const topSpeed = (player && Number.isFinite(player.topSpeed) && player.topSpeed !== 0)
-      ? Math.abs(player.topSpeed)
-      : 1;
-    const phys = state && state.phys ? state.phys : null;
-    const speedPct = clamp(Math.abs(phys && Number.isFinite(phys.vtan) ? phys.vtan : 0) / topSpeed, 0, 1);
-    const closeness = clamp(1 - fogFactorFromZ(z || 0), 0, 1);
-    const viewCenterX = (HALF_VIEW && HALF_VIEW > 0) ? HALF_VIEW : (W * 0.5);
-    const viewCenterY = (H && H > 0) ? H * 0.5 : y;
-    const maxRadius = Math.max(1, Math.hypot(viewCenterX || 0, viewCenterY || 0));
-
-    for (let i = 0; i < flakes.length; i++){
-      const flake = flakes[i];
-      const fallT = animTime * flake.speed;
-      let normY = (flake.baseY + fallT) % 1;
-      if (normY < 0) normY += 1;
-      const sway = Math.sin(animTime * flake.swayFreq + flake.phase) * flake.swayAmp;
-      const normX = clamp((flake.baseX - 0.5) + sway, -0.6, 0.6);
-      const localY = normY - 0.5;
-      const px = x + normX * diameter;
-      const py = y + localY * diameter;
-      const baseSizePx = lerp(snowSizeRange.min, snowSizeRange.max, clamp(flake.size, 0, 1));
-      const perspectiveScale = clamp(radius / 128, 0.25, 2.0);
-      const flakeSizePx = Math.max(1, Math.round(baseSizePx * perspectiveScale));
-      const fHalf = flakeSizePx * 0.5;
-
-      const quadVerts = [
-        { keyX: 'x1', keyY: 'y1', x: px - fHalf, y: py - fHalf },
-        { keyX: 'x2', keyY: 'y2', x: px + fHalf, y: py - fHalf },
-        { keyX: 'x3', keyY: 'y3', x: px + fHalf, y: py + fHalf },
-        { keyX: 'x4', keyY: 'y4', x: px - fHalf, y: py + fHalf },
-      ];
-
-      if (speedPct > 0 && closeness > 0){
-        const dirX = px - viewCenterX;
-        const dirY = py - viewCenterY;
-        const dirLen = Math.hypot(dirX, dirY);
-        if (dirLen > 1e-3){
-          const normDirX = dirX / dirLen;
-          const normDirY = dirY / dirLen;
-          const radialFactor = clamp(dirLen / maxRadius, 0, 1);
-          const stretchScale = snowStretchFactor;
-          const stretchBase = flakeSizePx * speedPct * closeness * stretchScale;
-          const edgeBias = Math.pow(radialFactor, 1.75);
-          const stretchAmount = Math.min(
-            flakeSizePx * 4 * stretchScale,
-            stretchBase * lerp(0.05, 1.5, edgeBias)
-          );
-
-          if (stretchAmount > 0.01){
-            const vertsByDot = quadVerts
-              .map((v) => ({
-                vert: v,
-                dot: (v.x - viewCenterX) * normDirX + (v.y - viewCenterY) * normDirY,
-              }))
-              .sort((a, b) => a.dot - b.dot);
-
-            for (let j = 2; j < vertsByDot.length; j++){
-              const { vert } = vertsByDot[j];
-              vert.x += normDirX * stretchAmount;
-              vert.y += normDirY * stretchAmount;
-            }
-          }
-        }
-      }
-
-      const quad = quadVerts.reduce((acc, v) => {
-        acc[v.keyX] = v.x;
-        acc[v.keyY] = v.y;
-        return acc;
-      }, {});
-
-      perf.registerSnowQuad();
-      glr.drawQuadSolid(quad, flakeColor, fogVals);
     }
   }
 
@@ -1702,7 +1461,6 @@
         `Visible quads: ${fmtCount(perfStats.quadCount)} (solid ${fmtCount(perfStats.solidQuadCount)}, textured ${fmtCount(perfStats.texturedQuadCount)})`,
         `Draw calls: ${fmtCount(perfStats.drawCalls)} | Draw list: ${fmtCount(perfStats.drawListSize)} items`,
         `Strips: ${fmtCount(perfStats.stripCount)} | Sprites: ${fmtCount(perfStats.spriteCount)} (props ${fmtCount(perfStats.propCount)}, player ${fmtCount(perfStats.playerCount)})`,
-        `Snow: ${fmtCount(perfStats.snowQuadCount)} quads across ${fmtCount(perfStats.snowScreenCount)} screens`,
         `Boost quads: ${fmtCount(perfStats.boostQuadCount)} | Physics steps: ${fmtCount(perfStats.physicsSteps)} | Segments: ${fmtCount(perfStats.segments)}`,
       );
     }
