@@ -16,7 +16,6 @@
     boost,
     lanes,
     tilt: tiltConfig = {},
-    nearMiss: nearMissConfig = {},
     forceLandingOnCarImpact = false,
   } = Config;
 
@@ -24,26 +23,6 @@
     base: tiltBase = { tiltDir: 1, tiltCurveWeight: 0, tiltEase: 0.1, tiltSens: 0, tiltMaxDeg: 0 },
     additive: tiltAdd = { tiltAddEnabled: false, tiltAddMaxDeg: null },
   } = tiltConfig;
-
-  const {
-    forwardDistanceScale: nearMissForwardScale = 0.5,
-    forwardDistanceMin: nearMissForwardMinRaw = 5,
-    forwardDistanceFallback: nearMissForwardFallbackRaw = 12,
-  } = nearMissConfig;
-
-  const NEAR_MISS_FORWARD_MIN = Math.max(
-    0,
-    Number.isFinite(nearMissForwardMinRaw) ? nearMissForwardMinRaw : 5,
-  );
-  const NEAR_MISS_FORWARD_FALLBACK = (() => {
-    const fallback = Number.isFinite(nearMissForwardFallbackRaw)
-      ? nearMissForwardFallbackRaw
-      : 12;
-    return Math.max(NEAR_MISS_FORWARD_MIN, fallback);
-  })();
-  const NEAR_MISS_FORWARD_SCALE = Number.isFinite(nearMissForwardScale)
-    ? nearMissForwardScale
-    : 0.5;
 
   const {
     clamp,
@@ -918,47 +897,12 @@
     return spriteDataPromise;
   }
 
-  const CAR_COLLISION_COOLDOWN = 1 / 120;
-  const COLLISION_PUSH_DURATION = 0.45;
-  const INTERACTABLE_COLLISION_PUSH_FORWARD_MAX_SEGMENTS = 12;
-  const INTERACTABLE_COLLISION_PUSH_LATERAL_MAX = 1;
-  const CAR_COLLISION_STAMP = Symbol('carCollisionStamp');
-  const CAR_NEAR_MISS_READY = Symbol('carNearMissReady');
-  const NEAR_MISS_LATERAL_SCALE = 1.2;
-  const NEAR_MISS_RESET_SCALE = 1.8;
-  const NEAR_MISS_FORWARD_DISTANCE = (() => {
-    if (
-      Number.isFinite(segmentLength)
-      && segmentLength > 0
-      && NEAR_MISS_FORWARD_SCALE > 0
-    ) {
-      const scaledDistance = segmentLength * NEAR_MISS_FORWARD_SCALE;
-      if (Number.isFinite(scaledDistance) && scaledDistance > 0) {
-        return Math.max(NEAR_MISS_FORWARD_MIN, scaledDistance);
-      }
-    }
-    return NEAR_MISS_FORWARD_FALLBACK > 0
-      ? NEAR_MISS_FORWARD_FALLBACK
-      : Math.max(12, NEAR_MISS_FORWARD_MIN);
-  })();
-  const NEAR_MISS_SPEED_MARGIN = 1;
-  const GUARD_RAIL_HIT_COOLDOWN = 0.5;
-  const OFF_ROAD_THRESHOLD = 1;
-
   const defaultGetKindScale = (kind) => (kind === 'PLAYER' ? player.scale : 1);
 
   function createInitialMetrics() {
     return {
-      nearMisses: 0,
-      guardRailHits: 0,
-      guardRailContactTime: 0,
       pickupsCollected: 0,
       airTime: 0,
-      topSpeed: 0,
-      respawnCount: 0,
-      offRoadTime: 0,
-      guardRailCooldownTimer: 0,
-      guardRailContactActive: false,
     };
   }
 
@@ -1121,131 +1065,6 @@
 
   function npcForwardSpeed(car) {
     return 0;
-  }
-
-  function ensureCarNearMissReset(car, combinedHalf, lateralGap) {
-    return;
-  }
-
-  function tryRegisterCarNearMiss(car, combinedHalf, lateralGap) {
-    return;
-  }
-
-  function computeCollisionPush(
-    forwardSpeed,
-    playerOffset,
-    targetOffset,
-    forwardMaxSegments = 0,
-    lateralMax = 0,
-  ) {
-    const baseSpeed = Math.max(0, Number.isFinite(forwardSpeed) ? forwardSpeed : 0);
-    const maxSpeed = (player && Number.isFinite(player.topSpeed)) ? Math.max(player.topSpeed, 0) : 0;
-    if (baseSpeed <= 1e-4 || maxSpeed <= 1e-4 || !Number.isFinite(segmentLength) || segmentLength <= 0) {
-      return null;
-    }
-
-    const speedRatio = clamp01(baseSpeed / maxSpeed);
-    const forwardDistance = speedRatio * forwardMaxSegments * segmentLength;
-
-    let lateralDistance = 0;
-    let lateralDir = 0;
-    if (Number.isFinite(playerOffset) && Number.isFinite(targetOffset)) {
-      const delta = playerOffset - targetOffset;
-      const absDelta = Math.abs(delta);
-      if (absDelta > 1e-4) {
-        lateralDir = -(Math.sign(delta) || 1);
-        const offsetRatio = 1 - clamp01(absDelta);
-        lateralDistance = speedRatio * lateralMax * offsetRatio;
-      }
-    }
-
-    if (forwardDistance <= 1e-4 && lateralDistance <= 1e-4) return null;
-
-    const duration = Math.max(COLLISION_PUSH_DURATION, 1e-4);
-    return {
-      forwardVel: forwardDistance / duration,
-      lateralVel: (lateralDistance * lateralDir) / duration,
-    };
-  }
-
-  function configureImpactableSprite(sprite) {
-    if (!sprite || !sprite.impactable) return null;
-
-    if (!sprite.impactState) {
-      sprite.impactState = { timer: 0, lateralVel: 0, forwardVel: 0 };
-    }
-
-    const impact = sprite.impactState;
-    if (!Number.isFinite(impact.timer)) impact.timer = 0;
-    if (!Number.isFinite(impact.lateralVel)) impact.lateralVel = 0;
-    if (!Number.isFinite(impact.forwardVel)) impact.forwardVel = 0;
-
-    return impact;
-  }
-
-  function applyImpactPushToSprite(sprite) {
-    if (!sprite || !sprite.impactable) return;
-
-    const impact = configureImpactableSprite(sprite);
-    if (!impact) return;
-
-    const push = computeCollisionPush(
-      currentPlayerForwardSpeed(),
-      state.playerN,
-      sprite.offset,
-      INTERACTABLE_COLLISION_PUSH_FORWARD_MAX_SEGMENTS,
-      INTERACTABLE_COLLISION_PUSH_LATERAL_MAX,
-    );
-    if (!push) return;
-
-    impact.lateralVel = push.lateralVel;
-    impact.forwardVel = push.forwardVel;
-    impact.timer = COLLISION_PUSH_DURATION;
-  }
-
-  function updateImpactableSprite(sprite, dt, currentSeg = null) {
-    if (!sprite || !sprite.impactable) return null;
-    const impact = configureImpactableSprite(sprite);
-    if (!impact) return null;
-
-    let nextSeg = null;
-
-    if (impact.timer > 0 && dt > 0) {
-      const step = Math.min(dt, impact.timer);
-
-      const duration = Math.max(COLLISION_PUSH_DURATION, 1e-4);
-      const startRatio = clamp01(impact.timer / duration);
-      const endRatio = clamp01((impact.timer - step) / duration);
-      const avgRatio = 0.5 * (startRatio + endRatio);
-
-      if (impact.lateralVel) {
-        sprite.offset += impact.lateralVel * avgRatio * step;
-      }
-
-      if (impact.forwardVel) {
-        const trackLength = trackLengthRef();
-        if (trackLength > 0) {
-          const baseSeg = currentSeg || segmentAtIndex(sprite.segIndex ?? 0);
-          const baseS = Number.isFinite(sprite.s)
-            ? sprite.s
-            : (baseSeg ? baseSeg.p1.world.z : state.phys.s);
-          const nextS = wrapDistance(baseS, impact.forwardVel * avgRatio * step, trackLength);
-          sprite.s = nextS;
-          const candidate = segmentAtS(nextS);
-          if (candidate && currentSeg && candidate !== currentSeg) {
-            nextSeg = candidate;
-          }
-        }
-      }
-
-      impact.timer = Math.max(0, impact.timer - step);
-      if (impact.timer <= 0) {
-        impact.lateralVel = 0;
-        impact.forwardVel = 0;
-      }
-    }
-
-    return nextSeg;
   }
 
   function carHitboxHeight(car, s = state.phys.s) {
@@ -1609,10 +1428,6 @@
         }
       }
 
-      if (spr.impactable) {
-        applyImpactPushToSprite(spr);
-      }
-
       if (remove) {
         seg.sprites.splice(i, 1);
         continue;
@@ -1650,7 +1465,6 @@
 
         spr.segIndex = seg.index;
 
-        let transferSeg = null;
         if (spr.animation && spr.animation.clips) {
           advanceSpriteAnimation(spr, dt);
         } else if (spr.animation) {
@@ -1679,36 +1493,9 @@
           if (anim.frame >= totalFrames) anim.frame = totalFrames - 1;
           spr.animFrame = anim.frame;
         }
-        const impactTransfer = updateImpactableSprite(spr, dt, seg);
-        if (impactTransfer && impactTransfer !== seg) {
-          transferSeg = impactTransfer;
-        }
-        if (transferSeg && transferSeg !== seg) {
-          const destination = ensureArray(transferSeg, 'sprites');
-          seg.sprites.splice(i, 1);
-          destination.push(spr);
-          spr.segIndex = transferSeg.index;
-          continue;
-        }
         i += 1;
       }
     }
-  }
-
-  function collectSegmentsCrossed(startS, endS) {
-    if (!hasSegments() || !Number.isFinite(segmentLength) || segmentLength <= 0) return [];
-    const startIndex = Math.floor(startS / segmentLength);
-    const endIndex = Math.floor(endS / segmentLength);
-    const deltaSegments = endIndex - startIndex;
-    if (deltaSegments === 0) return [];
-    const direction = deltaSegments > 0 ? 1 : -1;
-    const touched = [];
-    for (let step = direction; direction > 0 ? step <= deltaSegments : step >= deltaSegments; step += direction) {
-      const idx = wrapSegmentIndex(startIndex + step);
-      const seg = segmentAtIndex(idx);
-      if (seg) touched.push(seg);
-    }
-    return touched;
   }
 
   function updatePhysics(dt) {
@@ -1716,10 +1503,6 @@
     if (!hasSegments()) return;
 
     const metrics = state.metrics || null;
-    if (metrics && dt > 0) {
-      const cooldown = Number.isFinite(metrics.guardRailCooldownTimer) ? metrics.guardRailCooldownTimer : 0;
-      metrics.guardRailCooldownTimer = Math.max(0, cooldown - dt);
-    }
 
     if (input.hop) {
       doHop();
@@ -1744,10 +1527,7 @@
     state.playerN = clamp(state.playerN, lanes.road.min, lanes.road.max);
 
     const startS = phys.s;
-    let segmentsCrossedDuringStep = [];
     let segNow = segmentAtS(phys.s);
-    let guardRailContact = false;
-    let offRoadNow = false;
     const segFeatures = segNow ? segNow.features : null;
     const zonesHere = boostZonesForPlayer(segNow, state.playerN);
     const hasZonesHere = zonesHere.length > 0;
@@ -1823,9 +1603,6 @@
       }
     }
 
-    const integrationEndS = phys.s;
-    segmentsCrossedDuringStep = collectSegmentsCrossed(startS, integrationEndS);
-
     phys.t += dt;
 
     const length = trackLengthRef();
@@ -1869,48 +1646,7 @@
     if (segNow) {
       const bound = playerLateralLimit(segNow.index);
       const clampLimit = Number.isFinite(bound) ? bound : Math.abs(state.playerN) + 1;
-      const preClamp = state.playerN;
       state.playerN = clamp(state.playerN, -clampLimit, clampLimit);
-      const scraping = Math.abs(preClamp) > clampLimit - 1e-6 || Math.abs(state.playerN) >= clampLimit - 1e-6;
-      offRoadNow = Math.abs(preClamp) > OFF_ROAD_THRESHOLD || Math.abs(state.playerN) > OFF_ROAD_THRESHOLD;
-      const hasGuardRail = !!(segNow.features && segNow.features.rail);
-      guardRailContact = hasGuardRail && scraping;
-      if (guardRailContact) {
-        const offRoadDecelLimit = player.topSpeed / 4;
-        if (Math.abs(phys.vtan) > offRoadDecelLimit) {
-          const sign = Math.sign(phys.vtan) || 1;
-          phys.vtan -= sign * (player.topSpeed * 0.8) * (1 / 60);
-        }
-      }
-    } else if (metrics) {
-      metrics.guardRailContactActive = false;
-    }
-
-    if (metrics) {
-      if (guardRailContact) {
-        metrics.guardRailContactTime += dt;
-        if (!metrics.guardRailContactActive && metrics.guardRailCooldownTimer <= 0) {
-          metrics.guardRailHits += 1;
-          metrics.guardRailCooldownTimer = GUARD_RAIL_HIT_COOLDOWN;
-        }
-        metrics.guardRailContactActive = true;
-      } else {
-        metrics.guardRailContactActive = false;
-      }
-      if (offRoadNow) {
-        metrics.offRoadTime += dt;
-      }
-    }
-
-    for (const seg of segmentsCrossedDuringStep) {
-      if (!seg) continue;
-      if (resolveSegmentCollisions(seg)) {
-        break;
-      }
-    }
-    const landingSeg = segmentAtS(phys.s);
-    if (landingSeg) {
-      resolveSegmentCollisions(landingSeg);
     }
 
     updateSpriteAnimations(dt);
@@ -1926,10 +1662,6 @@
     if (metrics) {
       if (!phys.grounded) {
         metrics.airTime += dt;
-      }
-      const speed = Math.abs(phys.vtan);
-      if (Number.isFinite(speed) && speed > metrics.topSpeed) {
-        metrics.topSpeed = speed;
       }
     }
   }
@@ -2057,10 +1789,6 @@
     state.prevPlayerN = state.playerN;
     state.lateralRate = 0;
     state.pendingRespawn = null;
-    if (state.metrics) {
-      state.metrics.guardRailContactActive = false;
-      state.metrics.guardRailCooldownTimer = 0;
-    }
   }
 
   function respawnPlayerAt(sTarget, nNorm = 0) {
@@ -2149,11 +1877,7 @@
   function queueRespawn(sAtFail) {
     if (state.resetMatteActive) return;
     const targetS = nearestSegmentCenter(sAtFail);
-    const wasPending = !!state.pendingRespawn;
     state.pendingRespawn = { targetS, targetN: 0 };
-    if (!wasPending && state.metrics) {
-      state.metrics.respawnCount += 1;
-    }
     if (typeof state.callbacks.onQueueRespawn === 'function') {
       state.callbacks.onQueueRespawn(state.pendingRespawn);
     }
