@@ -283,25 +283,6 @@
     }
   }
 
-  const DRIFT_SMOKE_INTERVAL = 0.1 / 60;
-  const DRIFT_SMOKE_INTERVAL_JITTER = 0.25;
-  const DRIFT_SMOKE_LIFETIME = 30 / 60;
-  const DRIFT_SMOKE_LONGITUDINAL_JITTER = segmentLength * 0.01;
-  const DRIFT_SMOKE_FORWARD_INHERITANCE = 0.4;
-  const DRIFT_SMOKE_DRAG = 1.75;
-
-  const SPARKS_INTERVAL = .7 / 60;
-  const SPARKS_INTERVAL_JITTER = 4;
-  const SPARKS_LIFETIME = 30 / 60;
-  const SPARKS_LONGITUDINAL_JITTER = segmentLength * 1;
-  const SPARKS_FORWARD_INHERITANCE = 0;
-  const SPARKS_DRAG = 10;
-  const SPARKS_LATERAL_SPEED = { min: -.5, max: 0.5};
-  const SPARKS_SCREEN_LATERAL_SPEED = { min: -1, max: 10};
-  const SPARKS_SCREEN_VERTICAL_SPEED = { min: -600, max: -200 };
-  const SPARKS_SCREEN_GRAVITY = 40;
-  const SPARKS_SCREEN_DRAG = 10;
-
   const DEFAULT_SPRITE_META = {
     PLAYER: {
       wN: 0.35,
@@ -334,8 +315,6 @@
       },
     },
     PALM:   { wN: 0.38, aspect: 3.2, tint: [0.25, 0.62, 0.27, 1], tex: () => null },
-    DRIFT_SMOKE: { wN: 0.1, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], tex: () => null },
-    SPARKS: { wN: 0.01, aspect: 1.0, tint: [1.0, 0.6, 0.2, 0.9], tex: () => null },
     ANIM_PLATE: {
       wN: 0.1,
       aspect: 1.0,
@@ -939,71 +918,6 @@
     return spriteDataPromise;
   }
 
-  const driftSmokePool = [];
-  const sparksPool = [];
-
-  function computeDriftSmokeInterval() {
-    const base = Math.max(1e-4, DRIFT_SMOKE_INTERVAL);
-    const jitter = Math.max(0, DRIFT_SMOKE_INTERVAL_JITTER);
-    if (jitter <= 1e-6) return base;
-    const span = base * jitter;
-    return base + (Math.random() * 2 - 1) * span;
-  }
-
-  function allocDriftSmokeSprite() {
-    return driftSmokePool.length ? driftSmokePool.pop() : { kind: 'DRIFT_SMOKE' };
-  }
-
-  function recycleDriftSmokeSprite(sprite) {
-    if (!sprite || sprite.kind !== 'DRIFT_SMOKE') return;
-    sprite.animation = null;
-    sprite.impactState = null;
-    sprite.driftMotion = null;
-    sprite.interactable = false;
-    sprite.interacted = false;
-    sprite.impactable = false;
-    sprite.segIndex = 0;
-    sprite.s = 0;
-    sprite.ttl = 0;
-    sprite.offset = 0;
-    driftSmokePool.push(sprite);
-  }
-
-  function computeSparksInterval() {
-    const base = Math.max(1e-4, SPARKS_INTERVAL);
-    const jitter = Math.max(0, SPARKS_INTERVAL_JITTER);
-    if (jitter <= 1e-6) return base;
-    const span = base * jitter;
-    return base + (Math.random() * 2 - 1) * span;
-  }
-
-  function allocSparksSprite() {
-    return sparksPool.length ? sparksPool.pop() : { kind: 'SPARKS' };
-  }
-
-  function recycleSparksSprite(sprite) {
-    if (!sprite || sprite.kind !== 'SPARKS') return;
-    sprite.animation = null;
-    sprite.impactState = null;
-    sprite.driftMotion = null;
-    sprite.interactable = false;
-    sprite.interacted = false;
-    sprite.impactable = false;
-    sprite.segIndex = 0;
-    sprite.s = 0;
-    sprite.ttl = 0;
-    sprite.offset = 0;
-    sprite.screenOffsetX = 0;
-    sprite.screenOffsetY = 0;
-    sparksPool.push(sprite);
-  }
-
-  function recycleTransientSprite(sprite) {
-    if (!sprite) return;
-    if (sprite.kind === 'DRIFT_SMOKE') recycleDriftSmokeSprite(sprite);
-    if (sprite.kind === 'SPARKS') recycleSparksSprite(sprite);
-  }
-
   const CAR_COLLISION_COOLDOWN = 1 / 120;
   const COLLISION_PUSH_DURATION = 0.45;
   const INTERACTABLE_COLLISION_PUSH_FORWARD_MAX_SEGMENTS = 12;
@@ -1040,7 +954,6 @@
       guardRailContactTime: 0,
       pickupsCollected: 0,
       airTime: 0,
-      driftTime: 0,
       topSpeed: 0,
       respawnCount: 0,
       offRoadTime: 0,
@@ -1053,13 +966,6 @@
     phys: { s: 0, y: 0, vx: 0, vy: 0, vtan: 0, grounded: true, t: 0, nextHopTime: 0, boostFlashTimer: 0 },
     playerN: 0,
     camYSmooth: 0,
-    hopHeld: false,
-    driftState: 'idle',
-    driftDirSnapshot: 0,
-    driftCharge: 0,
-    allowedBoost: false,
-    pendingDriftDir: 0,
-    lastSteerDir: 0,
     boostTimer: 0,
     activeDriveZoneId: null,
     lateralRate: 0,
@@ -1075,10 +981,6 @@
       startTime: 0,
       finishTime: null,
     },
-    driftSmokeTimer: 0,
-    driftSmokeNextInterval: computeDriftSmokeInterval(),
-    sparksTimer: 0,
-    sparksNextInterval: computeSparksInterval(),
     cars: [],
     spriteMeta: DEFAULT_SPRITE_META,
     getKindScale: defaultGetKindScale,
@@ -1200,201 +1102,6 @@
 
   function playerHalfWN() {
     return getSpriteMeta('PLAYER').wN * state.getKindScale('PLAYER') * 0.5;
-  }
-
-  function spawnDriftSmokeSprites() {
-    if (!hasSegments()) return;
-    const { phys } = state;
-    if (!phys || !phys.grounded) return;
-    const seg = segmentAtS(phys.s);
-    if (!seg) return;
-    const half = playerHalfWN();
-    const offsets = [state.playerN - half, state.playerN + half];
-    const sprites = ensureArray(seg, 'sprites');
-    const baseS = Number.isFinite(phys.s)
-      ? phys.s
-      : (seg.p1 && seg.p1.world ? seg.p1.world.z : 0);
-    const trackLength = trackLengthRef();
-    const forwardSpeed = Math.max(0, Number.isFinite(phys.vtan) ? phys.vtan : 0);
-    for (const baseOffset of offsets) {
-      const sprite = allocDriftSmokeSprite();
-      const spawnOffset = baseOffset;
-      const sJitter = (Math.random() * 2 - 1) * DRIFT_SMOKE_LONGITUDINAL_JITTER;
-      const spawnS = trackLength > 0 ? wrapDistance(baseS, sJitter, trackLength) : baseS + sJitter;
-      const inheritedForward = forwardSpeed * DRIFT_SMOKE_FORWARD_INHERITANCE * (0.8 + 0.4 * Math.random());
-      sprite.kind = 'DRIFT_SMOKE';
-      sprite.offset = spawnOffset;
-      sprite.segIndex = seg.index;
-      sprite.s = spawnS;
-      sprite.ttl = DRIFT_SMOKE_LIFETIME;
-      sprite.interactable = false;
-      sprite.interacted = false;
-      sprite.impactable = false;
-      sprite.driftMotion = {
-        forwardVel: inheritedForward,
-        drag: DRIFT_SMOKE_DRAG,
-        lateralVel: 0,
-      };
-      sprites.push(sprite);
-    }
-  }
-
-  function spawnSparksSprites(contactSide = 0) {
-    if (!hasSegments()) return;
-    const { phys } = state;
-    if (!phys || !phys.grounded) return;
-    const seg = segmentAtS(phys.s);
-    if (!seg) return;
-    const half = playerHalfWN();
-    const sideSign = contactSide !== 0 ? Math.sign(contactSide) || 0 : (state.playerN >= 0 ? 1 : -1);
-    if (sideSign === 0) return;
-    const offsets = [state.playerN + sideSign * half * 0.85];
-    const sprites = ensureArray(seg, 'sprites');
-    const baseS = Number.isFinite(phys.s)
-      ? phys.s
-      : (seg.p1 && seg.p1.world ? seg.p1.world.z : 0);
-    const trackLength = trackLengthRef();
-    const forwardSpeed = Math.max(0, Number.isFinite(phys.vtan) ? phys.vtan : 0);
-    for (const baseOffset of offsets) {
-      const sprite = allocSparksSprite();
-      const spawnOffset = baseOffset;
-      const sJitter = (Math.random() * 2 - 1) * SPARKS_LONGITUDINAL_JITTER;
-      const spawnS = trackLength > 0 ? wrapDistance(baseS, sJitter, trackLength) : baseS + sJitter;
-      const inheritedForward = forwardSpeed * SPARKS_FORWARD_INHERITANCE * (0.8 + 0.4 * Math.random());
-      const lateralVel = sideSign * lerp(SPARKS_LATERAL_SPEED.min, SPARKS_LATERAL_SPEED.max, Math.random());
-      const screenLateral = sideSign * lerp(SPARKS_SCREEN_LATERAL_SPEED.min, SPARKS_SCREEN_LATERAL_SPEED.max, Math.random());
-      const screenVertical = lerp(SPARKS_SCREEN_VERTICAL_SPEED.min, SPARKS_SCREEN_VERTICAL_SPEED.max, Math.random());
-      sprite.kind = 'SPARKS';
-      sprite.offset = spawnOffset;
-      sprite.segIndex = seg.index;
-      sprite.s = spawnS;
-      sprite.ttl = SPARKS_LIFETIME;
-      sprite.interactable = false;
-      sprite.interacted = false;
-      sprite.impactable = false;
-      sprite.driftMotion = {
-        forwardVel: inheritedForward,
-        drag: SPARKS_DRAG,
-        lateralVel,
-        screenLateralVel: screenLateral,
-        screenDrag: SPARKS_SCREEN_DRAG,
-        verticalVel: screenVertical,
-        verticalGravity: SPARKS_SCREEN_GRAVITY,
-        verticalDrag: SPARKS_SCREEN_DRAG,
-      };
-      sprite.screenOffsetX = 0;
-      sprite.screenOffsetY = 0;
-      sprites.push(sprite);
-    }
-  }
-
-  function applyDriftSmokeMotion(sprite, dt, currentSeg = null) {
-    if (!sprite || sprite.kind !== 'DRIFT_SMOKE') return null;
-    const motion = sprite.driftMotion;
-    if (!motion) return null;
-    const step = Math.max(0, Number.isFinite(dt) ? dt : 0);
-    if (step <= 0) return null;
-
-    const trackLength = trackLengthRef();
-
-    if (Number.isFinite(motion.forwardVel) && motion.forwardVel !== 0) {
-      if (Number.isFinite(sprite.s)) {
-        const nextS = trackLength > 0
-          ? wrapDistance(sprite.s, motion.forwardVel * step, trackLength)
-          : sprite.s + motion.forwardVel * step;
-        sprite.s = nextS;
-      }
-      if (Number.isFinite(motion.drag) && motion.drag > 0) {
-        const decay = Math.max(0, 1 - motion.drag * step);
-        motion.forwardVel *= decay;
-        if (Math.abs(motion.forwardVel) <= 1e-4) motion.forwardVel = 0;
-      }
-    }
-
-    if (Number.isFinite(motion.lateralVel) && motion.lateralVel !== 0) {
-      sprite.offset += motion.lateralVel * step;
-      if (Number.isFinite(motion.drag) && motion.drag > 0) {
-        const decay = Math.max(0, 1 - motion.drag * step);
-        motion.lateralVel *= decay;
-        if (Math.abs(motion.lateralVel) <= 1e-4) motion.lateralVel = 0;
-      }
-    }
-
-    if (trackLength > 0 && Number.isFinite(sprite.s)) {
-      const seg = segmentAtS(sprite.s);
-      if (seg && currentSeg && seg !== currentSeg) {
-        return seg;
-      }
-    }
-
-    return null;
-  }
-
-  function applySparksMotion(sprite, dt, currentSeg = null) {
-    if (!sprite || sprite.kind !== 'SPARKS') return null;
-    const motion = sprite.driftMotion;
-    if (!motion) return null;
-    const step = Math.max(0, Number.isFinite(dt) ? dt : 0);
-    if (step <= 0) return null;
-
-    const trackLength = trackLengthRef();
-
-    if (Number.isFinite(motion.forwardVel) && motion.forwardVel !== 0) {
-      if (Number.isFinite(sprite.s)) {
-        const nextS = trackLength > 0
-          ? wrapDistance(sprite.s, motion.forwardVel * step, trackLength)
-          : sprite.s + motion.forwardVel * step;
-        sprite.s = nextS;
-      }
-      if (Number.isFinite(motion.drag) && motion.drag > 0) {
-        const decay = Math.max(0, 1 - motion.drag * step);
-        motion.forwardVel *= decay;
-        if (Math.abs(motion.forwardVel) <= 1e-4) motion.forwardVel = 0;
-      }
-    }
-
-    if (Number.isFinite(motion.lateralVel) && motion.lateralVel !== 0) {
-      sprite.offset += motion.lateralVel * step;
-      if (Number.isFinite(motion.drag) && motion.drag > 0) {
-        const decay = Math.max(0, 1 - motion.drag * step);
-        motion.lateralVel *= decay;
-        if (Math.abs(motion.lateralVel) <= 1e-4) motion.lateralVel = 0;
-      }
-    }
-
-    if (Number.isFinite(motion.screenLateralVel) && motion.screenLateralVel !== 0) {
-      const currentOffsetX = Number.isFinite(sprite.screenOffsetX) ? sprite.screenOffsetX : 0;
-      sprite.screenOffsetX = currentOffsetX + motion.screenLateralVel * step;
-      if (Number.isFinite(motion.screenDrag) && motion.screenDrag > 0) {
-        const decay = Math.max(0, 1 - motion.screenDrag * step);
-        motion.screenLateralVel *= decay;
-        if (Math.abs(motion.screenLateralVel) <= 1e-2) motion.screenLateralVel = 0;
-      }
-    }
-
-    let verticalVel = Number.isFinite(motion.verticalVel) ? motion.verticalVel : 0;
-    if (Number.isFinite(motion.verticalGravity) && motion.verticalGravity !== 0) {
-      verticalVel += motion.verticalGravity * step;
-    }
-    if (verticalVel !== 0) {
-      const currentOffsetY = Number.isFinite(sprite.screenOffsetY) ? sprite.screenOffsetY : 0;
-      sprite.screenOffsetY = currentOffsetY + verticalVel * step;
-      motion.verticalVel = verticalVel;
-      if (Number.isFinite(motion.verticalDrag) && motion.verticalDrag > 0) {
-        const decay = Math.max(0, 1 - motion.verticalDrag * step);
-        motion.verticalVel *= decay;
-        if (Math.abs(motion.verticalVel) <= 1e-2) motion.verticalVel = 0;
-      }
-    }
-
-    if (trackLength > 0 && Number.isFinite(sprite.s)) {
-      const seg = segmentAtS(sprite.s);
-      if (seg && currentSeg && seg !== currentSeg) {
-        return seg;
-      }
-    }
-
-    return null;
   }
 
   function carMeta(car) {
@@ -1907,8 +1614,8 @@
       }
 
       if (remove) {
-        recycleTransientSprite(spr);
         seg.sprites.splice(i, 1);
+        continue;
       }
     }
   }
@@ -1943,22 +1650,7 @@
 
         spr.segIndex = seg.index;
 
-        if (Number.isFinite(spr.ttl)) {
-          spr.ttl -= dt;
-          if (spr.ttl <= 0) {
-            recycleTransientSprite(spr);
-            seg.sprites.splice(i, 1);
-            continue;
-          }
-        }
-
         let transferSeg = null;
-        if (spr.kind === 'DRIFT_SMOKE') {
-          transferSeg = applyDriftSmokeMotion(spr, dt, seg);
-        } else if (spr.kind === 'SPARKS') {
-          transferSeg = applySparksMotion(spr, dt, seg);
-        }
-
         if (spr.animation && spr.animation.clips) {
           advanceSpriteAnimation(spr, dt);
         } else if (spr.animation) {
@@ -2035,24 +1727,11 @@
     }
 
     const steerAxis = (input.left && input.right) ? 0 : (input.left ? -1 : (input.right ? 1 : 0));
-    if (steerAxis !== 0) {
-      state.lastSteerDir = steerAxis;
-      if (state.hopHeld && state.driftState !== 'drifting') {
-        state.pendingDriftDir = steerAxis;
-      }
-    }
     const boosting = state.boostTimer > 0;
     if (boosting) state.boostTimer = Math.max(0, state.boostTimer - dt);
     const speed01 = clamp(Math.abs(phys.vtan) / player.topSpeed, 0, 1);
     let steerDx = dt * player.steerRate * speed01;
-    if (boosting) steerDx *= drift.steerScale;
-
-    if (state.driftState === 'drifting') {
-      let k = drift.lockBase;
-      if (steerAxis === state.driftDirSnapshot) k = drift.lockWith;
-      else if (steerAxis === -state.driftDirSnapshot) k = drift.lockAgainst;
-      state.playerN += steerDx * k * state.driftDirSnapshot;
-    } else if (steerAxis !== 0) {
+    if (steerAxis !== 0) {
       state.playerN += steerDx * steerAxis;
     }
 
@@ -2068,7 +1747,6 @@
     let segmentsCrossedDuringStep = [];
     let segNow = segmentAtS(phys.s);
     let guardRailContact = false;
-    let guardRailSide = 0;
     let offRoadNow = false;
     const segFeatures = segNow ? segNow.features : null;
     const zonesHere = boostZonesForPlayer(segNow, state.playerN);
@@ -2148,55 +1826,6 @@
     const integrationEndS = phys.s;
     segmentsCrossedDuringStep = collectSegmentsCrossed(startS, integrationEndS);
 
-    if (!prevGrounded && phys.grounded) {
-      if (state.hopHeld && state.pendingDriftDir !== 0) {
-        state.driftState = 'drifting';
-        state.driftDirSnapshot = state.pendingDriftDir;
-        state.driftCharge = 0;
-        state.allowedBoost = false;
-      } else {
-        state.driftState = 'idle';
-        state.driftDirSnapshot = 0;
-        state.driftCharge = 0;
-        state.allowedBoost = false;
-        if (!state.hopHeld) state.pendingDriftDir = 0;
-      }
-    }
-
-    if (state.driftState === 'drifting') {
-      if (state.hopHeld) {
-        if (!state.allowedBoost) {
-          state.driftCharge += dt;
-          if (state.driftCharge >= drift.chargeMin) {
-            state.driftCharge = drift.chargeMin;
-            state.allowedBoost = true;
-          }
-        }
-      } else {
-        state.driftState = 'idle';
-        state.driftDirSnapshot = 0;
-        state.driftCharge = 0;
-        state.allowedBoost = false;
-        state.pendingDriftDir = 0;
-      }
-    }
-
-    if (state.driftState === 'drifting') {
-      state.driftSmokeTimer += dt;
-      let interval = (Number.isFinite(state.driftSmokeNextInterval) && state.driftSmokeNextInterval > 0)
-        ? state.driftSmokeNextInterval
-        : computeDriftSmokeInterval();
-      while (state.driftSmokeTimer >= interval) {
-        spawnDriftSmokeSprites();
-        state.driftSmokeTimer -= interval;
-        interval = computeDriftSmokeInterval();
-      }
-      state.driftSmokeNextInterval = interval;
-    } else {
-      state.driftSmokeTimer = 0;
-      state.driftSmokeNextInterval = computeDriftSmokeInterval();
-    }
-
     phys.t += dt;
 
     const length = trackLengthRef();
@@ -2247,7 +1876,6 @@
       const hasGuardRail = !!(segNow.features && segNow.features.rail);
       guardRailContact = hasGuardRail && scraping;
       if (guardRailContact) {
-        guardRailSide = Math.sign(preClamp) || Math.sign(state.playerN) || guardRailSide;
         const offRoadDecelLimit = player.topSpeed / 4;
         if (Math.abs(phys.vtan) > offRoadDecelLimit) {
           const sign = Math.sign(phys.vtan) || 1;
@@ -2256,22 +1884,6 @@
       }
     } else if (metrics) {
       metrics.guardRailContactActive = false;
-    }
-
-    if (guardRailContact) {
-      state.sparksTimer += dt;
-      let interval = (Number.isFinite(state.sparksNextInterval) && state.sparksNextInterval > 0)
-        ? state.sparksNextInterval
-        : computeSparksInterval();
-      while (state.sparksTimer >= interval) {
-        spawnSparksSprites(guardRailSide);
-        state.sparksTimer -= interval;
-        interval = computeSparksInterval();
-      }
-      state.sparksNextInterval = interval;
-    } else {
-      state.sparksTimer = 0;
-      state.sparksNextInterval = computeSparksInterval();
     }
 
     if (metrics) {
@@ -2314,9 +1926,6 @@
     if (metrics) {
       if (!phys.grounded) {
         metrics.airTime += dt;
-      }
-      if (state.driftState === 'drifting') {
-        metrics.driftTime += dt;
       }
       const speed = Math.abs(phys.vtan);
       if (Number.isFinite(speed) && speed > metrics.topSpeed) {
@@ -2390,16 +1999,7 @@
     KeyW: keyActionFromFlag('up', true),
     ArrowDown: keyActionFromFlag('down', true),
     KeyS: keyActionFromFlag('down', true),
-    Space: () => {
-      if (!state.hopHeld) {
-        if (state.phys.grounded && state.phys.t >= state.phys.nextHopTime) {
-          applyJumpZoneBoost(jumpZoneForPlayer());
-        }
-        state.input.hop = true;
-        if (state.lastSteerDir !== 0) state.pendingDriftDir = state.lastSteerDir;
-      }
-      state.hopHeld = true;
-    },
+    Space: () => { state.input.hop = true; },
     KeyR: () => { queueReset(); },
     KeyB: () => { if (typeof state.callbacks.onToggleOverlay === 'function') state.callbacks.onToggleOverlay(); },
     KeyL: () => { if (typeof state.callbacks.onResetScene === 'function') state.callbacks.onResetScene(); },
@@ -2414,15 +2014,6 @@
     KeyW: keyActionFromFlag('up', false),
     ArrowDown: keyActionFromFlag('down', false),
     KeyS: keyActionFromFlag('down', false),
-    Space: () => {
-      state.hopHeld = false;
-      if (state.allowedBoost) state.boostTimer = drift.boostTime;
-      state.driftState = 'idle';
-      state.driftDirSnapshot = 0;
-      state.driftCharge = 0;
-      state.allowedBoost = false;
-      state.pendingDriftDir = 0;
-    },
   };
 
   function createKeyHandler(actions) {
@@ -2459,18 +2050,7 @@
 
     state.camYSmooth = phys.y + cameraHeight;
 
-    state.hopHeld = false;
-    state.driftState = 'idle';
-    state.driftDirSnapshot = 0;
-    state.driftCharge = 0;
-    state.allowedBoost = false;
-    state.pendingDriftDir = 0;
-    state.lastSteerDir = 0;
     state.boostTimer = 0;
-    state.driftSmokeTimer = 0;
-    state.driftSmokeNextInterval = computeDriftSmokeInterval();
-    state.sparksTimer = 0;
-    state.sparksNextInterval = computeSparksInterval();
 
     state.camRollDeg = 0;
     state.playerTiltDeg = 0;
