@@ -68,16 +68,6 @@ const fog = {
   color: [0.1, 0.5, 0.8],
 };
 
-// Default fallback tint values for world primitives.
-// Snow screen rendering controls.
-const snowScreenDistance = 40;
-const snowScreenDensity = 2;
-const snowScreenSize = 1;
-const snowDensity = .6;
-const snowSize = { min: 0.75, max: 1.25 };
-const snowSpeed = { min: 0.1, max: .2 };
-const snowStretch = 10;
-
 // Debug overlay defaults for development builds.
 const debug = {
   mode: 'off',
@@ -171,13 +161,6 @@ window.Config = {
   tilt,
   nearMiss,
   forceLandingOnCarImpact,
-  snowScreenDistance,
-  snowScreenDensity,
-  snowScreenSize,
-  snowDensity,
-  snowSize,
-  snowSpeed,
-  snowStretch,
 };
 
 Object.freeze(window.Config);

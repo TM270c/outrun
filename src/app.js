@@ -35,7 +35,7 @@
     },
   ];
 
-  const settingsMenuKeys = ['snow', 'back'];
+  const settingsMenuKeys = ['back'];
   const IDLE_TIMEOUT_MS = 5000;
   const DEFAULT_VEHICLE_PREVIEW_FRAME_DURATION = 1 / 24;
 
@@ -46,7 +46,7 @@
     settingsMenuIndex: 0,
     vehicleSelectIndex: 0,
     selectedVehicleKey: vehicleOptions.length ? vehicleOptions[0].key : null,
-    settings: { snowEnabled: true, debugEnabled: false },
+    settings: { debugEnabled: false },
     lastInteractionAt: Date.now(),
     leaderboard: {
       loading: false,
@@ -291,11 +291,6 @@
   function renderSettings() {
     if (!AppScreens.settingsMenu) return '';
     const options = [
-      {
-        key: 'snow',
-        label: 'Snow Effects',
-        value: state.settings.snowEnabled ? 'ON' : 'OFF',
-      },
       {
         key: 'back',
         label: 'Back',
@@ -673,11 +668,6 @@
     setMode('attract');
   }
 
-  function toggleSnowSetting() {
-    state.settings.snowEnabled = !state.settings.snowEnabled;
-    updateMenuLayer();
-  }
-
   function applyDebugModeSetting() {
     if (!Config || !Config.debug || typeof Config.debug !== 'object') {
       return;
@@ -780,9 +770,7 @@
 
   function activateSettingsSelection() {
     const key = settingsMenuKeys[state.settingsMenuIndex];
-    if (key === 'snow') {
-      toggleSnowSetting();
-    } else if (key === 'back') {
+    if (key === 'back') {
       setMode('menu');
     }
   }
@@ -906,14 +894,6 @@
     }
     if (['ArrowDown'].includes(e.code)) {
       handleSettingsNavigation(1);
-      e.preventDefault();
-      return true;
-    }
-    if (['ArrowLeft', 'ArrowRight'].includes(e.code)) {
-      const key = settingsMenuKeys[state.settingsMenuIndex];
-      if (key === 'snow') {
-        toggleSnowSetting();
-      }
       e.preventDefault();
       return true;
     }
@@ -1127,10 +1107,6 @@
     requestLeaderboard();
   }
 
-  function isSnowEnabled() {
-    return !!state.settings.snowEnabled;
-  }
-
   function isDebugEnabled() {
     return !!state.settings.debugEnabled;
   }
@@ -1142,7 +1118,6 @@
     handleKeyDown,
     handleKeyUp,
     handleRaceFinish,
-    isSnowEnabled,
     isDebugEnabled,
   };
 })(window);
