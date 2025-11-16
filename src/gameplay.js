@@ -16,7 +16,6 @@
     boost,
     lanes,
     tilt: tiltConfig = {},
-    traffic: trafficConfig = {},
     nearMiss: nearMissConfig = {},
     forceLandingOnCarImpact = false,
   } = Config;
@@ -1005,14 +1004,8 @@
     if (sprite.kind === 'SPARKS') recycleSparksSprite(sprite);
   }
 
-  const NPC_DEFAULTS = { total: 20, edgePad: 0.02, avoidLookaheadSegs: 20 };
-  const NPC = { ...NPC_DEFAULTS, ...trafficConfig };
-  const CAR_TYPES = ['CAR', 'SEMI'];
-
   const CAR_COLLISION_COOLDOWN = 1 / 120;
   const COLLISION_PUSH_DURATION = 0.45;
-  const NPC_COLLISION_PUSH_FORWARD_MAX_SEGMENTS = 10;
-  const NPC_COLLISION_PUSH_LATERAL_MAX = 0.85;
   const INTERACTABLE_COLLISION_PUSH_FORWARD_MAX_SEGMENTS = 12;
   const INTERACTABLE_COLLISION_PUSH_LATERAL_MAX = 1;
   const CAR_COLLISION_STAMP = Symbol('carCollisionStamp');
@@ -1042,7 +1035,6 @@
 
   function createInitialMetrics() {
     return {
-      npcHits: 0,
       nearMisses: 0,
       guardRailHits: 0,
       guardRailContactTime: 0,
@@ -1421,45 +1413,23 @@
   }
 
   function npcForwardSpeed(car) {
-    if (!car || !Number.isFinite(car.speed)) return 0;
-    return Math.max(0, car.speed);
+    return 0;
   }
 
   function ensureCarNearMissReset(car, combinedHalf, lateralGap) {
-    if (!car) return;
-    if (!Number.isFinite(lateralGap) || !Number.isFinite(combinedHalf) || combinedHalf <= 0) {
-      car[CAR_NEAR_MISS_READY] = true;
-      return;
-    }
-    if (lateralGap >= combinedHalf * NEAR_MISS_RESET_SCALE) {
-      car[CAR_NEAR_MISS_READY] = true;
-    }
+    return;
   }
 
   function tryRegisterCarNearMiss(car, combinedHalf, lateralGap) {
-    if (!car || !state.metrics) return;
-    if (car[CAR_NEAR_MISS_READY] === false) return;
-    if (!Number.isFinite(lateralGap) || !Number.isFinite(combinedHalf) || combinedHalf <= 0) return;
-    if (lateralGap >= combinedHalf * NEAR_MISS_LATERAL_SCALE) return;
-
-    const phys = state.phys || {};
-    const forwardGap = Math.abs(shortestSignedTrackDistance(phys.s || 0, car.z || 0));
-    if (!Number.isFinite(forwardGap) || forwardGap > NEAR_MISS_FORWARD_DISTANCE) return;
-
-    const playerSpeed = currentPlayerForwardSpeed();
-    const npcSpeed = npcForwardSpeed(car);
-    if ((playerSpeed - npcSpeed) < NEAR_MISS_SPEED_MARGIN) return;
-
-    car[CAR_NEAR_MISS_READY] = false;
-    state.metrics.nearMisses += 1;
+    return;
   }
 
   function computeCollisionPush(
     forwardSpeed,
     playerOffset,
     targetOffset,
-    forwardMaxSegments = NPC_COLLISION_PUSH_FORWARD_MAX_SEGMENTS,
-    lateralMax = NPC_COLLISION_PUSH_LATERAL_MAX,
+    forwardMaxSegments = 0,
+    lateralMax = 0,
   ) {
     const baseSpeed = Math.max(0, Number.isFinite(forwardSpeed) ? forwardSpeed : 0);
     const maxSpeed = (player && Number.isFinite(player.topSpeed)) ? Math.max(player.topSpeed, 0) : 0;
@@ -1591,23 +1561,7 @@
   }
 
   function applyNpcCollisionPush(car, playerForwardSpeed) {
-    if (!car) return;
-
-    const push = computeCollisionPush(
-      playerForwardSpeed,
-      state.playerN,
-      car.offset,
-      NPC_COLLISION_PUSH_FORWARD_MAX_SEGMENTS,
-      NPC_COLLISION_PUSH_LATERAL_MAX,
-    );
-    if (!push) return;
-
-    if (!car.collisionPush) {
-      car.collisionPush = { lateralVel: 0, forwardVel: 0, timer: 0 };
-    }
-    car.collisionPush.lateralVel = push.lateralVel;
-    car.collisionPush.forwardVel = push.forwardVel;
-    car.collisionPush.timer = COLLISION_PUSH_DURATION;
+    return;
   }
 
   function playerBaseHeight() {
@@ -1620,10 +1574,10 @@
 
   function npcLateralLimit(segIndex, car) {
     const half = carHalfWN(car);
-    const base = 1 - half - NPC.edgePad;
+    const base = 1 - half;
     const seg = segmentAtIndex(segIndex);
     if (seg && seg.features && seg.features.rail) {
-      const railInner = track.railInset - half - NPC.edgePad;
+      const railInner = track.railInset - half;
       return Math.min(base, railInner);
     }
     return base;
@@ -1960,65 +1914,6 @@
   }
 
   function resolveCarCollisionsInSeg(seg) {
-    const { phys } = state;
-    if (!seg || !Array.isArray(seg.cars) || !seg.cars.length) return false;
-    const pHalf = playerHalfWN();
-    for (let i = 0; i < seg.cars.length; i += 1) {
-      const car = seg.cars[i];
-      if (!car) continue;
-      const carHalf = carHalfWN(car);
-      const combinedHalf = pHalf + carHalf;
-      const lateralGap = Math.abs(state.playerN - car.offset);
-      ensureCarNearMissReset(car, combinedHalf, lateralGap);
-      if (!overlap(state.playerN, pHalf, car.offset, carHalf, 1)) {
-        tryRegisterCarNearMiss(car, combinedHalf, lateralGap);
-        continue;
-      }
-
-      if (!phys.grounded && playerBaseHeight() >= carHitboxTopY(car)) continue;
-
-      const now = phys.t;
-      const lastHit = car[CAR_COLLISION_STAMP] ?? -Infinity;
-      if ((now - lastHit) <= CAR_COLLISION_COOLDOWN) continue;
-
-      const { dy } = groundProfileAt(car.z);
-      const tangent = tangentNormalFromSlope(dy);
-      const wasGrounded = phys.grounded;
-      const currentVx = phys.vx;
-      const currentVy = phys.vy;
-      const rawPlayerForward = wasGrounded ? phys.vtan : (currentVx * tangent.tx + currentVy * tangent.ty);
-      const playerForwardSpeed = Math.max(0, Number.isFinite(rawPlayerForward) ? rawPlayerForward : 0);
-      const npcForward = npcForwardSpeed(car);
-
-      if (!(playerForwardSpeed > npcForward)) continue;
-
-      const vt = npcForward;
-      phys.vtan = vt;
-
-      const landingProfile = groundProfileAt(phys.s);
-      const landingTangent = tangentNormalFromSlope(landingProfile.dy);
-      let perpComponent = currentVx * landingTangent.nx + currentVy * landingTangent.ny;
-      const shouldForceLanding = forceLandingOnCarImpact && !wasGrounded;
-
-      if (shouldForceLanding) {
-        phys.grounded = true;
-        phys.y = playerFloorHeightAt(phys.s, state.playerN, landingProfile);
-        phys.nextHopTime = phys.t;
-        perpComponent = 0;
-      }
-
-      phys.vx = landingTangent.tx * vt + landingTangent.nx * perpComponent;
-      phys.vy = landingTangent.ty * vt + landingTangent.ny * perpComponent;
-
-      applyNpcCollisionPush(car, playerForwardSpeed);
-
-      car[CAR_COLLISION_STAMP] = now;
-      car[CAR_NEAR_MISS_READY] = true;
-      if (state.metrics) {
-        state.metrics.npcHits += 1;
-      }
-      return true;
-    }
     return false;
   }
 
@@ -2438,104 +2333,16 @@
   }
 
   function spawnCars() {
-    if (!hasSegments()) {
-      state.cars.length = 0;
-      return;
-    }
     clearSegmentCars();
     state.cars.length = 0;
-    const segCount = segments.length;
-    for (let i = 0; i < NPC.total; i += 1) {
-      const s = Math.floor(Math.random() * segCount) * segmentLength;
-      const type = CAR_TYPES[Math.random() < 0.75 ? 0 : 1];
-      const meta = getSpriteMeta(type);
-      const tmpCar = { type, meta };
-      const seg = segmentAtS(s);
-      if (!seg) continue;
-      const b = npcLateralLimit(seg.index, tmpCar);
-      const side = Math.random() < 0.5 ? -1 : 1;
-      const offset = side * (Math.random() * (b * 0.9));
-      const isSemi = type === 'SEMI';
-      const speed = (player.topSpeed / 6) + Math.random() * player.topSpeed / (isSemi ? 5 : 3);
-      const car = { z: s, offset, type, meta, speed };
-      ensureArray(seg, 'cars').push(car);
-      state.cars.push(car);
-    }
   }
 
   function steerAvoidance(car, carSeg, playerSeg, playerW) {
-    if (!carSeg || !playerSeg) return 0;
-    const cHalf = carHalfWN(car);
-    const lookahead = NPC.avoidLookaheadSegs;
-    const segCount = segments.length || 1;
-    if (((carSeg.index - playerSeg.index + segCount) % segCount) > track.drawDistance) {
-      return 0;
-    }
-    for (let i = 1; i < lookahead; i += 1) {
-      const seg = segmentAtIndex(carSeg.index + i);
-      if (!seg) continue;
-      if (seg === playerSeg && (car.speed > Math.abs(state.phys.vtan)) && overlap(state.playerN, playerW, car.offset, cHalf, 1)) {
-        let dir;
-        if (state.playerN > 0.5) dir = -1;
-        else if (state.playerN < -0.5) dir = 1;
-        else dir = (car.offset > state.playerN) ? 1 : -1;
-        return dir * (1 / i) * (car.speed - Math.abs(state.phys.vtan)) / player.topSpeed;
-      }
-      for (let j = 0; j < seg.cars.length; j += 1) {
-        const other = seg.cars[j];
-        if (!other || other === car) continue;
-        if ((car.speed > other.speed) && overlap(car.offset, cHalf, other.offset, carHalfWN(other), 1)) {
-          let dir;
-          if (other.offset > 0.5) dir = -1;
-          else if (other.offset < -0.5) dir = 1;
-          else dir = (car.offset > other.offset) ? 1 : -1;
-          return dir * (1 / i) * (car.speed - other.speed) / player.topSpeed;
-        }
-      }
-    }
-    const b = npcLateralLimit(carSeg.index, car);
-    if (car.offset < -b) return Math.min(0.15, (-b - car.offset) * 0.6);
-    if (car.offset > b) return -Math.min(0.15, (car.offset - b) * 0.6);
     return 0;
   }
 
   function tickCars(dt) {
-    if (!hasSegments() || !state.cars.length) return;
-    const playerSeg = segmentAtS(state.phys.s);
-    const segCount = segments.length;
-    for (let n = 0; n < state.cars.length; n += 1) {
-      const car = state.cars[n];
-      if (!car) continue;
-      const oldSeg = segmentAtS(car.z);
-      const avoidance = steerAvoidance(car, oldSeg, playerSeg, playerHalfWN());
-      car.offset += avoidance;
-      let forwardTravel = dt * car.speed;
-      if (car.collisionPush && car.collisionPush.timer > 0) {
-        const push = car.collisionPush;
-        const pushDt = Math.min(dt, push.timer);
-        const duration = Math.max(COLLISION_PUSH_DURATION, 1e-4);
-        const startRatio = clamp01(push.timer / duration);
-        const endRatio = clamp01((push.timer - pushDt) / duration);
-        const avgRatio = 0.5 * (startRatio + endRatio);
-        car.offset += push.lateralVel * avgRatio * pushDt;
-        forwardTravel += push.forwardVel * avgRatio * pushDt;
-        push.timer = Math.max(0, push.timer - pushDt);
-        if (push.timer <= 1e-4) delete car.collisionPush;
-      } else if (car.collisionPush) {
-        delete car.collisionPush;
-      }
-      car.z = wrapDistance(car.z, forwardTravel, trackLengthRef());
-      const newSeg = segmentAtS(car.z);
-      if (oldSeg && newSeg && oldSeg !== newSeg) {
-        const idx = oldSeg.cars.indexOf(car);
-        if (idx >= 0) oldSeg.cars.splice(idx, 1);
-        ensureArray(newSeg, 'cars').push(car);
-      }
-      if (newSeg) {
-        const bNext = npcLateralLimit(newSeg.index, car);
-        car.offset = clamp(car.offset, -bNext, bNext);
-      }
-    }
+    return;
   }
 
   async function spawnProps() {

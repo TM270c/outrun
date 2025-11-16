@@ -1956,7 +1956,6 @@
 
     if (metrics) {
       debugLines.push(
-        `NPC hits: ${fmtCount(metrics.npcHits)}`,
         `Near misses: ${fmtCount(metrics.nearMisses)}`,
         `Guardrail hits: ${fmtCount(metrics.guardRailHits)}`,
         `Guardrail time: ${fmtSeconds(metrics.guardRailContactTime)}`,
@@ -1977,7 +1976,7 @@
         `FPS: ${fpsDisplay} (${frameMsDisplay}ms)`,
         `Visible quads: ${fmtCount(perfStats.quadCount)} (solid ${fmtCount(perfStats.solidQuadCount)}, textured ${fmtCount(perfStats.texturedQuadCount)})`,
         `Draw calls: ${fmtCount(perfStats.drawCalls)} | Draw list: ${fmtCount(perfStats.drawListSize)} items`,
-        `Strips: ${fmtCount(perfStats.stripCount)} | Sprites: ${fmtCount(perfStats.spriteCount)} (NPC ${fmtCount(perfStats.npcCount)}, props ${fmtCount(perfStats.propCount)}, player ${fmtCount(perfStats.playerCount)})`,
+        `Strips: ${fmtCount(perfStats.stripCount)} | Sprites: ${fmtCount(perfStats.spriteCount)} (props ${fmtCount(perfStats.propCount)}, player ${fmtCount(perfStats.playerCount)})`,
         `Snow: ${fmtCount(perfStats.snowQuadCount)} quads across ${fmtCount(perfStats.snowScreenCount)} screens`,
         `Boost quads: ${fmtCount(perfStats.boostQuadCount)} | Physics steps: ${fmtCount(perfStats.physicsSteps)} | Segments: ${fmtCount(perfStats.segments)}`,
       );
