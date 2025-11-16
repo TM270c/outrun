@@ -1941,10 +1941,6 @@
       return `${value.toFixed(2)}s`;
     };
     const fmtCount = (value) => (Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0);
-    const fmtSpeed = (value) => {
-      if (!Number.isFinite(value) || value <= 0) return '0.0';
-      return value.toFixed(1);
-    };
     const fmtFloat = (value, digits = 1, fallback = '0.0') => (
       Number.isFinite(value) ? value.toFixed(digits) : fallback
     );
@@ -1953,14 +1949,8 @@
 
     if (metrics) {
       debugLines.push(
-        `Near misses: ${fmtCount(metrics.nearMisses)}`,
-        `Guardrail hits: ${fmtCount(metrics.guardRailHits)}`,
-        `Guardrail time: ${fmtSeconds(metrics.guardRailContactTime)}`,
         `Pickups: ${fmtCount(metrics.pickupsCollected)}`,
         `Air time: ${fmtSeconds(metrics.airTime)}`,
-        `Top speed: ${fmtSpeed(metrics.topSpeed)} u/s`,
-        `Respawns: ${fmtCount(metrics.respawnCount)}`,
-        `Off-road time: ${fmtSeconds(metrics.offRoadTime)}`,
       );
     }
 
