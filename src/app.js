@@ -46,7 +46,6 @@
     settingsMenuIndex: 0,
     vehicleSelectIndex: 0,
     selectedVehicleKey: vehicleOptions.length ? vehicleOptions[0].key : null,
-    settings: { debugEnabled: false },
     lastInteractionAt: Date.now(),
     leaderboard: {
       loading: false,
@@ -668,27 +667,6 @@
     setMode('attract');
   }
 
-  function applyDebugModeSetting() {
-    if (!Config || !Config.debug || typeof Config.debug !== 'object') {
-      return;
-    }
-    try {
-      Config.debug.mode = state.settings.debugEnabled ? 'fill' : 'off';
-    } catch (err) {
-      console.warn('Failed to update debug mode', err);
-    }
-  }
-
-  function setDebugEnabled(enabled) {
-    state.settings.debugEnabled = !!enabled;
-    applyDebugModeSetting();
-  }
-
-  function toggleDebugSetting() {
-    setDebugEnabled(!state.settings.debugEnabled);
-    updateMenuLayer();
-  }
-
   function resetGameplayInputs() {
     if (!Gameplay || !Gameplay.state || !Gameplay.state.input) return;
     const input = Gameplay.state.input;
@@ -1010,15 +988,6 @@
   }
 
   function handleKeyDown(e) {
-    if (e.code === 'KeyB') {
-      toggleDebugSetting();
-      if (state.mode !== 'playing') {
-        markInteraction();
-      }
-      e.preventDefault();
-      return;
-    }
-
     if (e.code === 'KeyP') {
       if (state.mode === 'playing') {
         setMode('paused');
@@ -1102,13 +1071,8 @@
     state.lastInteractionAt = now();
     resetRaceCompleteState();
     applyVehicleSelection(state.selectedVehicleKey);
-    applyDebugModeSetting();
     setMode('menu');
     requestLeaderboard();
-  }
-
-  function isDebugEnabled() {
-    return !!state.settings.debugEnabled;
   }
 
   global.App = {
@@ -1118,6 +1082,5 @@
     handleKeyDown,
     handleKeyUp,
     handleRaceFinish,
-    isDebugEnabled,
   };
 })(window);
