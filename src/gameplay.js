@@ -724,8 +724,9 @@
   }
 
   function determineInitialFrame(entry, asset, rng, options = {}){
-    if (entry && entry.baseClip && Array.isArray(entry.baseClip.frames) && entry.baseClip.frames.length > 0) {
-      return entry.baseClip.frames[0];
+    const baseClip = entry && entry.animation ? entry.animation.baseClip : null;
+    if (baseClip && Array.isArray(baseClip.frames) && baseClip.frames.length > 0) {
+      return baseClip.frames[0];
     }
     if (asset && Array.isArray(asset.frames) && asset.frames.length > 0) {
       const atlasBias = options.atlasBias;
@@ -741,8 +742,8 @@
     const overrides = {};
     if (!catalog || typeof catalog.forEach !== 'function') return overrides;
     catalog.forEach((entry, spriteId) => {
-      const metrics = (entry && entry.metrics) ? entry.metrics : SPRITE_METRIC_FALLBACK;
-      overrides[spriteId] = createSpriteMetaEntry(metrics);
+      const visual = (entry && entry.visual) ? entry.visual : SPRITE_METRIC_FALLBACK;
+      overrides[spriteId] = createSpriteMetaEntry(visual);
     });
     return overrides;
   }
@@ -821,32 +822,28 @@
     const seg = segmentAtIndex(instance.segIndex);
     if (!seg) return null;
     const entry = instance.entry;
-    const metrics = (entry && entry.metrics) ? entry.metrics : SPRITE_METRIC_FALLBACK;
-    const collisionMode = entry.collision || 'ghost';
+    const visual = (entry && entry.visual) ? entry.visual : SPRITE_METRIC_FALLBACK;
+    const behavior = (entry && entry.behavior) ? entry.behavior : { type: 'static', collision: 'ghost', interaction: 'static' };
+    const collisionMode = behavior.collision || 'ghost';
     const sprite = {
       kind: entry.spriteId,
       offset: Number.isFinite(instance.offset) ? instance.offset : 0,
       segIndex: seg.index,
       s: (seg.p1 && seg.p1.world) ? seg.p1.world.z : instance.segIndex * segmentLength,
       scale: Number.isFinite(instance.scale) ? instance.scale : 1,
-      interactionMode: entry.interaction,
-      type: entry.type,
-      interactable: entry.type === 'trigger' || entry.interaction !== 'static',
+      interactionMode: behavior.interaction,
+      type: behavior.type,
+      interactable: behavior.type === 'trigger' || behavior.interaction !== 'static',
       collisionMode,
       impactable: collisionMode === 'push',
       interacted: false,
-      assetKey: (instance.asset && instance.asset.key) ? instance.asset.key : (metrics.textureKey || null),
+      assetKey: (instance.asset && instance.asset.key) ? instance.asset.key : (visual.textureKey || null),
     };
     if (instance.asset && Array.isArray(instance.asset.frames)) {
       sprite.assetFrames = instance.asset.frames.slice();
     }
-    if (metrics.atlas) {
-      sprite.atlasInfo = { ...metrics.atlas };
-    } else if (instance.asset && instance.asset.type === 'atlas') {
-      sprite.atlasInfo = {
-        columns: (instance.asset.columns || 1),
-        totalFrames: (instance.asset.totalFrames || Math.max(1, (instance.asset.frames || []).length)),
-      };
+    if (entry && entry.atlas) {
+      sprite.atlasInfo = { ...entry.atlas };
     }
     const baseZ = (seg.p1 && seg.p1.world) ? seg.p1.world.z : instance.segIndex * segmentLength;
     if (Number.isFinite(instance.sOffset) && instance.sOffset !== 0) {
@@ -856,7 +853,13 @@
       sprite.s = baseZ;
     }
     const fallbackFrame = Number.isFinite(instance.initialFrame) ? instance.initialFrame : 0;
-    const animState = createSpriteAnimationState(entry.baseClip, entry.interactClip, entry.frameDuration, fallbackFrame);
+    const animation = entry ? entry.animation : null;
+    const animState = createSpriteAnimationState(
+      animation ? animation.baseClip : null,
+      animation ? animation.interactClip : null,
+      animation ? animation.frameDuration : null,
+      fallbackFrame,
+    );
     if (animState) {
       sprite.animation = animState;
       sprite.animFrame = Number.isFinite(animState.currentFrame) ? animState.currentFrame : fallbackFrame;
@@ -864,7 +867,7 @@
       sprite.animation = null;
       sprite.animFrame = fallbackFrame;
     }
-    if (entry.interaction === 'toggle') sprite.toggleOnInteract = true;
+    if (behavior.interaction === 'toggle') sprite.toggleOnInteract = true;
     if (sprite.impactable) {
       if (!Number.isFinite(sprite.baseOffset)) sprite.baseOffset = sprite.offset;
       configureImpactableSprite(sprite);
