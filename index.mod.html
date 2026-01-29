@@ -1,82 +1,330 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Straight Track — 2.5D + Drift + Fog + Cliffs + Sprites + Guardrails</title>
-  <style>
-    html,body{margin:0;background:#0f1a0f;color:#f4f4f4;font-family:system-ui,Arial,sans-serif}
-    .wrap{display:flex;justify-content:center;align-items:center;height:100vh}
-    .stack{position:relative;width:1024px;height:768px;border:1px solid #1a1f1a;background:#000;overflow:hidden}
-    #outrun{position:absolute;left:0;top:0;width:1024px;height:768px;image-rendering:pixelated;image-rendering:crisp-edges;background:#000}
-    #sideOverlay{position:absolute;left:0;top:0;width:1024px;height:768px;background:transparent;pointer-events:none}
-    #hudMatte{position:absolute;left:0;top:0;width:1024px;height:768px;image-rendering:pixelated;image-rendering:crisp-edges;background:transparent;pointer-events:none}
-    #appMenuLayer{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);color:#f4f4f4;pointer-events:none;transition:opacity .2s ease}
-    #appMenuLayer.is-hidden{opacity:0;pointer-events:none}
-    #appMenuLayer .menu-panel{width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:32px;box-sizing:border-box;pointer-events:none}
-    #appMenuLayer .screen{pointer-events:auto;width:min(420px,100%);display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
-    #appMenuLayer .screen-full{width:100%;max-width:none;gap:16px}
-    #appMenuLayer[data-mode="attract"]{background:#000}
-    #appMenuLayer[data-mode="attract"] .screen{text-transform:none;letter-spacing:normal}
-    #appMenuLayer .screen-title{margin:0;font-size:22px;font-weight:600}
-    #appMenuLayer .screen-subtitle{margin:0;font-size:13px;color:rgba(255,255,255,.65)}
-    #appMenuLayer .menu-list{list-style:none;margin:8px 0 0;padding:0;width:100%;display:flex;flex-direction:column;gap:6px}
-    #appMenuLayer .menu-item{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.7)}
-    #appMenuLayer .menu-item:last-child{border-bottom:none}
-    #appMenuLayer .menu-item.is-selected{color:#fff;font-weight:600}
-    #appMenuLayer .menu-label{flex:1;text-align:left}
-    #appMenuLayer .menu-item.is-selected .menu-label::before{content:'› ';color:#fff}
-    #appMenuLayer .menu-value{font-size:12px;color:rgba(255,255,255,.55)}
-    #appMenuLayer .screen-hint{margin:4px 0 0;font-size:12px;color:rgba(255,255,255,.5)}
-    #appMenuLayer .screen-vehicle{width:min(520px,100%);gap:16px}
-    #appMenuLayer .vehicle-select-preview{width:100%;max-width:320px;aspect-ratio:1;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;padding:12px;border-radius:12px;box-shadow:0 0 24px rgba(0,0,0,.4) inset}
-    #appMenuLayer .vehicle-select-image{width:100%;aspect-ratio:1;display:block;background-repeat:no-repeat;background-position:0% 0%;background-size:calc(var(--vehicle-preview-columns,1)*100%) calc(var(--vehicle-preview-rows,1)*100%);image-rendering:pixelated;image-rendering:crisp-edges;filter:drop-shadow(0 6px 12px rgba(0,0,0,.6))}
-    #appMenuLayer .vehicle-select-name{margin:0;font-size:20px;font-weight:600}
-    #appMenuLayer .vehicle-select-counter{margin:0;font-size:12px;color:rgba(255,255,255,.55)}
-    #appMenuLayer .vehicle-select-description{margin:0;font-size:13px;color:rgba(255,255,255,.7)}
-    #appMenuLayer .screen-message{margin:4px 0 0;font-size:13px;color:rgba(255,255,255,.75)}
-    #appMenuLayer .leaderboard-list{list-style:none;margin:8px 0 0;padding:0;width:100%;display:flex;flex-direction:column;gap:4px;font-size:13px}
-    #appMenuLayer .leaderboard-item{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7)}
-    #appMenuLayer .leaderboard-item:last-child{border-bottom:none}
-    #appMenuLayer .leaderboard-item.is-highlight{color:#fff;font-weight:600}
-    #appMenuLayer .leaderboard-rank{min-width:28px;text-align:left;color:rgba(255,255,255,.6)}
-    #appMenuLayer .leaderboard-name{flex:1;text-align:left}
-    #appMenuLayer .leaderboard-score{text-align:right;min-width:100px}
-    #appMenuLayer .screen-attract{gap:12px}
-    #appMenuLayer .screen-attract::after{content:'Press any key to start';font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.65)}
-    #appMenuLayer .attract-video{width:100%;height:100%;object-fit:cover;opacity:.65}
-    #appMenuLayer .screen-score-title{margin:0;font-size:22px;font-weight:600}
-    #appMenuLayer .screen-score-time{font-size:28px;font-weight:600}
-    #appMenuLayer .screen-score-note{margin:0;font-size:12px;color:rgba(255,255,255,.5)}
-    #appMenuLayer .name-entry{display:flex;gap:8px;justify-content:center}
-    #appMenuLayer .name-entry-letter{min-width:36px;padding:6px 0;border:1px solid rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;font-size:18px}
-    #appMenuLayer .name-entry-letter.is-active{border-color:#fff}
-    #appMenuLayer .name-entry-letter.is-locked{border-color:rgba(180,255,200,.7);color:rgba(200,255,220,.9)}
-    .ui{position:fixed;left:50%;top:10px;transform:translateX(-50%);font:12px system-ui,Arial;background:#000c;color:#fff;padding:6px 10px;border-radius:10px}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="stack">
-      <canvas id="outrun" width="512" height="384" title="2.5D view (WebGL)"></canvas>
-      <canvas id="sideOverlay" width="1024" height="768" title="Side overlay (B to toggle)"></canvas>
-      <canvas id="hudMatte" width="512" height="384" title="HUD reset matte"></canvas>
-      <div id="appMenuLayer" class="is-hidden">
-        <div class="menu-panel"></div>
+  <head>
+    <meta charset="utf-8" />
+    <title>Straight Track — 2.5D + Drift + Fog + Cliffs + Sprites + Guardrails</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #0f1a0f;
+        color: #f4f4f4;
+        font-family: system-ui, Arial, sans-serif;
+      }
+      .wrap {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+      }
+      .stack {
+        position: relative;
+        width: 1024px;
+        height: 768px;
+        border: 1px solid #1a1f1a;
+        background: #000;
+        overflow: hidden;
+      }
+      #outrun {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1024px;
+        height: 768px;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        background: #000;
+      }
+      #sideOverlay {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1024px;
+        height: 768px;
+        background: transparent;
+        pointer-events: none;
+      }
+      #hudMatte {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1024px;
+        height: 768px;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        background: transparent;
+        pointer-events: none;
+      }
+      #appMenuLayer {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.55);
+        color: #f4f4f4;
+        pointer-events: none;
+        transition: opacity 0.2s ease;
+      }
+      #appMenuLayer.is-hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #appMenuLayer .menu-panel {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px;
+        box-sizing: border-box;
+        pointer-events: none;
+      }
+      #appMenuLayer .screen {
+        pointer-events: auto;
+        width: min(420px, 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        text-align: center;
+      }
+      #appMenuLayer .screen-full {
+        width: 100%;
+        max-width: none;
+        gap: 16px;
+      }
+      #appMenuLayer[data-mode='attract'] {
+        background: #000;
+      }
+      #appMenuLayer[data-mode='attract'] .screen {
+        text-transform: none;
+        letter-spacing: normal;
+      }
+      #appMenuLayer .screen-title {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 600;
+      }
+      #appMenuLayer .screen-subtitle {
+        margin: 0;
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.65);
+      }
+      #appMenuLayer .menu-list {
+        list-style: none;
+        margin: 8px 0 0;
+        padding: 0;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      #appMenuLayer .menu-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 8px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+        color: rgba(255, 255, 255, 0.7);
+      }
+      #appMenuLayer .menu-item:last-child {
+        border-bottom: none;
+      }
+      #appMenuLayer .menu-item.is-selected {
+        color: #fff;
+        font-weight: 600;
+      }
+      #appMenuLayer .menu-label {
+        flex: 1;
+        text-align: left;
+      }
+      #appMenuLayer .menu-item.is-selected .menu-label::before {
+        content: '› ';
+        color: #fff;
+      }
+      #appMenuLayer .menu-value {
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.55);
+      }
+      #appMenuLayer .screen-hint {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.5);
+      }
+      #appMenuLayer .screen-vehicle {
+        width: min(520px, 100%);
+        gap: 16px;
+      }
+      #appMenuLayer .vehicle-select-preview {
+        width: 100%;
+        max-width: 320px;
+        aspect-ratio: 1;
+        background: rgba(0, 0, 0, 0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 12px;
+        border-radius: 12px;
+        box-shadow: 0 0 24px rgba(0, 0, 0, 0.4) inset;
+      }
+      #appMenuLayer .vehicle-select-image {
+        width: 100%;
+        aspect-ratio: 1;
+        display: block;
+        background-repeat: no-repeat;
+        background-position: 0% 0%;
+        background-size: calc(var(--vehicle-preview-columns, 1) * 100%)
+          calc(var(--vehicle-preview-rows, 1) * 100%);
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.6));
+      }
+      #appMenuLayer .vehicle-select-name {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 600;
+      }
+      #appMenuLayer .vehicle-select-counter {
+        margin: 0;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.55);
+      }
+      #appMenuLayer .vehicle-select-description {
+        margin: 0;
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.7);
+      }
+      #appMenuLayer .screen-message {
+        margin: 4px 0 0;
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.75);
+      }
+      #appMenuLayer .leaderboard-list {
+        list-style: none;
+        margin: 8px 0 0;
+        padding: 0;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 13px;
+      }
+      #appMenuLayer .leaderboard-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 4px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        color: rgba(255, 255, 255, 0.7);
+      }
+      #appMenuLayer .leaderboard-item:last-child {
+        border-bottom: none;
+      }
+      #appMenuLayer .leaderboard-item.is-highlight {
+        color: #fff;
+        font-weight: 600;
+      }
+      #appMenuLayer .leaderboard-rank {
+        min-width: 28px;
+        text-align: left;
+        color: rgba(255, 255, 255, 0.6);
+      }
+      #appMenuLayer .leaderboard-name {
+        flex: 1;
+        text-align: left;
+      }
+      #appMenuLayer .leaderboard-score {
+        text-align: right;
+        min-width: 100px;
+      }
+      #appMenuLayer .screen-attract {
+        gap: 12px;
+      }
+      #appMenuLayer .screen-attract::after {
+        content: 'Press any key to start';
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: rgba(255, 255, 255, 0.65);
+      }
+      #appMenuLayer .attract-video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        opacity: 0.65;
+      }
+      #appMenuLayer .screen-score-title {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 600;
+      }
+      #appMenuLayer .screen-score-time {
+        font-size: 28px;
+        font-weight: 600;
+      }
+      #appMenuLayer .screen-score-note {
+        margin: 0;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.5);
+      }
+      #appMenuLayer .name-entry {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+      }
+      #appMenuLayer .name-entry-letter {
+        min-width: 36px;
+        padding: 6px 0;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+      }
+      #appMenuLayer .name-entry-letter.is-active {
+        border-color: #fff;
+      }
+      #appMenuLayer .name-entry-letter.is-locked {
+        border-color: rgba(180, 255, 200, 0.7);
+        color: rgba(200, 255, 220, 0.9);
+      }
+      .ui {
+        position: fixed;
+        left: 50%;
+        top: 10px;
+        transform: translateX(-50%);
+        font: 12px system-ui, Arial;
+        background: #000c;
+        color: #fff;
+        padding: 6px 10px;
+        border-radius: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="stack">
+        <canvas id="outrun" width="512" height="384" title="2.5D view (WebGL)"></canvas>
+        <canvas id="sideOverlay" width="1024" height="768" title="Side overlay (B to toggle)"></canvas>
+        <canvas id="hudMatte" width="512" height="384" title="HUD reset matte"></canvas>
+        <div id="appMenuLayer" class="is-hidden">
+          <div class="menu-panel"></div>
+        </div>
       </div>
     </div>
-  </div>
-  <div class="ui">←/→ steer · ↑ throttle · ↓ brake · SPACE hop/select · R reset · P pause · B toggle overlay</div>
-
-  <!-- Only the split files, in order. No inline script block. -->
-  <script src="src/config.js"></script>
-  <script src="src/math.js"></script>
-  <script src="src/gl/renderer.js"></script>
-  <script src="src/world.js"></script>
-  <script src="src/sprite-catalog.js"></script>
-  <script src="src/gameplay.js"></script>
-  <script src="src/render.js"></script>
-  <script src="src/ui/screens.js"></script>
-  <script src="src/app.js"></script>
-  <script type="module" src="src/bootstrap.js"></script>
-</body>
+    <div class="ui">←/→ steer · ↑ throttle · ↓ brake · SPACE hop/select · R reset · P pause · B toggle overlay</div>
+    <!-- Only the split files, in order. No inline script block. -->
+    <script src="src/config.js"></script>
+    <script src="src/math.js"></script>
+    <script src="src/gl/renderer.js"></script>
+    <script src="src/world.js"></script>
+    <script src="src/sprite-catalog.js"></script>
+    <script src="src/gameplay.js"></script>
+    <script src="src/render-debug.js"></script>
+    <script src="src/render.js"></script>
+    <script src="src/ui/screens.js"></script>
+    <script src="src/app.js"></script>
+    <script type="module" src="src/bootstrap.js"></script>
+  </body>
 </html>

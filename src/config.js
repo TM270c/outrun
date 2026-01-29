@@ -88,7 +88,7 @@ const debug = {
 
 // Sprite rendering adjustments.
 const sprites = {
-  far: { shrinkTo: 0.1, power: 0.4 },
+  far: { shrinkTo: 0.05, power: 0.4 },
   overlap: { x: 0.75, y: 0.75 },
 };
 
@@ -101,9 +101,32 @@ const parallaxLayers = [
 
 // Road traffic tuning for non-player cars.
 const traffic = {
-  total: 20,
+  total: 100,
   edgePad: 0.02,
   avoidLookaheadSegs: 20,
+  vehicleWeights: {
+    car: 1,
+    truck: 0.7,
+    semi: 0.4,
+    special: 0.2,
+  },
+  vehicleSpeeds: {
+    car: { base: 0.16, variance: 0.18 },
+    truck: { base: 0.14, variance: 0.14 },
+    semi: { base: 0.12, variance: 0.1 },
+    special: { base: 0.2, variance: 0.15 },
+  },
+  specials: {
+    npcSpecial01: { wN: 0.34, hitboxWN: 0.2, speed: { base: 0.22, variance: 0.1 } },
+    npcSpecial02: { wN: 0.35, hitboxWN: 0.2, speed: { base: 0.21, variance: 0.1 } },
+    npcSpecial03: { wN: 0.36, hitboxWN: 0.21, speed: { base: 0.23, variance: 0.11 } },
+    npcSpecial04: { wN: 0.32, hitboxWN: 0.19, speed: { base: 0.2, variance: 0.1 } },
+    npcSpecial05: { wN: 0.4,  hitboxWN: 0.24, speed: { base: 0.24, variance: 0.12 } },
+    npcSpecial06: { wN: 0.33, hitboxWN: 0.2, speed: { base: 0.19, variance: 0.09 } },
+    npcSpecial07: { wN: 0.37, hitboxWN: 0.22, speed: { base: 0.23, variance: 0.11 } },
+    npcSpecial08: { wN: 0.35, hitboxWN: 0.21, speed: { base: 0.22, variance: 0.1 } },
+    npcSpecial09: { wN: 0.38, hitboxWN: 0.23, speed: { base: 0.25, variance: 0.12 } },
+  },
 };
 
 // Drift boost tuning.

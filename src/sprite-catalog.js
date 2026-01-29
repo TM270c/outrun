@@ -1,11 +1,14 @@
 (function(global){
   const { World } = global;
 
+  const resolve = (p) => (World && typeof World.resolveAssetUrl === 'function' ? World.resolveAssetUrl(p) : p);
+
   const TEXTURE_MANIFEST = Object.freeze({
-    tree: 'tex/tree.png',
-    sign: 'tex/rockwall.png',
-    animPlate01: 'tex/anim-plate-01.png',
-    animPlate02: 'tex/anim-plate-02.png',
+    tree: resolve('tex/tree.png'),
+    sign: resolve('tex/rockwall.png'),
+    animPlate01: resolve('tex/anim-plate-01.png'),
+    animPlate02: resolve('tex/anim-plate-02.png'),
+    snowman: resolve('tex/snowman.png'),
   });
 
   const METRIC_FALLBACK = Object.freeze({
@@ -69,6 +72,23 @@
 
   const PICKUP_BASE_FRAMES = makeFrames(0, 3);
 
+  const BARRIER_METRICS = {
+    wN: 0.15,
+    aspect: 1.0,
+    tint: [1, 0.4, 0.2, 1], // Orange tint
+    textureKey: 'animPlate02',
+    atlas: { columns: 4, totalFrames: 16 },
+  };
+
+  const SNOWMAN_METRICS = {
+    wN: 0.4,
+    hitboxWN: 0.25,
+    aspect: 1.0,
+    tint: [1, 1, 1, 1],
+    textureKey: 'snowman',
+    atlas: { columns: 4, totalFrames: 16 },
+  };
+
   const CATALOG_SOURCE = [
     {
       spriteId: 'tree_forest',
@@ -117,6 +137,30 @@
       baseClip: { frames: PICKUP_BASE_FRAMES.slice(), playback: 'loop' },
       interactClip: null,
       frameDuration: 0.09,
+    },
+    {
+      spriteId: 'barrier_solid',
+      metrics: BARRIER_METRICS,
+      assets: [
+        { type: 'atlas', key: 'animPlate02', frames: [0] },
+      ],
+      type: 'solid',
+      interaction: 'static',
+      baseClip: null,
+      interactClip: null,
+      frameDuration: null,
+    },
+    {
+      spriteId: 'snowman',
+      metrics: SNOWMAN_METRICS,
+      assets: [
+        { type: 'atlas', key: 'snowman', frames: makeFrames(0, 15) },
+      ],
+      type: 'solid',
+      interaction: 'playAnim',
+      baseClip: { frames: [0], playback: 'none' },
+      interactClip: { frames: makeFrames(0, 15), playback: 'once' },
+      frameDuration: 0.08,
     },
   ];
 

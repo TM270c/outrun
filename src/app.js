@@ -38,6 +38,20 @@
   const settingsMenuKeys = ['snow', 'back'];
   const IDLE_TIMEOUT_MS = 5000;
   const DEFAULT_VEHICLE_PREVIEW_FRAME_DURATION = 1 / 24;
+  const LOCAL_STORAGE_KEY = 'outrun_leaderboard_v1';
+
+  const DEFAULT_LEADERBOARD_ENTRIES = [
+    { name: 'ACE', score: 19821, date: '2024-03-18' },
+    { name: 'BLZ', score: 19450, date: '2024-03-12' },
+    { name: 'CRN', score: 110345, date: '2024-03-21' },
+    { name: 'DRT', score: 18760, date: '2024-03-05' },
+    { name: 'EVR', score: 111220, date: '2024-04-02' },
+    { name: 'FLX', score: 19105, date: '2024-03-29' },
+    { name: 'GLO', score: 112440, date: '2024-04-10' },
+    { name: 'HRZ', score: 19950, date: '2024-03-25' },
+    { name: 'ION', score: 18835, date: '2024-02-27' },
+    { name: 'JYN', score: 110780, date: '2024-04-07' },
+  ];
 
   const state = {
     mode: 'menu',
@@ -53,7 +67,6 @@
       error: null,
       entries: [],
       highlightId: null,
-      localEntries: [],
     },
     raceComplete: createInitialRaceCompleteState(),
     dom: {
@@ -209,12 +222,23 @@
   }
 
   function addLeaderboardEntry(name, scoreMs) {
-    const entry = createLeaderboardEntry(name, scoreMs, new Date().toISOString().slice(0, 10));
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const entry = createLeaderboardEntry(name, scoreMs, dateStr);
     state.leaderboard.entries.push(entry);
-    state.leaderboard.localEntries.push(entry);
     sortLeaderboardEntries();
     state.leaderboard.highlightId = entry.id;
+    saveLocalEntry(entry.name, entry.score, dateStr);
     return entry;
+  }
+
+  function saveLocalEntry(name, score, date) {
+    try {
+      const existing = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
+      existing.push({ name, score, date });
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(existing));
+    } catch (err) {
+      console.warn('Failed to save to localStorage', err);
+    }
   }
 
   function setMode(nextMode) {
@@ -804,64 +828,36 @@
     state.leaderboard.loading = true;
     state.leaderboard.error = null;
     updateMenuLayer();
-    fetch('data/leaderboard.csv')
-      .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.text();
-      })
-      .then((text) => {
-        const entries = parseLeaderboardCsv(text);
-        state.leaderboard.entries = entries.concat(state.leaderboard.localEntries);
-        sortLeaderboardEntries();
-        if (!state.leaderboard.localEntries.length) {
-          state.leaderboard.highlightId = null;
-        }
-        state.leaderboard.loading = false;
-        state.leaderboard.error = null;
-        updateMenuLayer();
-      })
-      .catch((err) => {
-        console.error('Failed to load leaderboard', err);
-        state.leaderboard.loading = false;
-        state.leaderboard.error = err;
-        updateMenuLayer();
-      });
-  }
 
-  function parseLeaderboardCsv(text) {
-    if (!text) return [];
-    const lines = text
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-    if (!lines.length) return [];
-    const header = lines[0].split(',').map((part) => part.trim().toLowerCase());
-    const nameIndex = header.indexOf('name');
-    const pointsIndex = header.indexOf('points');
-    const dateIndex = header.indexOf('date');
-    const entries = [];
-    for (let i = 1; i < lines.length; i += 1) {
-      const parts = lines[i].split(',');
-      if (!parts.length) continue;
-      const name = parts[nameIndex >= 0 ? nameIndex : 0] || '';
-      const points = parts[pointsIndex >= 0 ? pointsIndex : 1] || '';
-      const date = parts[dateIndex >= 0 ? dateIndex : 2] || '';
-      const numericScore = Number.parseFloat(points);
-      const entry = createLeaderboardEntry(
-        String(name).trim(),
-        Number.isFinite(numericScore) ? numericScore : 0,
-        String(date).trim(),
-      );
-      entries.push(entry);
-    }
-    entries.sort((a, b) => {
-      if (a.score === b.score) {
-        return a.name.localeCompare(b.name);
+    // Simulate async load for UI consistency, but load from memory/localstorage
+    setTimeout(() => {
+      try {
+        // 1. Load defaults
+        const combined = [...DEFAULT_LEADERBOARD_ENTRIES];
+        
+        // 2. Load user saves
+        const localRaw = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (localRaw) {
+          const localData = JSON.parse(localRaw);
+          if (Array.isArray(localData)) {
+            combined.push(...localData);
+          }
+        }
+
+        // 3. Convert to app objects
+        state.leaderboard.entries = combined.map(d => 
+          createLeaderboardEntry(d.name, d.score, d.date)
+        );
+        
+        sortLeaderboardEntries();
+        state.leaderboard.loading = false;
+      } catch (err) {
+        console.error('Leaderboard load failed', err);
+        state.leaderboard.error = err;
+        state.leaderboard.loading = false;
       }
-      return a.score - b.score;
-    });
-    recomputeLeaderboardRanks(entries);
-    return entries;
+      updateMenuLayer();
+    }, 50);
   }
 
   function handleMenuNavigation(delta) {
@@ -1126,6 +1122,10 @@
 
   function init() {
     ensureDom();
+    if (Gameplay && Gameplay.state && Gameplay.state.callbacks) {
+      Gameplay.state.callbacks.onRaceFinish = handleRaceFinish;
+    }
+
     state.mainMenuIndex = 0;
     state.pauseMenuIndex = 0;
     state.settingsMenuIndex = 0;

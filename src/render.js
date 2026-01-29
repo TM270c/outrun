@@ -1,5 +1,5 @@
 (function(global){
-  const { Config, MathUtil, World, Gameplay, RenderGL } = global;
+  const { Config, MathUtil, World, Gameplay, RenderGL, RenderDebug } = global;
 
   if (!Config || !MathUtil || !World || !Gameplay || !RenderGL) {
     throw new Error('Renderer module requires Config, MathUtil, World, Gameplay, and RenderGL globals');
@@ -38,6 +38,7 @@
     pctRem,
     computeCurvature,
   } = MathUtil;
+  const clamp01 = (v) => clamp(v, 0, 1);
 
   const {
     data,
@@ -58,7 +59,7 @@
 
   const textures = assets ? assets.textures : {};
   const state = Gameplay.state;
-  const areTexturesEnabled = () => debug.mode === 'off' && debug.textures !== false;
+  const areTexturesEnabled = () => debug.textures !== false;
 
   const PLAYER_ATLAS_COLUMNS = 9;
   const PLAYER_ATLAS_ROWS = 9;
@@ -73,6 +74,12 @@
   const PLAYER_SPRITE_SLOPE_MAX_ANGLE_DEG = 18;
   const PLAYER_SPRITE_SLOPE_MAX_ANGLE_RAD = (PLAYER_SPRITE_SLOPE_MAX_ANGLE_DEG * Math.PI) / 180;
   const PLAYER_SPRITE_HEIGHT_TIGHTEN = 0.7;
+  const NPC_ATLAS_COLUMNS = 9;
+  const NPC_ATLAS_ROWS = 9;
+  const NPC_COLOR_GRID_SIZE = 9;
+  const NPC_VERTICAL_SLOPE_MAX_DEG = 8;
+  const NPC_VERTICAL_SLOPE_MAX_RAD = (NPC_VERTICAL_SLOPE_MAX_DEG * Math.PI) / 180;
+  const NPC_VERTICAL_SLOPE_GAIN = 6;
 
   const playerSpriteBlendState = {
     steer: 0,
@@ -138,6 +145,138 @@
       return cache.get(id);
     };
   })();
+
+  function drawQuadOutline(quad, color, thickness = 2, fog){
+    if (!glr || !quad) return;
+    const t = Math.max(0.5, thickness);
+    const edges = [
+      [quad.x1, quad.y1, quad.x2, quad.y2],
+      [quad.x2, quad.y2, quad.x3, quad.y3],
+      [quad.x3, quad.y3, quad.x4, quad.y4],
+      [quad.x4, quad.y4, quad.x1, quad.y1],
+    ];
+    for (const [xA, yA, xB, yB] of edges) {
+      const dx = xB - xA;
+      const dy = yB - yA;
+      const len = Math.hypot(dx, dy);
+      if (len <= 1e-3) continue;
+      const nx = -dy / len;
+      const ny = dx / len;
+      const ox = nx * (t * 0.5);
+      const oy = ny * (t * 0.5);
+      const q = {
+        x1: xA + ox,
+        y1: yA + oy,
+        x2: xB + ox,
+        y2: yB + oy,
+        x3: xB - ox,
+        y3: yB - oy,
+        x4: xA - ox,
+        y4: yA - oy,
+      };
+      glr.drawQuadSolid(q, color, fog);
+    }
+  }
+
+  function wrapDelta(target, reference, length){
+    if (!Number.isFinite(length) || length <= 0) return target - reference;
+    let delta = target - reference;
+    const half = length * 0.5;
+    if (delta > half) delta -= length;
+    else if (delta < -half) delta += length;
+    return delta;
+  }
+
+  function npcLateralAngleLimit(){
+    const fovDeg = (state && state.camera && state.camera.fieldOfView)
+      ? state.camera.fieldOfView
+      : ((camera && camera.fovDeg != null) ? camera.fovDeg : 60);
+    return clamp(Math.abs(fovDeg) * Math.PI / 180 * 0.5, 0.01, Math.PI / 2);
+  }
+
+  function bucketFromNormalized(norm){
+    const t = clamp01((norm + 1) * 0.5);
+    return clamp(Math.round(t * (NPC_COLOR_GRID_SIZE - 1)) + 1, 1, NPC_COLOR_GRID_SIZE);
+  }
+
+  function hueFromBucket(bucket){
+    const t = clamp01((bucket - 1) / (NPC_COLOR_GRID_SIZE - 1));
+    if (t <= 0.5) {
+      const local = t / 0.5;
+      return [
+        lerp(0, 0, local),   // R stays 0
+        lerp(0, 1, local),   // G up
+        lerp(1, 0, local),   // B down
+      ];
+    }
+    const local = (t - 0.5) / 0.5;
+    return [
+      lerp(0, 1, local),    // R up
+      lerp(1, 0, local),    // G down
+      lerp(0, 0, local),    // B stays 0
+    ];
+  }
+
+  function lightnessFromBucket(bucket){
+    const MIN_L = 0.35;
+    const MAX_L = 0.9;
+    const t = clamp01((bucket - 1) / (NPC_COLOR_GRID_SIZE - 1));
+    return clamp01(lerp(MAX_L, MIN_L, t));
+  }
+
+  function npcBucketsFromPose(lateralAngle, slopeNorm){
+    const lateralLimit = npcLateralAngleLimit();
+    const xBucket = bucketFromNormalized(
+      clamp(lateralAngle / Math.max(lateralLimit, 1e-3), -1, 1)
+    );
+    const yBucket = bucketFromNormalized(clamp(slopeNorm, -1, 1));
+    return { xBucket, yBucket };
+  }
+
+  function npcColorFromBuckets(xBucket, yBucket, alpha = 1){
+    const baseRgb = hueFromBucket(xBucket);
+    const lightness = lightnessFromBucket(yBucket);
+    const rgb = [
+      clamp01(baseRgb[0] * lightness),
+      clamp01(baseRgb[1] * lightness),
+      clamp01(baseRgb[2] * lightness),
+    ];
+    return {
+      color: [rgb[0], rgb[1], rgb[2], alpha],
+      index: (yBucket - 1) * NPC_COLOR_GRID_SIZE + (xBucket - 1),
+    };
+  }
+
+  function npcAtlasUvFromBuckets(buckets){
+    const colRaw = clamp(Math.floor((buckets && buckets.x ? buckets.x : 1) - 1), 0, NPC_ATLAS_COLUMNS - 1);
+    const col = (NPC_ATLAS_COLUMNS - 1) - colRaw;
+    const row = clamp(Math.floor((buckets && buckets.y ? buckets.y : 1) - 1), 0, NPC_ATLAS_ROWS - 1);
+    return atlasUvFromRowCol(row, col, NPC_ATLAS_COLUMNS, NPC_ATLAS_ROWS);
+  }
+
+  function npcColorForCar(car, camX, camY, sCam){
+    const roadW = roadWidthAt(car.z || 0);
+    const carX = (Number.isFinite(car.offset) ? car.offset : 0) * roadW;
+    const carY = floorElevationAt(car.z || 0);
+    const trackLength = typeof data.trackLength === 'number' ? data.trackLength : (data.trackLength || 0);
+    const dz = wrapDelta(car.z || 0, sCam, trackLength);
+    const dx = carX - camX;
+    const lateralAngle = Math.atan2(dx, Math.max(Math.abs(dz), 1e-6));
+    const profile = groundProfileAt(car.z || 0);
+    const rawSlope = profile && Number.isFinite(profile.dy) ? profile.dy : 0;
+    const slopeAngle = Math.atan(rawSlope);
+    const denom = NPC_VERTICAL_SLOPE_MAX_RAD > 1e-6 ? NPC_VERTICAL_SLOPE_MAX_RAD : (Math.PI * 0.25);
+    const slopeNorm = clamp((-slopeAngle / denom) * NPC_VERTICAL_SLOPE_GAIN, -1, 1);
+    const { xBucket, yBucket } = npcBucketsFromPose(lateralAngle, slopeNorm);
+    const alpha = (car && car.meta && Array.isArray(car.meta.tint) && car.meta.tint.length > 3)
+      ? car.meta.tint[3]
+      : 1;
+    const colorInfo = npcColorFromBuckets(xBucket, yBucket, alpha);
+    return {
+      ...colorInfo,
+      buckets: { x: xBucket, y: yBucket },
+    };
+  }
 
   function applyDeadzone(value, deadzone = 0){
     const dz = Number.isFinite(deadzone) ? Math.min(Math.max(deadzone, 0), 0.99) : 0;
@@ -529,53 +668,34 @@
 
   let glr = null;
   let canvas3D = null;
-  let canvasOverlay = null;
   let canvasHUD = null;
-  let ctxSide = null;
   let ctxHUD = null;
-
-  const DEBUG_PANEL_MARGIN = 24;
-  const DEBUG_PANEL_GAP = 16;
-  const BOOST_PANEL_WIDTH = 220;
-  const BOOST_PANEL_HEIGHT = 120;
-  const PROFILE_PANEL_PADDING = { top: 16, right: 18, bottom: 26, left: 18 };
 
   let W = 0;
   let H = 0;
   let HALF_VIEW = 0;
-  let SW = 0;
-  let SH = 0;
   let HUD_W = 0;
   let HUD_H = 0;
   let HUD_COVER_RADIUS = 0;
 
-  let overlayOn = false;
+  let overlayApi = {
+    setOverlayCanvas(){},
+    syncOverlayVisibility(){ return false; },
+    computeOverlayEnabled(){ return false; },
+    renderOverlay(){},
+  };
 
-  function computeOverlayEnabled() {
-    const app = global.App || null;
-    if (app && typeof app.isDebugEnabled === 'function') {
-      try {
-        return !!app.isDebugEnabled();
-      } catch (err) {
-        // Fall through to config-based detection below.
-      }
-    }
-    return debug && debug.mode !== 'off';
-  }
+  const overlayEnabled = () => (
+    overlayApi && typeof overlayApi.computeOverlayEnabled === 'function'
+      ? overlayApi.computeOverlayEnabled()
+      : false
+  );
 
-  function syncOverlayVisibility(force = false) {
-    const shouldShow = computeOverlayEnabled();
-    if (force || overlayOn !== shouldShow) {
-      overlayOn = shouldShow;
-      if (canvasOverlay) {
-        canvasOverlay.style.display = overlayOn ? 'block' : 'none';
-      }
-      if (!overlayOn && ctxSide) {
-        ctxSide.clearRect(0, 0, SW, SH);
-      }
-    }
-    return overlayOn;
-  }
+  const syncOverlayVisibility = (force = false) => (
+    overlayApi && typeof overlayApi.syncOverlayVisibility === 'function'
+      ? overlayApi.syncOverlayVisibility(force)
+      : false
+  );
 
   function createPoint(worldOrX, y, z){
     if (typeof worldOrX === 'object' && worldOrX !== null){
@@ -717,12 +837,6 @@
     if (f <= n) return z >= f ? 1 : 0;
     return clamp((z - n) / (f - n), 0, 1);
   }
-  function spriteFarScaleFromZ(z){
-    if (!fog.enabled) return 1;
-    const f = fogFactorFromZ(z);
-    return 1 - (1 - sprites.far.shrinkTo) * Math.pow(f, sprites.far.power);
-  }
-
   const BACKDROP_SCALE = 1.25;
 
   function drawParallaxLayer(tex, cfg){
@@ -979,6 +1093,24 @@
     return Array.isArray(zones) ? zones : [];
   }
 
+  if (RenderDebug && typeof RenderDebug.createOverlay === 'function') {
+    overlayApi = RenderDebug.createOverlay({
+      state,
+      track,
+      laneToRoadRatio,
+      getZoneLaneBounds,
+      boost,
+      drift,
+      build,
+      computeCurvature,
+      groundProfileAt,
+      elevationAt,
+      segmentAtS,
+      boostZonesOnSegment,
+      perf,
+    });
+  }
+
   function zonesFor(key){
     const direct = data[`${key}TexZones`];
     if (Array.isArray(direct)) return direct;
@@ -1086,8 +1218,8 @@
       const w2 = p2.screen.scale * rw2 * HALF_VIEW;
 
       const fogRoad = fogArray(p1.camera.z, p2.camera.z);
-      const yScale1 = 1.0 - fogRoad[0];
-      const yScale2 = 1.0 - fogRoad[2];
+      const yScale1 = 1.0;
+      const yScale2 = 1.0;
 
       const boostZonesHere = boostZonesOnSegment(seg);
 
@@ -1181,9 +1313,8 @@
         const centerX = lerp(p1.screen.x, p2.screen.x, midT);
         const centerY = lerp(p1.screen.y, p2.screen.y, midT);
         const zMid = lerp(p1.camera.z, p2.camera.z, midT);
-        const farScale = spriteFarScaleFromZ(zMid);
         const baseRadius = computeSnowScreenBaseRadius(scaleMid, rwMid);
-        const sizePx = baseRadius * farScale * 2;
+        const sizePx = baseRadius * 2;
         const color = (seg.snowScreen && Array.isArray(seg.snowScreen.color))
           ? seg.snowScreen.color
           : [1, 1, 1, 1];
@@ -1209,11 +1340,31 @@
         const xCenter = lerp(p1.screen.x, p2.screen.x, t) + scale * car.offset * rw * HALF_VIEW;
         const yBase = lerp(p1.screen.y, p2.screen.y, t);
         const zObj = lerp(p1.camera.z, p2.camera.z, t);
-        const farS = spriteFarScaleFromZ(zObj);
-        let wPx = Math.max(6, scale * car.meta.wN * rw * HALF_VIEW);
-        let hPx = Math.max(10, wPx * car.meta.aspect);
-        wPx *= farS;
-        hPx *= farS;
+        const wPx = scale * car.meta.wN * rw * HALF_VIEW;
+        const hPx = wPx * car.meta.aspect;
+        const npcColor = npcColorForCar(car, camX, camY, sCam);
+        const npcTex = (() => {
+          const texKey = car && car.texKey;
+          if (texKey && textures[texKey]) return textures[texKey];
+          const fallbackKeys = [
+            'npcCar01', 'npcCar02', 'npcCar03',
+            'npcVan01', 'npcVan02', 'npcVan03',
+            'npcSemi01', 'npcSemi02', 'npcSemi03',
+            'npcSpecial01',
+          ];
+          for (const key of fallbackKeys) {
+            if (textures[key]) return textures[key];
+          }
+          return textures.car || (car.meta && typeof car.meta.tex === 'function' ? car.meta.tex() : null);
+        })();
+        const npcUv = npcAtlasUvFromBuckets(npcColor.buckets);
+        const hitboxScale = (() => {
+          const hb = (car.meta && Number.isFinite(car.meta.hitboxWN) && car.meta.hitboxWN > 0)
+            ? car.meta.hitboxWN
+            : car.meta.wN;
+          const denom = car.meta && Number.isFinite(car.meta.wN) && car.meta.wN > 0 ? car.meta.wN : hb || 1;
+          return denom !== 0 ? hb / denom : 1;
+        })();
         drawList.push({
           type: 'npc',
           depth: zObj,
@@ -1222,9 +1373,13 @@
           w: wPx,
           h: hPx,
           z: zObj,
-          tint: car.meta.tint,
-          tex: car.meta.tex ? car.meta.tex() : null,
+          tint: npcColor.color,
+          tex: npcTex,
+          uv: npcUv,
           colorKey: `npc:${car.type || 'car'}`,
+          npcColorIndex: npcColor.index,
+          npcColorBuckets: npcColor.buckets,
+          hitboxScale,
         });
       }
 
@@ -1286,15 +1441,12 @@
           }
         }
         const zObj = lerp(p1.camera.z, p2.camera.z, t) + 1e-3;
-        const farS = spriteFarScaleFromZ(zObj);
         const scaleFactor = Number.isFinite(spr.scale) ? spr.scale : 1;
         const stretchFactor = Number.isFinite(spr.stretch) ? spr.stretch : 1;
-        let wPx = Math.max(6, scale * meta.wN * rw * HALF_VIEW);
-        let hPx = Math.max(10, wPx * meta.aspect);
+        let wPx = scale * meta.wN * rw * HALF_VIEW;
+        let hPx = wPx * meta.aspect;
         wPx *= scaleFactor;
         hPx *= scaleFactor * stretchFactor;
-        wPx *= farS;
-        hPx *= farS;
         let angle = null;
         const screenOffsetX = Number.isFinite(spr.screenOffsetX) ? spr.screenOffsetX : 0;
         const screenOffsetY = Number.isFinite(spr.screenOffsetY) ? spr.screenOffsetY : 0;
@@ -1345,11 +1497,8 @@
       const pixScale = body.screen.scale * HALF_VIEW;
       const widthNorm = Number.isFinite(playerMeta.wN) ? playerMeta.wN : 0.16;
       const aspect = Number.isFinite(playerMeta.aspect) ? playerMeta.aspect : 0.7;
-      const w = Math.max(
-        12,
-        widthNorm * state.getKindScale('PLAYER') * roadWidthAt(phys.s) * pixScale,
-      );
-      const h = Math.max(18, w * aspect);
+      const w = widthNorm * state.getKindScale('PLAYER') * roadWidthAt(phys.s) * pixScale;
+      const h = w * aspect;
       const sprite = computePlayerSpriteSamples(frame, playerMeta);
       drawList.push({
         type: 'player',
@@ -1372,12 +1521,16 @@
     const items = Array.isArray(drawList) ? drawList : [];
     perf.registerDrawListSize(items.length);
     if (!items.length) return;
+    const showDebugBoxes = overlayEnabled();
+    const hitboxColor = [1, 0.2, 0.2, 1];
+    const textureColor = [0.2, 0.9, 1, 1];
     for (const item of items){
       if (item.type === 'strip'){
         perf.registerStrip();
         renderStrip(item);
       } else if (item.type === 'npc'){
         perf.registerSprite('npc');
+        
         drawBillboard(
           item.x,
           item.y,
@@ -1389,6 +1542,35 @@
           item.uv,
           item.colorKey,
         );
+        if (showDebugBoxes){
+          const quadTex = {
+            x1: item.x - item.w * 0.5,
+            y1: item.y - item.h,
+            x2: item.x + item.w * 0.5,
+            y2: item.y - item.h,
+            x3: item.x + item.w * 0.5,
+            y3: item.y,
+            x4: item.x - item.w * 0.5,
+            y4: item.y,
+          };
+          const hbScale = (Number.isFinite(item.hitboxScale) && item.hitboxScale > 0) ? item.hitboxScale : 1;
+          const hbW = item.w * hbScale;
+          const aspect = (item.w > 0) ? (item.h / item.w) : 1;
+          const hbH = hbW * aspect;
+          const quadHb = {
+            x1: item.x - hbW * 0.5,
+            y1: item.y - hbH,
+            x2: item.x + hbW * 0.5,
+            y2: item.y - hbH,
+            x3: item.x + hbW * 0.5,
+            y3: item.y,
+            x4: item.x - hbW * 0.5,
+            y4: item.y,
+          };
+          const fog = fogArray(item.z);
+          drawQuadOutline(quadTex, textureColor, 2, fog);
+          drawQuadOutline(quadHb, hitboxColor, 2, fog);
+        }
       } else if (item.type === 'prop'){
         perf.registerSprite('prop');
         const hasAngle = Number.isFinite(item.angle) && Math.abs(item.angle) > 1e-4;
@@ -1674,7 +1856,7 @@
     const texturesEnabled = areTexturesEnabled();
     const fogShadow = fogArray(item.zShadow || 0);
     const fogBody = fogArray(item.zBody || 0);
-    const shH = Math.max(3, item.h * 0.06);
+    const shH = item.h * 0.06;
 
     const bodyBottom = Math.min(item.bodyY, item.shadowY - shH);
     const bodyTop = bodyBottom - item.h;
@@ -1766,267 +1948,25 @@
       const bodyColor = texturesEnabled ? fallbackTint : randomColorFor('player:body');
       glr.drawQuadSolid(bodyQuad, bodyColor, fogBody);
     }
-  }
 
-  function computeDebugPanels(){
-    const margin = DEBUG_PANEL_MARGIN;
-    const gap = DEBUG_PANEL_GAP;
-    const boostPanel = {
-      x: margin,
-      y: margin,
-      width: BOOST_PANEL_WIDTH,
-      height: BOOST_PANEL_HEIGHT,
-    };
-    const profileX = boostPanel.x + boostPanel.width + gap;
-    const profileWidth = Math.max(0, SW - profileX - margin);
-    return {
-      boost: boostPanel,
-      profile: {
-        x: profileX,
-        y: margin,
-        width: profileWidth,
-        height: BOOST_PANEL_HEIGHT,
-      },
-    };
-  }
-
-  function worldToOverlay(s,y, panelRect = null){
-    const pxPerMeterX = 1 / track.metersPerPixel.x;
-    const pxPerMeterY = 1 / track.metersPerPixel.y;
-    if (panelRect && panelRect.width > 0 && panelRect.height > 0){
-      const pad = PROFILE_PANEL_PADDING;
-      const innerWidth = Math.max(1, panelRect.width - pad.left - pad.right);
-      const innerHeight = Math.max(1, panelRect.height - pad.top - pad.bottom);
-      const centerX = panelRect.x + pad.left + innerWidth * 0.5;
-      const centerY = panelRect.y + pad.top + innerHeight * 0.5;
-      return {
-        x: centerX + (s - state.phys.s) * pxPerMeterX,
-        y: centerY - (y - state.phys.y) * pxPerMeterY,
-      };
+    if (overlayEnabled()) {
+      const hb = Number.isFinite(meta.hitboxWN) && meta.hitboxWN > 0 ? meta.hitboxWN : meta.wN;
+      const denom = Number.isFinite(meta.wN) && meta.wN > 0 ? meta.wN : hb || 1;
+      const hbScale = denom !== 0 ? hb / denom : 1;
+      const hbW = item.w * hbScale;
+      const hbH = item.h * hbScale;
+      const hbCY = item.shadowY - (hbH * 0.5);
+      const hitQuad = makeRotatedQuad(bodyCX, hbCY, hbW, hbH, ang);
+      // Texture outline stays on the body; hitbox outline anchored to ground/shadow.
+      drawQuadOutline(bodyQuad, [0.2, 0.9, 1, 1], 2, fogBody);
+      drawQuadOutline(hitQuad, [1, 0.2, 0.2, 1], 2, fogBody);
     }
-    return {
-      x:(s-state.phys.s)*pxPerMeterX + SW*0.5,
-      y: SH - (y - state.phys.y)*pxPerMeterY - 60
-    };
   }
-  function drawBoostCrossSection(ctx, panelRect = null){
-    const panelX = panelRect && panelRect.x != null ? panelRect.x : DEBUG_PANEL_MARGIN;
-    const panelY = panelRect && panelRect.y != null ? panelRect.y : DEBUG_PANEL_MARGIN;
-    const panelWRaw = panelRect && panelRect.width != null ? panelRect.width : BOOST_PANEL_WIDTH;
-    const panelHRaw = panelRect && panelRect.height != null ? panelRect.height : BOOST_PANEL_HEIGHT;
-    if (panelWRaw <= 0 || panelHRaw <= 0) return;
-    const panelW = panelWRaw;
-    const panelH = panelHRaw;
-    const roadPadX = Math.min(18, Math.max(8, panelW * 0.12));
-    const roadPadTop = Math.min(24, Math.max(12, panelH * 0.2));
-    const roadPadBottom = Math.min(20, Math.max(10, panelH * 0.18));
-    const roadW = panelW - roadPadX * 2;
-    const roadH = panelH - roadPadTop - roadPadBottom;
-    if (roadW <= 0 || roadH <= 0) return;
 
-    ctx.save();
-    ctx.translate(panelX, panelY);
-
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(0, 0, panelW, panelH);
-
-    const roadX = roadPadX;
-    const roadY = roadPadTop;
-    ctx.fillStyle = '#484848';
-    ctx.fillRect(roadX, roadY, roadW, roadH);
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(roadX, roadY, roadW, roadH);
-
-    const seg = segmentAtS(state.phys.s);
-    const zones = boostZonesOnSegment(seg);
-    const mapN = (n, fallback = 0) => {
-      const ratio = laneToRoadRatio(n, fallback);
-      return roadX + ratio * roadW;
-    };
-    const mapRatio = (ratio) => roadX + ratio * roadW;
-
-    for (const zone of zones){
-      const bounds = getZoneLaneBounds(zone);
-      if (!bounds) continue;
-      const zoneColors = boost.colors[zone.type] || boost.fallbackColor;
-      const x1 = mapRatio(bounds.roadRatioMin);
-      const x2 = mapRatio(bounds.roadRatioMax);
-      const zx = Math.min(x1, x2);
-      const zw = Math.max(2, Math.abs(x2 - x1));
-      ctx.fillStyle = zoneColors.fill;
-      ctx.fillRect(zx, roadY, zw, roadH);
-      ctx.strokeStyle = zoneColors.stroke;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(zx, roadY, zw, roadH);
-    }
-
-    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-    ctx.lineWidth = 1;
-    const centerX = mapN(0);
-    ctx.beginPath();
-    ctx.moveTo(centerX, roadY);
-    ctx.lineTo(centerX, roadY + roadH);
-    ctx.stroke();
-
-    const playerX = mapN(state.playerN);
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(playerX, roadY + roadH * 0.5, 6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '11px system-ui, Arial';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('Cross-section', 0, panelH - 4);
-
-    ctx.restore();
-  }
   function renderOverlay(){
-    if (!syncOverlayVisibility() || !ctxSide) return;
-    ctxSide.clearRect(0,0,SW,SH);
-
-    const panels = computeDebugPanels();
-    const boostPanel = panels.boost;
-    const profilePanel = panels.profile;
-    const pad = PROFILE_PANEL_PADDING;
-    const innerProfileX = profilePanel.x + pad.left;
-    const innerProfileY = profilePanel.y + pad.top;
-    const innerProfileW = Math.max(1, profilePanel.width - pad.left - pad.right);
-    const innerProfileH = Math.max(1, profilePanel.height - pad.top - pad.bottom);
-
-    if (profilePanel.width > 0 && profilePanel.height > 0){
-      ctxSide.fillStyle = 'rgba(0,0,0,0.55)';
-      ctxSide.fillRect(profilePanel.x, profilePanel.y, profilePanel.width, profilePanel.height);
-      ctxSide.strokeStyle = 'rgba(255,255,255,0.25)';
-      ctxSide.lineWidth = 1;
-      ctxSide.strokeRect(profilePanel.x, profilePanel.y, profilePanel.width, profilePanel.height);
-
-      ctxSide.save();
-      ctxSide.beginPath();
-      ctxSide.rect(innerProfileX, innerProfileY, innerProfileW, innerProfileH);
-      ctxSide.clip();
-
-      ctxSide.lineWidth = 2;
-      ctxSide.strokeStyle = state.phys.boostFlashTimer>0 ? '#d32f2f' : '#1976d2';
-      ctxSide.beginPath();
-      const sHalf = innerProfileW * 0.5 * track.metersPerPixel.x;
-      const sStart = state.phys.s - sHalf;
-      const sEnd   = state.phys.s + sHalf;
-      const step   = Math.max(5, 2*track.metersPerPixel.x);
-      let first = true;
-      for (let s = sStart; s <= sEnd; s += step){
-        const p = worldToOverlay(s, elevationAt(s), profilePanel);
-        if (first){ ctxSide.moveTo(p.x,p.y); first=false; } else { ctxSide.lineTo(p.x,p.y); }
-      }
-      ctxSide.stroke();
-
-      const p = worldToOverlay(state.phys.s, state.phys.y, profilePanel);
-      ctxSide.fillStyle = '#2e7d32';
-      ctxSide.beginPath(); ctxSide.arc(p.x, p.y, 6, 0, Math.PI*2); ctxSide.fill();
-
-      ctxSide.restore();
-
-      ctxSide.fillStyle = '#ffffff';
-      ctxSide.font = '11px system-ui, Arial';
-      ctxSide.textBaseline = 'bottom';
-      ctxSide.fillText('Elevation profile', profilePanel.x + pad.left, profilePanel.y + profilePanel.height - 6);
+    if (overlayApi && typeof overlayApi.renderOverlay === 'function') {
+      overlayApi.renderOverlay();
     }
-
-    drawBoostCrossSection(ctxSide, boostPanel);
-
-    const metrics = state.metrics || null;
-    const fmtSeconds = (value) => {
-      if (!Number.isFinite(value) || value <= 0) return '0.00s';
-      return `${value.toFixed(2)}s`;
-    };
-    const fmtCount = (value) => (Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0);
-    const fmtSpeed = (value) => {
-      if (!Number.isFinite(value) || value <= 0) return '0.0';
-      return value.toFixed(1);
-    };
-    const fmtFloat = (value, digits = 1, fallback = '0.0') => (
-      Number.isFinite(value) ? value.toFixed(digits) : fallback
-    );
-
-    const debugLines = [];
-
-    if (metrics) {
-      debugLines.push(
-        `NPC hits: ${fmtCount(metrics.npcHits)}`,
-        `Near misses: ${fmtCount(metrics.nearMisses)}`,
-        `Guardrail hits: ${fmtCount(metrics.guardRailHits)}`,
-        `Guardrail time: ${fmtSeconds(metrics.guardRailContactTime)}`,
-        `Pickups: ${fmtCount(metrics.pickupsCollected)}`,
-        `Air time: ${fmtSeconds(metrics.airTime)}`,
-        `Drift time: ${fmtSeconds(metrics.driftTime)}`,
-        `Top speed: ${fmtSpeed(metrics.topSpeed)} u/s`,
-        `Respawns: ${fmtCount(metrics.respawnCount)}`,
-        `Off-road time: ${fmtSeconds(metrics.offRoadTime)}`,
-      );
-    }
-
-    const perfStats = perf.getLastFrameStats();
-    if (perfStats) {
-      const fpsDisplay = fmtFloat(perfStats.fps, 1, '0.0');
-      const frameMsDisplay = fmtFloat(perfStats.frameTimeMs, 2, '0.00');
-      debugLines.push(
-        `FPS: ${fpsDisplay} (${frameMsDisplay}ms)`,
-        `Visible quads: ${fmtCount(perfStats.quadCount)} (solid ${fmtCount(perfStats.solidQuadCount)}, textured ${fmtCount(perfStats.texturedQuadCount)})`,
-        `Draw calls: ${fmtCount(perfStats.drawCalls)} | Draw list: ${fmtCount(perfStats.drawListSize)} items`,
-        `Strips: ${fmtCount(perfStats.stripCount)} | Sprites: ${fmtCount(perfStats.spriteCount)} (NPC ${fmtCount(perfStats.npcCount)}, props ${fmtCount(perfStats.propCount)}, player ${fmtCount(perfStats.playerCount)})`,
-        `Snow: ${fmtCount(perfStats.snowQuadCount)} quads across ${fmtCount(perfStats.snowScreenCount)} screens`,
-        `Boost quads: ${fmtCount(perfStats.boostQuadCount)} | Physics steps: ${fmtCount(perfStats.physicsSteps)} | Segments: ${fmtCount(perfStats.segments)}`,
-      );
-    }
-
-    if (debugLines.length) {
-      const listPanelX = DEBUG_PANEL_MARGIN;
-      const listPanelY = boostPanel.y + boostPanel.height + DEBUG_PANEL_GAP;
-      const listPanelWidth = Math.max(180, Math.min(300, SW - listPanelX - DEBUG_PANEL_MARGIN));
-      const lineHeight = 16;
-      const listPanelHeight = debugLines.length * lineHeight + 12;
-      if (listPanelWidth > 0 && listPanelHeight > 0 && listPanelY < SH) {
-        const availableHeight = Math.max(0, SH - listPanelY - DEBUG_PANEL_MARGIN);
-        const clampedHeight = Math.max(0, Math.min(listPanelHeight, availableHeight));
-        ctxSide.fillStyle = 'rgba(0,0,0,0.55)';
-        if (clampedHeight > 0) {
-          ctxSide.fillRect(listPanelX, listPanelY, listPanelWidth, clampedHeight);
-          ctxSide.strokeStyle = 'rgba(255,255,255,0.25)';
-          ctxSide.lineWidth = 1;
-          ctxSide.strokeRect(listPanelX, listPanelY, listPanelWidth, clampedHeight);
-          ctxSide.fillStyle = '#ffffff';
-          ctxSide.font = '12px system-ui, Arial';
-          ctxSide.textBaseline = 'top';
-          const textX = listPanelX + 8;
-          let textY = listPanelY + 6;
-          for (const line of debugLines) {
-            if (textY + lineHeight > listPanelY + clampedHeight) break;
-            ctxSide.fillText(line, textX, textY);
-            textY += lineHeight;
-          }
-        }
-      }
-    }
-
-    const { dy, d2y } = groundProfileAt(state.phys.s);
-    const kap = computeCurvature(dy, d2y);
-    const boostingHUD = (state.boostTimer>0) ? `boost:${state.boostTimer.toFixed(2)}s ` : '';
-    const driftHUD = `drift:${state.driftState}${state.driftState==='drifting'?' dir='+state.driftDirSnapshot:''} charge:${state.driftCharge.toFixed(2)}/${drift.chargeMin} armed:${state.allowedBoost}`;
-    const buildVersion = (typeof build.version === 'string' && build.version.length > 0)
-      ? build.version
-      : null;
-    const versionHUD = buildVersion ? `ver:${buildVersion}  ` : '';
-    const hud = `${versionHUD}${boostingHUD}${driftHUD}  vtan:${state.phys.vtan.toFixed(1)}  grounded:${state.phys.grounded}  kappa:${kap.toFixed(5)}  n:${state.playerN.toFixed(2)}  cars:${state.cars.length}`;
-    ctxSide.fillStyle = '#fff';
-    ctxSide.strokeStyle = '#000';
-    ctxSide.lineWidth = 3;
-    ctxSide.font = '12px system-ui, Arial';
-    ctxSide.strokeText(hud, 10, SH-12);
-    ctxSide.fillText(hud, 10, SH-12);
   }
 
   const resetMatte = (() => {
@@ -2078,20 +2018,16 @@
     glr = glRenderer;
     perf.wrapRenderer(glr);
     canvas3D = dom && dom.canvas || null;
-    canvasOverlay = dom && dom.overlay || null;
     canvasHUD = dom && dom.hud || null;
+    const overlayCanvas = dom && dom.overlay || null;
 
     if (canvas3D){
       W = canvas3D.width;
       H = canvas3D.height;
       HALF_VIEW = W * 0.5;
     }
-    if (canvasOverlay){
-      ctxSide = canvasOverlay.getContext('2d', { alpha:true });
-      SW = canvasOverlay.width;
-      SH = canvasOverlay.height;
-      syncOverlayVisibility(true);
-    }
+    overlayApi.setOverlayCanvas(overlayCanvas);
+    syncOverlayVisibility(true);
     if (canvasHUD){
       ctxHUD = canvasHUD.getContext('2d', { alpha:true });
       HUD_W = canvasHUD.width;

@@ -306,6 +306,7 @@
   const DEFAULT_SPRITE_META = {
     PLAYER: {
       wN: 0.35,
+      hitboxWN: 0.2,
       aspect: 1,
       tint: [0.9, 0.22, 0.21, 1],
       atlas: { columns: 9, totalFrames: 81 },
@@ -320,8 +321,10 @@
         return null;
       },
     },
-    CAR:    { wN: 0.28, aspect: 1, tint: [0.2, 0.7, 1.0, 1], tex: () => null },
-    SEMI:   { wN: 0.34, aspect: 1.6, tint: [0.85, 0.85, 0.85, 1], tex: () => null },
+    CAR:    { wN: 0.35, hitboxWN: 0.2, aspect: 1, tint: [0.2, 0.7, 1.0, 1], tex: () => null },
+    TRUCK:  { wN: 0.36, hitboxWN: 0.2, aspect: 1, tint: [0.35, 0.75, 0.6, 1], tex: () => null },
+    SEMI:   { wN: 0.38, hitboxWN: 0.22, aspect: 1, tint: [0.85, 0.85, 0.85, 1], tex: () => null },
+    SPECIAL:{ wN: 0.35, hitboxWN: 0.2, aspect: 1, tint: [1, 0.95, 0.7, 1], tex: () => null },
     TREE:   { wN: 0.5,  aspect: 3.0, tint: [1, 1, 1, 1], tex: () => null },
     SIGN:   {
       wN: 1.2,
@@ -369,6 +372,7 @@
     ? SpriteCatalog.metricsFallback
     : Object.freeze({
       wN: 0.2,
+      hitboxWN: null,
       aspect: 1,
       tint: [1, 1, 1, 1],
       textureKey: null,
@@ -381,8 +385,12 @@
       ...SPRITE_METRIC_FALLBACK,
       ...preset,
     };
+    const hitboxWN = (Number.isFinite(base.hitboxWN) && base.hitboxWN > 0)
+      ? base.hitboxWN
+      : base.wN;
     return {
       wN: base.wN,
+      hitboxWN,
       aspect: base.aspect,
       tint: Array.isArray(base.tint) ? base.tint.slice() : [1, 1, 1, 1],
       tex(spr) {
@@ -871,7 +879,7 @@
     const url = typeof World.resolveAssetUrl === 'function'
       ? World.resolveAssetUrl(relativePath)
       : relativePath;
-    const res = await fetch(url, { cache: 'no-store' });
+    const res = await fetch(url);
     if (!res.ok) {
       throw new Error(`Failed to load ${relativePath}: ${res.status}`);
     }
@@ -1007,7 +1015,48 @@
 
   const NPC_DEFAULTS = { total: 20, edgePad: 0.02, avoidLookaheadSegs: 20 };
   const NPC = { ...NPC_DEFAULTS, ...trafficConfig };
-  const CAR_TYPES = ['CAR', 'SEMI'];
+  const NPC_WEIGHTS_DEFAULT = { car: 1, truck: 0.7, semi: 0.4, special: 0.2 };
+  const NPC_SPEED_DEFAULTS = {
+    car: { base: 0.16, variance: 0.18 },
+    truck: { base: 0.14, variance: 0.14 },
+    semi: { base: 0.12, variance: 0.1 },
+    special: { base: 0.2, variance: 0.15 },
+  };
+  const NPC_VEHICLE_POOLS = {
+    car: ['npcCar01', 'npcCar02', 'npcCar03'],
+    truck: ['npcVan01', 'npcVan02', 'npcVan03'],
+    semi: ['npcSemi01', 'npcSemi02', 'npcSemi03'],
+    special: [
+      'npcSpecial01',
+      'npcSpecial02',
+      'npcSpecial03',
+      'npcSpecial04',
+      'npcSpecial05',
+      'npcSpecial06',
+      'npcSpecial07',
+      'npcSpecial08',
+      'npcSpecial09',
+    ],
+  };
+  const NPC_VEHICLE_META = {
+    car: 'CAR',
+    truck: 'TRUCK',
+    semi: 'SEMI',
+    special: 'SPECIAL',
+  };
+  const NPC_SPECIAL_CONFIG = trafficConfig.specials || trafficConfig.specialVehicles || {};
+  const NPC_SPEED_CONFIG = trafficConfig.vehicleSpeeds || {};
+  const NPC_WEIGHTS = (() => {
+    const configWeights = (trafficConfig && trafficConfig.vehicleWeights) || {};
+    const merged = { ...NPC_WEIGHTS_DEFAULT };
+    Object.keys(configWeights).forEach((key) => {
+      const val = Number(configWeights[key]);
+      if (Number.isFinite(val) && val >= 0) {
+        merged[key] = val;
+      }
+    });
+    return merged;
+  })();
 
   const CAR_COLLISION_COOLDOWN = 1 / 120;
   const COLLISION_PUSH_DURATION = 0.45;
@@ -1207,7 +1256,9 @@
   }
 
   function playerHalfWN() {
-    return getSpriteMeta('PLAYER').wN * state.getKindScale('PLAYER') * 0.5;
+    const meta = getSpriteMeta('PLAYER');
+    const width = Number.isFinite(meta.hitboxWN) && meta.hitboxWN > 0 ? meta.hitboxWN : meta.wN;
+    return width * state.getKindScale('PLAYER') * 0.5;
   }
 
   function spawnDriftSmokeSprites() {
@@ -1412,7 +1463,8 @@
 
   function carHalfWN(car) {
     const meta = carMeta(car);
-    return (meta.wN || 0) * 0.5;
+    const width = Number.isFinite(meta.hitboxWN) && meta.hitboxWN > 0 ? meta.hitboxWN : meta.wN;
+    return (width || 0) * 0.5;
   }
 
   function currentPlayerForwardSpeed() {
@@ -2250,8 +2302,6 @@
       }
     }
 
-    const integrationEndS = phys.s;
-    segmentsCrossedDuringStep = collectSegmentsCrossed(startS, integrationEndS);
 
     if (!prevGrounded && phys.grounded) {
       if (state.hopHeld && state.pendingDriftDir !== 0) {
@@ -2306,13 +2356,16 @@
 
     const length = trackLengthRef();
     let lapIncrements = 0;
+    let integrationEndS = phys.s;
+  
     if (length > 0) {
-      const rawS = phys.s;
+      const rawS = integrationEndS;
       const startLap = Math.floor(startS / length);
       const endLap = Math.floor(rawS / length);
       lapIncrements = endLap - startLap;
       phys.s = ((rawS % length) + length) % length;
     }
+    segmentsCrossedDuringStep = collectSegmentsCrossed(startS, integrationEndS);
 
     if (state.race.active && lapIncrements > 0) {
       state.race.lapsCompleted += lapIncrements;
@@ -2437,6 +2490,68 @@
     }
   }
 
+  function pickNpcCategory() {
+    const entries = Object.entries(NPC_WEIGHTS).filter(([, weight]) => weight > 0);
+    const fallback = 'car';
+    if (!entries.length) return fallback;
+    const total = entries.reduce((sum, [, weight]) => sum + weight, 0) || entries.length;
+    let r = Math.random() * total;
+    for (const [category, weight] of entries) {
+      r -= weight;
+      if (r <= 0) return category;
+    }
+    return entries[entries.length - 1][0] || fallback;
+  }
+
+  function pickNpcTextureKey(category) {
+    const pool = NPC_VEHICLE_POOLS[category];
+    const list = Array.isArray(pool) && pool.length ? pool : NPC_VEHICLE_POOLS.car;
+    const idx = Math.floor(Math.random() * list.length);
+    return list[Math.max(0, Math.min(list.length - 1, idx))];
+  }
+
+  function normalizeSpeedSpec(raw = {}, fallback = { base: 0.1, variance: 0 }) {
+    const base = Number(raw.base);
+    const variance = Number(raw.variance);
+    return {
+      base: Number.isFinite(base) && base >= 0 ? base : fallback.base,
+      variance: Number.isFinite(variance) && variance >= 0 ? variance : fallback.variance,
+    };
+  }
+
+  function categorySpeedSpec(category) {
+    const fallback = NPC_SPEED_DEFAULTS[category] || NPC_SPEED_DEFAULTS.car;
+    const raw = NPC_SPEED_CONFIG[category] || {};
+    return normalizeSpeedSpec(raw, fallback);
+  }
+
+  function specialSpeedSpec(texKey) {
+    const fallback = categorySpeedSpec('special');
+    const cfg = NPC_SPECIAL_CONFIG[texKey];
+    const raw = cfg && cfg.speed ? cfg.speed : null;
+    if (!raw) return fallback;
+    return normalizeSpeedSpec(raw, fallback);
+  }
+
+  function computeNpcSpeed(category, texKey) {
+    const spec = category === 'special' ? specialSpeedSpec(texKey) : categorySpeedSpec(category);
+    const base = Math.max(0, spec.base || 0);
+    const variance = Math.max(0, spec.variance || 0);
+    const sample = base + Math.random() * variance;
+    const fraction = sample > 0 ? sample : 0;
+    return player.topSpeed * fraction;
+  }
+
+  function buildSpecialMetaOverride(texKey, baseMeta) {
+    const cfg = NPC_SPECIAL_CONFIG[texKey];
+    if (!cfg) return null;
+    const meta = { ...baseMeta };
+    if (Number.isFinite(cfg.wN) && cfg.wN > 0) meta.wN = cfg.wN;
+    if (Number.isFinite(cfg.hitboxWN) && cfg.hitboxWN > 0) meta.hitboxWN = cfg.hitboxWN;
+    if (Number.isFinite(cfg.aspect) && cfg.aspect > 0) meta.aspect = cfg.aspect;
+    return meta;
+  }
+
   function spawnCars() {
     if (!hasSegments()) {
       state.cars.length = 0;
@@ -2447,17 +2562,21 @@
     const segCount = segments.length;
     for (let i = 0; i < NPC.total; i += 1) {
       const s = Math.floor(Math.random() * segCount) * segmentLength;
-      const type = CAR_TYPES[Math.random() < 0.75 ? 0 : 1];
-      const meta = getSpriteMeta(type);
-      const tmpCar = { type, meta };
+      const category = pickNpcCategory();
+      const metaKind = NPC_VEHICLE_META[category] || 'CAR';
+      const texKey = pickNpcTextureKey(category);
+      const baseMeta = getSpriteMeta(metaKind);
+      const meta = category === 'special'
+        ? (buildSpecialMetaOverride(texKey, baseMeta) || { ...baseMeta })
+        : baseMeta;
+      const tmpCar = { type: metaKind, meta };
       const seg = segmentAtS(s);
       if (!seg) continue;
       const b = npcLateralLimit(seg.index, tmpCar);
       const side = Math.random() < 0.5 ? -1 : 1;
       const offset = side * (Math.random() * (b * 0.9));
-      const isSemi = type === 'SEMI';
-      const speed = (player.topSpeed / 6) + Math.random() * player.topSpeed / (isSemi ? 5 : 3);
-      const car = { z: s, offset, type, meta, speed };
+      const speed = computeNpcSpeed(category, texKey);
+      const car = { z: s, offset, type: metaKind, meta, speed, texKey };
       ensureArray(seg, 'cars').push(car);
       state.cars.push(car);
     }

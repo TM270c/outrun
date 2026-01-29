@@ -16,30 +16,32 @@
     lerp,
     getEase01,
     CURVE_EASE,
+    EASE_CURVES_01,
   } = MathUtil;
+
+  const SESSION_TIMESTAMP = Date.now();
 
   function resolveAssetUrl(path){
     if (typeof path !== 'string' || path.length === 0) return path;
 
+    let resolved = path;
     try {
       const chromeApi = global.chrome;
       if (chromeApi && chromeApi.runtime && typeof chromeApi.runtime.getURL === 'function') {
-        return chromeApi.runtime.getURL(path);
+        resolved = chromeApi.runtime.getURL(path);
+      } else {
+        const base = global.location && global.location.href ? global.location.href : null;
+        if (base) {
+          resolved = new URL(path, base).toString();
+        }
       }
     } catch (err) {
-      // Ignore access errors and fall back to location-based resolution.
+      // Ignore errors, keep original path
     }
 
-    try {
-      const base = global.location && global.location.href ? global.location.href : null;
-      if (base) {
-        return new URL(path, base).toString();
-      }
-    } catch (err) {
-      // new URL may throw for invalid inputs; fall back to original path.
-    }
-
-    return path;
+    // Append timestamp to bust cache
+    const separator = resolved.includes('?') ? '&' : '?';
+    return `${resolved}${separator}t=${SESSION_TIMESTAMP}`;
   }
 
   const assetManifest = {
@@ -53,7 +55,24 @@
     horizon3:  resolveAssetUrl('tex/paralax-3.png'),
     car:       resolveAssetUrl('tex/player-car.png'),
     playerVan: resolveAssetUrl('tex/player-van.png'),
-    semi:      resolveAssetUrl('tex/semi.png'),
+    npcCar01:  resolveAssetUrl('tex/npc-car-01.png'),
+    npcCar02:  resolveAssetUrl('tex/npc-car-02.png'),
+    npcCar03:  resolveAssetUrl('tex/npc-car-03.png'),
+    npcVan01:  resolveAssetUrl('tex/npc-van-01.png'),
+    npcVan02:  resolveAssetUrl('tex/npc-van-02.png'),
+    npcVan03:  resolveAssetUrl('tex/npc-van-03.png'),
+    npcSemi01: resolveAssetUrl('tex/npc-semi-01.png'),
+    npcSemi02: resolveAssetUrl('tex/npc-semi-02.png'),
+    npcSemi03: resolveAssetUrl('tex/npc-semi-03.png'),
+    npcSpecial01: resolveAssetUrl('tex/npc-special-01.png'),
+    npcSpecial02: resolveAssetUrl('tex/npc-special-02.png'),
+    npcSpecial03: resolveAssetUrl('tex/npc-special-03.png'),
+    npcSpecial04: resolveAssetUrl('tex/npc-special-04.png'),
+    npcSpecial05: resolveAssetUrl('tex/npc-special-05.png'),
+    npcSpecial06: resolveAssetUrl('tex/npc-special-06.png'),
+    npcSpecial07: resolveAssetUrl('tex/npc-special-07.png'),
+    npcSpecial08: resolveAssetUrl('tex/npc-special-08.png'),
+    npcSpecial09: resolveAssetUrl('tex/npc-special-09.png'),
   };
 
   const textures = {};
@@ -148,27 +167,18 @@
     });
   }
 
-  const HEIGHT_EASE_UNIT = {
-    linear: { in: (t) => clamp01(t),          out: (t) => clamp01(t) },
-    smooth: { in: (t) => Math.pow(clamp01(t), 2),
-              out: (t) => 1 - Math.pow(1 - clamp01(t), 2) },
-    sharp:  { in: (t) => Math.pow(clamp01(t), 3),
-              out: (t) => 1 - Math.pow(1 - clamp01(t), 3) },
-  };
-
   function lastY(){
     return segments.length ? segments[segments.length - 1].p2.world.y : 0;
   }
 
-  function addRoad(enter, hold, leave, curve, dyInSegments = 0, elevationProfile = 'smooth', featurePayload = {}){
-    const e = Math.max(0, enter | 0), h = Math.max(0, hold | 0), l = Math.max(0, leave | 0);
-    const total = e + h + l;
-    if (total <= 0) return;
+  function addRoad(length, curve, dyInSegments = 0, elevationProfile = 'smooth', featurePayload = {}){
+    const len = Math.max(0, length | 0);
+    if (len <= 0) return;
 
     const startY = lastY();
-    const referenceHillLength = 30; // Hills are authored against a ~30 segment span.
-    const safeTotal = Math.max(total, 1e-6);
-    const lengthScale = Math.min(referenceHillLength / safeTotal, 1);
+    const referenceHillLength = 30;
+    const safeLen = Math.max(len, 1e-6);
+    const lengthScale = Math.min(referenceHillLength / safeLen, 1);
     const dyScaledSegments = dyInSegments * lengthScale;
     const endY = startY + (dyScaledSegments * segmentLength);
     const hasElevationChange = Math.abs(dyScaledSegments) > 1e-6;
@@ -227,58 +237,23 @@
       return segFeatures;
     };
 
-    let segOffset = 0;
-    const computeY = (progressRaw) => {
-      if (!hasElevationChange) return startY;
+    const easeFn = getEase01(`${profile}:io`);
 
-      const t = clamp01(progressRaw);
-      const k = (e + 1e-6) / (e + l + 2e-6);
-
-      let shaped01;
-      if (t < k) {
-        const u = t / Math.max(k, 1e-6);
-        shaped01 = 0.5 * HEIGHT_EASE_UNIT[profile].in(u);
-      } else {
-        const u = (t - k) / Math.max(1 - k, 1e-6);
-        shaped01 = 0.5 + 0.5 * HEIGHT_EASE_UNIT[profile].out(u);
-      }
-
-      return lerp(startY, endY, shaped01);
-    };
-
-    for (let n = 0; n < e; n++){
-      const tCurve = e > 0 ? n / e : 1;
+    for (let n = 0; n < len; n++){
+      const t = len > 1 ? n / (len - 1) : 1;
+      const easedT = easeFn(t);
+      const y = hasElevationChange ? lerp(startY, endY, easedT) : startY;
       addSegment(
-        CURVE_EASE[profile].in(0, curve, tCurve),
-        computeY((0 + n) / total),
-        buildFeatures(segOffset),
+        lerp(0, curve, easedT),
+        y,
+        buildFeatures(n),
       );
-      segOffset++;
-    }
-
-    for (let n = 0; n < h; n++){
-      addSegment(
-        curve,
-        computeY((e + n) / total),
-        buildFeatures(segOffset),
-      );
-      segOffset++;
-    }
-
-    for (let n = 0; n < l; n++){
-      const tCurve = l > 0 ? n / l : 1;
-      addSegment(
-        CURVE_EASE[profile].out(curve, 0, tCurve),
-        computeY((e + h + n) / total),
-        buildFeatures(segOffset),
-      );
-      segOffset++;
     }
   }
 
   async function buildTrackFromCSV(url){
     const csvUrl = resolveAssetUrl(url);
-    const res = await fetch(csvUrl, { cache: 'no-store' });
+    const res = await fetch(csvUrl);
     if (!res.ok) throw new Error('CSV load failed: ' + res.status);
     const text = await res.text();
 
@@ -327,9 +302,7 @@
 
       const cells = line.split(',').map(s => (s ?? '').trim());
       const typeRaw = cells[0];
-      const enter = cells[1];
-      const hold = cells[2];
-      const leave = cells[3];
+      const lengthRaw = cells[1];
       let curveRaw;
       let dyRaw;
       let railRaw;
@@ -345,9 +318,7 @@
       };
 
       const type = (typeAliases[typeRaw?.toLowerCase()] || typeRaw || '').toLowerCase();
-      const e = toInt(enter, 0);
-      const h = toInt(hold, 0);
-      const l = toInt(leave, 0);
+      const len = toInt(lengthRaw, 0);
 
       const findAfter = (keyword) => {
         const idx = findIndex(keyword);
@@ -356,13 +327,13 @@
         return valueIdx < cells.length ? cells[valueIdx] : null;
       };
 
-      if (cells.length > 4){
-        curveRaw = cells[4];
-        dyRaw = cells[5];
-        railRaw = cells[6];
-        boostStartRaw = cells[7];
-        boostEndRaw = cells[8];
-        repeatsRaw = cells[9];
+      if (cells.length > 2){
+        curveRaw = cells[2];
+        dyRaw = cells[3];
+        railRaw = cells[4];
+        boostStartRaw = cells[5];
+        boostEndRaw = cells[6];
+        repeatsRaw = cells[7];
       }
 
       if (type === 'curve') {
@@ -434,7 +405,7 @@
       }
 
       for (let i = 0; i < reps; i++){
-        addRoad(e, h, l, curve, dySegments, elevationProfile, features);
+        addRoad(len, curve, dySegments, elevationProfile, features);
       }
     }
 
@@ -449,7 +420,7 @@
     let text = '';
     try {
       const csvUrl = resolveAssetUrl(url);
-      const res = await fetch(csvUrl, { cache: 'no-store' });
+      const res = await fetch(csvUrl);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       text = await res.text();
     } catch (e) {
