@@ -822,6 +822,7 @@
     if (!seg) return null;
     const entry = instance.entry;
     const metrics = (entry && entry.metrics) ? entry.metrics : SPRITE_METRIC_FALLBACK;
+    const collisionMode = entry.collision || 'ghost';
     const sprite = {
       kind: entry.spriteId,
       offset: Number.isFinite(instance.offset) ? instance.offset : 0,
@@ -831,7 +832,8 @@
       interactionMode: entry.interaction,
       type: entry.type,
       interactable: entry.type === 'trigger' || entry.interaction !== 'static',
-      impactable: entry.type === 'solid',
+      collisionMode,
+      impactable: collisionMode === 'push',
       interacted: false,
       assetKey: (instance.asset && instance.asset.key) ? instance.asset.key : (metrics.textureKey || null),
     };
@@ -1064,6 +1066,9 @@
   const NPC_COLLISION_PUSH_LATERAL_MAX = 0.85;
   const INTERACTABLE_COLLISION_PUSH_FORWARD_MAX_SEGMENTS = 12;
   const INTERACTABLE_COLLISION_PUSH_LATERAL_MAX = 1;
+  const SOLID_SPRITE_HIT_COOLDOWN = 0.2;
+  const SOLID_SPRITE_BOUNCE_SPEED_SCALE = 0.2;
+  const SOLID_SPRITE_MIN_BOUNCE_SPEED = 2;
   const CAR_COLLISION_STAMP = Symbol('carCollisionStamp');
   const CAR_NEAR_MISS_READY = Symbol('carNearMissReady');
   const NEAR_MISS_LATERAL_SCALE = 1.2;
@@ -1578,6 +1583,29 @@
     impact.timer = COLLISION_PUSH_DURATION;
   }
 
+  function applySolidSpriteCollision(sprite) {
+    if (!sprite) return;
+    const { phys } = state;
+    const now = phys.t;
+    const lastHit = sprite.solidCollisionStamp ?? -Infinity;
+    if ((now - lastHit) < SOLID_SPRITE_HIT_COOLDOWN) return;
+    sprite.solidCollisionStamp = now;
+
+    const speed = Math.abs(phys.vtan);
+    const bounceSpeed = Math.max(
+      SOLID_SPRITE_MIN_BOUNCE_SPEED,
+      speed * SOLID_SPRITE_BOUNCE_SPEED_SCALE,
+    );
+    phys.vtan = -Math.min(bounceSpeed, player.topSpeed);
+
+    if (!phys.grounded) {
+      const groundNow = groundProfileAt(phys.s);
+      const { tx, ty } = tangentNormalFromSlope(groundNow.dy);
+      phys.vx = phys.vtan * tx;
+      phys.vy = phys.vtan * ty;
+    }
+  }
+
   function updateImpactableSprite(sprite, dt, currentSeg = null) {
     if (!sprite || !sprite.impactable) return null;
     const impact = configureImpactableSprite(sprite);
@@ -1998,6 +2026,10 @@
         } else {
           spr.interactable = false;
         }
+      }
+
+      if (spr.collisionMode === 'solid') {
+        applySolidSpriteCollision(spr);
       }
 
       if (spr.impactable) {
