@@ -1,5 +1,7 @@
 name,sprite,segment,lane,repeatSegment,repeatLane,scaleRange,randomSeed,jitterSeg,jitterLane,placementMode,comment
-forest-demo,tree_forest_taper_demo,30-220,1.2-4,4,0.2,0.7-1.25,1337,0-0.25,0-0.25,taperBoth,Demonstrates tapered scale and atlas sampling for roadside trees
-centerpiece,tree_anim,128,0,,,,,,,,Looping atlas animation for a single median tree
-pickup-demo,pickup_orb,60-120,-0.35-0.35,2,,0.95-1.05,2023,0-0.15,0-0.1,uniform,Collectable pickups that toggle off when the player touches them
-snowman,snowman,140,0,,,,,,,,Static snowman test
+forest-demo,tree_forest,30-220,1.2-4,4,0.2,0.7-1.25,1337,0-0.25,0-0.25,taperBoth,Atlas tree variety for roadside forests
+centerpiece,sign_spinner,128,0,,,,,,,Looping animated sign in the median
+pickup-demo,pickup_boost,60-120,-0.35-0.35,2,,0.95-1.05,2023,0-0.15,0-0.1,uniform,Collectable pickups that toggle off when the player touches them
+billboard-demo,billboard_interact,140,0,,,,,,,Interactable billboard that plays a one-shot animation
+barrier-demo,barrier_block,150,0.6,,,,,,uniform,Solid barrier for collision testing
+boost-demo,boost_pad,170,-0.6,,,,,,uniform,Static boost pad decoration
