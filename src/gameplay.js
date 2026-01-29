@@ -724,9 +724,8 @@
   }
 
   function determineInitialFrame(entry, asset, rng, options = {}){
-    const baseClip = entry && entry.animation ? entry.animation.baseClip : null;
-    if (baseClip && Array.isArray(baseClip.frames) && baseClip.frames.length > 0) {
-      return baseClip.frames[0];
+    if (entry && entry.baseClip && Array.isArray(entry.baseClip.frames) && entry.baseClip.frames.length > 0) {
+      return entry.baseClip.frames[0];
     }
     if (asset && Array.isArray(asset.frames) && asset.frames.length > 0) {
       const atlasBias = options.atlasBias;
@@ -742,8 +741,8 @@
     const overrides = {};
     if (!catalog || typeof catalog.forEach !== 'function') return overrides;
     catalog.forEach((entry, spriteId) => {
-      const visual = (entry && entry.visual) ? entry.visual : SPRITE_METRIC_FALLBACK;
-      overrides[spriteId] = createSpriteMetaEntry(visual);
+      const metrics = (entry && entry.metrics) ? entry.metrics : SPRITE_METRIC_FALLBACK;
+      overrides[spriteId] = createSpriteMetaEntry(metrics);
     });
     return overrides;
   }
@@ -822,28 +821,30 @@
     const seg = segmentAtIndex(instance.segIndex);
     if (!seg) return null;
     const entry = instance.entry;
-    const visual = (entry && entry.visual) ? entry.visual : SPRITE_METRIC_FALLBACK;
-    const behavior = (entry && entry.behavior) ? entry.behavior : { type: 'static', collision: 'ghost', interaction: 'static' };
-    const collisionMode = behavior.collision || 'ghost';
+    const metrics = (entry && entry.metrics) ? entry.metrics : SPRITE_METRIC_FALLBACK;
     const sprite = {
       kind: entry.spriteId,
       offset: Number.isFinite(instance.offset) ? instance.offset : 0,
       segIndex: seg.index,
       s: (seg.p1 && seg.p1.world) ? seg.p1.world.z : instance.segIndex * segmentLength,
       scale: Number.isFinite(instance.scale) ? instance.scale : 1,
-      interactionMode: behavior.interaction,
-      type: behavior.type,
-      interactable: behavior.type === 'trigger' || behavior.interaction !== 'static',
-      collisionMode,
-      impactable: collisionMode === 'push',
+      interactionMode: entry.interaction,
+      type: entry.type,
+      interactable: entry.type === 'trigger' || entry.interaction !== 'static',
+      impactable: entry.type === 'solid',
       interacted: false,
-      assetKey: (instance.asset && instance.asset.key) ? instance.asset.key : (visual.textureKey || null),
+      assetKey: (instance.asset && instance.asset.key) ? instance.asset.key : (metrics.textureKey || null),
     };
     if (instance.asset && Array.isArray(instance.asset.frames)) {
       sprite.assetFrames = instance.asset.frames.slice();
     }
-    if (entry && entry.atlas) {
-      sprite.atlasInfo = { ...entry.atlas };
+    if (metrics.atlas) {
+      sprite.atlasInfo = { ...metrics.atlas };
+    } else if (instance.asset && instance.asset.type === 'atlas') {
+      sprite.atlasInfo = {
+        columns: (instance.asset.columns || 1),
+        totalFrames: (instance.asset.totalFrames || Math.max(1, (instance.asset.frames || []).length)),
+      };
     }
     const baseZ = (seg.p1 && seg.p1.world) ? seg.p1.world.z : instance.segIndex * segmentLength;
     if (Number.isFinite(instance.sOffset) && instance.sOffset !== 0) {
@@ -853,13 +854,7 @@
       sprite.s = baseZ;
     }
     const fallbackFrame = Number.isFinite(instance.initialFrame) ? instance.initialFrame : 0;
-    const animation = entry ? entry.animation : null;
-    const animState = createSpriteAnimationState(
-      animation ? animation.baseClip : null,
-      animation ? animation.interactClip : null,
-      animation ? animation.frameDuration : null,
-      fallbackFrame,
-    );
+    const animState = createSpriteAnimationState(entry.baseClip, entry.interactClip, entry.frameDuration, fallbackFrame);
     if (animState) {
       sprite.animation = animState;
       sprite.animFrame = Number.isFinite(animState.currentFrame) ? animState.currentFrame : fallbackFrame;
@@ -867,7 +862,7 @@
       sprite.animation = null;
       sprite.animFrame = fallbackFrame;
     }
-    if (behavior.interaction === 'toggle') sprite.toggleOnInteract = true;
+    if (entry.interaction === 'toggle') sprite.toggleOnInteract = true;
     if (sprite.impactable) {
       if (!Number.isFinite(sprite.baseOffset)) sprite.baseOffset = sprite.offset;
       configureImpactableSprite(sprite);
@@ -1069,9 +1064,6 @@
   const NPC_COLLISION_PUSH_LATERAL_MAX = 0.85;
   const INTERACTABLE_COLLISION_PUSH_FORWARD_MAX_SEGMENTS = 12;
   const INTERACTABLE_COLLISION_PUSH_LATERAL_MAX = 1;
-  const SOLID_SPRITE_HIT_COOLDOWN = 0.2;
-  const SOLID_SPRITE_BOUNCE_SPEED_SCALE = 0.2;
-  const SOLID_SPRITE_MIN_BOUNCE_SPEED = 2;
   const CAR_COLLISION_STAMP = Symbol('carCollisionStamp');
   const CAR_NEAR_MISS_READY = Symbol('carNearMissReady');
   const NEAR_MISS_LATERAL_SCALE = 1.2;
@@ -1586,29 +1578,6 @@
     impact.timer = COLLISION_PUSH_DURATION;
   }
 
-  function applySolidSpriteCollision(sprite) {
-    if (!sprite) return;
-    const { phys } = state;
-    const now = phys.t;
-    const lastHit = sprite.solidCollisionStamp ?? -Infinity;
-    if ((now - lastHit) < SOLID_SPRITE_HIT_COOLDOWN) return;
-    sprite.solidCollisionStamp = now;
-
-    const speed = Math.abs(phys.vtan);
-    const bounceSpeed = Math.max(
-      SOLID_SPRITE_MIN_BOUNCE_SPEED,
-      speed * SOLID_SPRITE_BOUNCE_SPEED_SCALE,
-    );
-    phys.vtan = -Math.min(bounceSpeed, player.topSpeed);
-
-    if (!phys.grounded) {
-      const groundNow = groundProfileAt(phys.s);
-      const { tx, ty } = tangentNormalFromSlope(groundNow.dy);
-      phys.vx = phys.vtan * tx;
-      phys.vy = phys.vtan * ty;
-    }
-  }
-
   function updateImpactableSprite(sprite, dt, currentSeg = null) {
     if (!sprite || !sprite.impactable) return null;
     const impact = configureImpactableSprite(sprite);
@@ -2029,10 +1998,6 @@
         } else {
           spr.interactable = false;
         }
-      }
-
-      if (spr.collisionMode === 'solid') {
-        applySolidSpriteCollision(spr);
       }
 
       if (spr.impactable) {
