@@ -839,6 +839,8 @@
   }
   const BACKDROP_SCALE = 1.25;
 
+  const BACKDROP_SCALE = 1.25;
+
   function drawParallaxLayer(tex, cfg){
     if (!glr) return;
     const uOffset = state.playerN * cfg.parallaxX;
