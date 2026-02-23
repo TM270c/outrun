@@ -26,12 +26,15 @@
       })
       .join('');
 
+    const listHtml = listItems ? `<ul class="menu-list">${listItems}</ul>` : '';
+    const hintText = options.length > 0 ? 'Space to select' : 'Press Space to Start';
+
     return `
       <div class="screen screen-menu">
         <h1 class="screen-title">${escapeHtml(title)}</h1>
         ${subtitleHtml}
-        <ul class="menu-list">${listItems}</ul>
-        <p class="screen-hint">Space to select</p>
+        ${listHtml}
+        <p class="screen-hint">${hintText}</p>
       </div>
     `;
   };
@@ -69,77 +72,48 @@
       vehicleDescription = '',
       optionIndex = 0,
       optionCount = 0,
-      previewSrc = '',
-      previewAtlas = null,
     } = ctx;
     const escapeHtml = ensureEscapeHtml(helpers);
-    const resolveAssetUrl = typeof helpers.resolveAssetUrl === 'function'
-      ? helpers.resolveAssetUrl
-      : (value) => value;
 
-    const previewUrl = previewSrc ? resolveAssetUrl(previewSrc) : '';
-    const atlas = previewAtlas && typeof previewAtlas === 'object' ? previewAtlas : null;
-    const atlasColumns = atlas && Number.isFinite(atlas.columns)
-      ? Math.max(1, Math.round(atlas.columns))
-      : null;
-    const atlasFrameCount = atlas && Number.isFinite(atlas.frameCount)
-      ? Math.max(1, Math.round(atlas.frameCount))
-      : null;
-    const atlasRowsRaw = atlas && Number.isFinite(atlas.rows)
-      ? Math.max(1, Math.round(atlas.rows))
-      : null;
-    const atlasRows = atlasRowsRaw || (atlasColumns && atlasFrameCount
-      ? Math.max(1, Math.ceil(atlasFrameCount / atlasColumns))
-      : null);
-    const atlasFrameDuration = atlas && Number.isFinite(atlas.frameDuration)
-      ? Math.max(1 / 60, atlas.frameDuration)
-      : null;
-    const animatedPreview = !!(atlasColumns && atlasRows && atlasFrameCount && atlasFrameCount > 1 && atlasFrameDuration);
     const clampedIndex = optionCount > 0 ? Math.min(optionCount, Math.max(1, optionIndex + 1)) : 0;
     const counterLabel = optionCount > 0
       ? `${clampedIndex} / ${optionCount}`
       : '';
-
-    const previewDataAttrs = animatedPreview
-      ? [
-          'data-vehicle-preview="true"',
-          `data-columns="${escapeHtml(String(atlasColumns))}"`,
-          `data-rows="${escapeHtml(String(atlasRows))}"`,
-          `data-frame-count="${escapeHtml(String(atlasFrameCount))}"`,
-          `data-frame-duration="${escapeHtml(String(atlasFrameDuration))}"`,
-        ].join(' ')
-      : '';
-    const previewStyles = [];
-    if (previewUrl) {
-      previewStyles.push(`background-image:url('${escapeHtml(previewUrl)}')`);
-    }
-    if (atlasColumns) {
-      previewStyles.push(`--vehicle-preview-columns:${atlasColumns}`);
-    }
-    if (atlasRows) {
-      previewStyles.push(`--vehicle-preview-rows:${atlasRows}`);
-    }
-    const previewStyleAttr = previewStyles.length ? ` style="${previewStyles.join(';')}"` : '';
-    const previewClass = `vehicle-select-image${animatedPreview ? ' is-animated' : ''}`;
-    const previewAriaLabel = vehicleLabel ? vehicleLabel : 'Vehicle preview';
-    const previewHtml = previewUrl
-      ? `<div class="${previewClass}" role="img" aria-label="${escapeHtml(previewAriaLabel)}"${previewDataAttrs ? ` ${previewDataAttrs}` : ''}${previewStyleAttr}></div>`
-      : '';
     const counterHtml = counterLabel
       ? `<p class="vehicle-select-counter">${escapeHtml(counterLabel)}</p>`
       : '';
-    const descriptionHtml = vehicleDescription
-      ? `<p class="vehicle-select-description">${escapeHtml(vehicleDescription)}</p>`
-      : '';
 
     return `
-      <div class="screen screen-menu screen-vehicle">
+      <div class="screen screen-menu screen-vehicle-select">
         <h2 class="screen-title">${escapeHtml(title)}</h2>
-        <div class="vehicle-select-preview">${previewHtml}</div>
-        <p class="vehicle-select-name">${escapeHtml(vehicleLabel)}</p>
-        ${counterHtml}
-        ${descriptionHtml}
-        <p class="screen-hint">Left / Right to switch · Space to confirm · Esc to cancel</p>
+        <div class="vehicle-select-info">
+          <p class="vehicle-select-name">${escapeHtml(vehicleLabel)}</p>
+          <p class="vehicle-select-desc">${escapeHtml(vehicleDescription)}</p>
+          ${counterHtml}
+        </div>
+        <p class="screen-hint">Arrows to browse · Space to select</p>
+      </div>
+    `;
+  };
+
+  screens.trackSelect = function trackSelectScreen(ctx = {}, helpers = {}) {
+    const {
+      title = 'Select Track',
+      trackLabel = '',
+      trackDescription = '',
+      optionIndex = 0,
+      optionCount = 0,
+    } = ctx;
+    const escapeHtml = ensureEscapeHtml(helpers);
+
+    return `
+      <div class="screen screen-menu screen-vehicle-select">
+        <h2 class="screen-title">${escapeHtml(title)}</h2>
+        <div class="vehicle-select-info">
+          <p class="vehicle-select-name">${escapeHtml(trackLabel)}</p>
+          <p class="vehicle-select-desc">${escapeHtml(trackDescription)}</p>
+        </div>
+        <p class="screen-hint">Arrows to browse · Space to select</p>
       </div>
     `;
   };
@@ -152,14 +126,13 @@
       .map((option = {}, idx) => {
         const key = escapeHtml(option.key || '');
         const label = escapeHtml(option.label || '');
-        const value = option.value != null && option.value !== ''
-          ? `<span class="menu-value">${escapeHtml(option.value)}</span>`
-          : '';
+        const value = option.value ? escapeHtml(option.value) : '';
         const selectedClass = idx === selectedIndex ? ' is-selected' : '';
+        const valueHtml = value ? `<span class="menu-value">${value}</span>` : '';
         return `
           <li class="menu-item${selectedClass}" data-key="${key}">
             <span class="menu-label">${label}</span>
-            ${value}
+            ${valueHtml}
           </li>
         `;
       })

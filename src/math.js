@@ -50,6 +50,20 @@ const CURVE_EASE = {
 
 const computeCurvature = (dy, d2y) => d2y / Math.pow(1 + dy * dy, 1.5);
 
+const wrap = (v, m) => {
+  if (m <= 0) return v;
+  const r = v % m;
+  return r < 0 ? r + m : r;
+};
+
+const shortestSignedDelta = (a, b, m) => {
+  if (m <= 0) return a - b;
+  let d = (a - b) % m;
+  if (d > m * 0.5) d -= m;
+  if (d < -m * 0.5) d += m;
+  return d;
+};
+
 const tangentNormalFromSlope = (dy) => {
   const invLength = 1 / Math.sqrt(1 + dy * dy);
   return {
@@ -75,6 +89,8 @@ window.MathUtil = {
   getEase01,
   CURVE_EASE,
   computeCurvature,
+  wrap,
+  shortestSignedDelta,
   tangentNormalFromSlope,
 };
 

@@ -36,6 +36,8 @@
     clamp,
     lerp,
     pctRem,
+    wrap,
+    shortestSignedDelta,
     computeCurvature,
   } = MathUtil;
   const clamp01 = (v) => clamp(v, 0, 1);
@@ -43,6 +45,9 @@
   const {
     data,
     assets,
+    segmentAtS,
+    elevationAt,
+    groundProfileAt,
     roadWidthAt,
     floorElevationAt,
     cliffParamsAt,
@@ -71,15 +76,12 @@
   const PLAYER_SPRITE_LATERAL_WEIGHT = 0.3;
   const PLAYER_SPRITE_CURVE_WEIGHT = 0.15;
   const PLAYER_SPRITE_SPEED_FLOOR = 0.25;
-  const PLAYER_SPRITE_SLOPE_MAX_ANGLE_DEG = 18;
+  const PLAYER_SPRITE_SLOPE_MAX_ANGLE_DEG = (sprites.slope && sprites.slope.maxAngleDeg) || 18;
   const PLAYER_SPRITE_SLOPE_MAX_ANGLE_RAD = (PLAYER_SPRITE_SLOPE_MAX_ANGLE_DEG * Math.PI) / 180;
-  const PLAYER_SPRITE_HEIGHT_TIGHTEN = 0.7;
+  const PLAYER_SPRITE_HEIGHT_TIGHTEN = (sprites.slope && sprites.slope.heightTighten) || 0.7;
   const NPC_ATLAS_COLUMNS = 9;
   const NPC_ATLAS_ROWS = 9;
   const NPC_COLOR_GRID_SIZE = 9;
-  const NPC_VERTICAL_SLOPE_MAX_DEG = 8;
-  const NPC_VERTICAL_SLOPE_MAX_RAD = (NPC_VERTICAL_SLOPE_MAX_DEG * Math.PI) / 180;
-  const NPC_VERTICAL_SLOPE_GAIN = 6;
 
   const playerSpriteBlendState = {
     steer: 0,
@@ -145,47 +147,6 @@
       return cache.get(id);
     };
   })();
-
-  function drawQuadOutline(quad, color, thickness = 2, fog){
-    if (!glr || !quad) return;
-    const t = Math.max(0.5, thickness);
-    const edges = [
-      [quad.x1, quad.y1, quad.x2, quad.y2],
-      [quad.x2, quad.y2, quad.x3, quad.y3],
-      [quad.x3, quad.y3, quad.x4, quad.y4],
-      [quad.x4, quad.y4, quad.x1, quad.y1],
-    ];
-    for (const [xA, yA, xB, yB] of edges) {
-      const dx = xB - xA;
-      const dy = yB - yA;
-      const len = Math.hypot(dx, dy);
-      if (len <= 1e-3) continue;
-      const nx = -dy / len;
-      const ny = dx / len;
-      const ox = nx * (t * 0.5);
-      const oy = ny * (t * 0.5);
-      const q = {
-        x1: xA + ox,
-        y1: yA + oy,
-        x2: xB + ox,
-        y2: yB + oy,
-        x3: xB - ox,
-        y3: yB - oy,
-        x4: xA - ox,
-        y4: yA - oy,
-      };
-      glr.drawQuadSolid(q, color, fog);
-    }
-  }
-
-  function wrapDelta(target, reference, length){
-    if (!Number.isFinite(length) || length <= 0) return target - reference;
-    let delta = target - reference;
-    const half = length * 0.5;
-    if (delta > half) delta -= length;
-    else if (delta < -half) delta += length;
-    return delta;
-  }
 
   function npcLateralAngleLimit(){
     const fovDeg = (state && state.camera && state.camera.fieldOfView)
@@ -259,14 +220,14 @@
     const carX = (Number.isFinite(car.offset) ? car.offset : 0) * roadW;
     const carY = floorElevationAt(car.z || 0);
     const trackLength = typeof data.trackLength === 'number' ? data.trackLength : (data.trackLength || 0);
-    const dz = wrapDelta(car.z || 0, sCam, trackLength);
+    const dz = shortestSignedDelta(car.z || 0, sCam, trackLength);
     const dx = carX - camX;
     const lateralAngle = Math.atan2(dx, Math.max(Math.abs(dz), 1e-6));
     const profile = groundProfileAt(car.z || 0);
     const rawSlope = profile && Number.isFinite(profile.dy) ? profile.dy : 0;
     const slopeAngle = Math.atan(rawSlope);
-    const denom = NPC_VERTICAL_SLOPE_MAX_RAD > 1e-6 ? NPC_VERTICAL_SLOPE_MAX_RAD : (Math.PI * 0.25);
-    const slopeNorm = clamp((-slopeAngle / denom) * NPC_VERTICAL_SLOPE_GAIN, -1, 1);
+    const denom = PLAYER_SPRITE_SLOPE_MAX_ANGLE_RAD > 1e-6 ? PLAYER_SPRITE_SLOPE_MAX_ANGLE_RAD : (Math.PI * 0.25);
+    const slopeNorm = clamp((-slopeAngle / denom) * PLAYER_SPRITE_HEIGHT_TIGHTEN, -1, 1);
     const { xBucket, yBucket } = npcBucketsFromPose(lateralAngle, slopeNorm);
     const alpha = (car && car.meta && Array.isArray(car.meta.tint) && car.meta.tint.length > 3)
       ? car.meta.tint[3]
@@ -357,7 +318,10 @@
     const speedPct = clamp(Math.abs(phys.vtan) / player.topSpeed, 0, 1);
 
     const input = state.input || {};
-    const steerAxis = (input.left && input.right) ? 0 : (input.left ? -1 : (input.right ? 1 : 0));
+    let steerAxis = (input.left && input.right) ? 0 : (input.left ? -1 : (input.right ? 1 : 0));
+    if (state.race && state.race.active && state.race.phase === 'finished') {
+      steerAxis = 0;
+    }
     const lateralNorm = clamp(
       PLAYER_SPRITE_LATERAL_MAX > 0
         ? state.lateralRate / PLAYER_SPRITE_LATERAL_MAX
@@ -677,6 +641,24 @@
   let HUD_W = 0;
   let HUD_H = 0;
   let HUD_COVER_RADIUS = 0;
+  let pitchOffset = 0;
+
+  // Object Pool for projected points to reduce GC pressure
+  const pointPool = [];
+  let pointPoolIndex = 0;
+
+  function resetPointPool() {
+    pointPoolIndex = 0;
+  }
+
+  function allocPoint() {
+    if (pointPoolIndex >= pointPool.length) {
+      for (let i = 0; i < 256; i++) {
+        pointPool.push({ world: { x:0, y:0, z:0 }, camera: { x:0, y:0, z:0 }, screen: { x:0, y:0, w:0, scale:0 } });
+      }
+    }
+    return pointPool[pointPoolIndex++];
+  }
 
   let overlayApi = {
     setOverlayCanvas(){},
@@ -697,32 +679,21 @@
       : false
   );
 
-  function createPoint(worldOrX, y, z){
-    if (typeof worldOrX === 'object' && worldOrX !== null){
-      const { x = 0, y: wy = 0, z: wz = 0 } = worldOrX;
-      return { world: { x, y: wy, z: wz }, camera: {}, screen: {} };
-    }
-    return {
-      world: { x: worldOrX ?? 0, y: y ?? 0, z: z ?? 0 },
-      camera: {},
-      screen: {},
-    };
-  }
-
   function projectWorldPoint(world, camX, camY, camS){
-    const point = createPoint(world);
+    const point = allocPoint();
+    point.world.x = world.x || 0;
+    point.world.y = world.y || 0;
+    point.world.z = world.z || 0;
     projectPoint(point, camX, camY, camS);
     return point;
   }
 
   function projectSegPoint(segPoint, yOffset, camX, camY, camS){
     const world = (segPoint && segPoint.world) ? segPoint.world : {};
-    const offsetY = (typeof yOffset === 'number') ? yOffset : 0;
-    const point = createPoint({
-      x: world.x,
-      y: (world.y || 0) + offsetY,
-      z: world.z,
-    });
+    const point = allocPoint();
+    point.world.x = world.x || 0;
+    point.world.y = (world.y || 0) + (yOffset || 0);
+    point.world.z = world.z || 0;
     projectPoint(point, camX, camY, camS);
     return point;
   }
@@ -788,14 +759,12 @@
 
   function projectPoint(p, camX, camY, camS){
     const cameraDepth = state.camera.cameraDepth || 1;
-    p.camera = p.camera || {};
-    p.screen = p.screen || {};
     p.camera.x = (p.world.x || 0) - camX;
     p.camera.y = (p.world.y || 0) - camY;
     p.camera.z = (p.world.z || 0) - camS;
     p.screen.scale = cameraDepth / p.camera.z;
     p.screen.x = (HALF_VIEW + p.screen.scale * p.camera.x * HALF_VIEW) | 0;
-    p.screen.y = ((H / 2) - p.screen.scale * p.camera.y * (H / 2)) | 0;
+    p.screen.y = ((H / 2 + pitchOffset) - p.screen.scale * p.camera.y * (H / 2)) | 0;
     const rw = roadWidthAt(p.world.z || 0);
     p.screen.w = (p.screen.scale * rw * HALF_VIEW) | 0;
   }
@@ -841,7 +810,7 @@
 
   function drawParallaxLayer(tex, cfg){
     if (!glr) return;
-    const uOffset = state.playerN * cfg.parallaxX;
+    const uOffset = (state.bgScrollX || 0) * cfg.parallaxX;
     const scaledW = W * BACKDROP_SCALE;
     const scaledH = H * BACKDROP_SCALE;
     const centerX = W * 0.5;
@@ -1056,37 +1025,6 @@
     }
   }
 
-  function segmentAtS(s) {
-    const length = getTrackLength();
-    if (!segments.length || length <= 0) return null;
-    let wrapped = s % length;
-    if (wrapped < 0) wrapped += length;
-    const idx = Math.floor(wrapped / segmentLength) % segments.length;
-    return segments[idx];
-  }
-
-  function elevationAt(s) {
-    const length = getTrackLength();
-    if (!segments.length || length <= 0) return 0;
-    let ss = s % length;
-    if (ss < 0) ss += length;
-    const i = Math.floor(ss / segmentLength);
-    const seg = segments[i % segments.length];
-    const t = (ss - seg.p1.world.z) / segmentLength;
-    return lerp(seg.p1.world.y, seg.p2.world.y, t);
-  }
-
-  function groundProfileAt(s) {
-    const y = elevationAt(s);
-    if (!segments.length) return { y, dy: 0, d2y: 0 };
-    const h = Math.max(5, segmentLength * 0.1);
-    const y1 = elevationAt(s - h);
-    const y2 = elevationAt(s + h);
-    const dy = (y2 - y1) / (2 * h);
-    const d2y = (y2 - 2 * y + y1) / (h * h);
-    return { y, dy, d2y };
-  }
-
   function boostZonesOnSegment(seg) {
     if (!seg || !seg.features) return [];
     const zones = seg.features.boostZones;
@@ -1119,32 +1057,249 @@
     return [];
   }
 
-  function renderScene(){
+  const flyingPickups = [];
+  let hudIconPulse = 0;
+
+  function triggerPickupAnimation() {
+    // Spawn at center of screen
+    flyingPickups.push({
+      t: 0,
+      duration: 0.8,
+      startX: W * 0.5 - 32,
+      startY: H * 0.5,
+    });
+  }
+
+  function renderHUD(dt){
+    if (state.isMenu) return;
+    if (!areTexturesEnabled()) return;
+    const hudTex = textures.hud;
+    if (!hudTex) return;
+
+    glr.setRollPivot(0, 0, 0);
+
+    if (hudIconPulse > 0) {
+      hudIconPulse = Math.max(0, hudIconPulse - dt);
+    }
+
+    const metrics = state.metrics;
+    const count = metrics ? metrics.pickupsCollected : 0;
+
+    const texW = 512;
+    const texH = 512;
+
+    // Icon: Bottom right 2x2 cells (256x256) starting at 256,256
+    const iconUV = {
+      u1: 256 / texW, v1: 256 / texH,
+      u2: 512 / texW, v2: 256 / texH,
+      u3: 512 / texW, v3: 512 / texH,
+      u4: 256 / texW, v4: 512 / texH
+    };
+
+    const margin = 16;
+    const iconSize = 64;
+    const numSize = 32;
+    const numPad = -6;
+
+    const iconX = margin;
+    const iconY = margin;
+
+    const pulseDuration = 0.2;
+    const scale = hudIconPulse > 0 ? 1 + 0.05 * (hudIconPulse / pulseDuration) : 1;
+    const cx = iconX + iconSize * 0.5;
+    const cy = iconY + iconSize * 0.5;
+    const halfS = (iconSize * scale) * 0.5;
+
+    const iconQuad = {
+      x1: cx - halfS, y1: cy - halfS,
+      x2: cx + halfS, y2: cy - halfS,
+      x3: cx + halfS, y3: cy + halfS,
+      x4: cx - halfS, y4: cy + halfS
+    };
+
+    glr.drawQuadTextured(hudTex, iconQuad, iconUV);
+
+    const str = String(Math.max(0, Math.floor(count)));
+    let cursorX = iconX + iconSize + 4;
+    const cursorY = iconY + (iconSize - numSize) / 2;
+
+    for (let i = 0; i < str.length; i++) {
+      const digit = parseInt(str[i], 10);
+      if (Number.isNaN(digit)) continue;
+
+      const cellS = 128;
+      const col = digit % 4;
+      const row = Math.floor(digit / 4);
+      const uX = col * cellS;
+      const uY = row * cellS;
+
+      const numUV = {
+        u1: uX / texW, v1: uY / texH,
+        u2: (uX + cellS) / texW, v2: uY / texH,
+        u3: (uX + cellS) / texW, v3: (uY + cellS) / texH,
+        u4: uX / texW, v4: (uY + cellS) / texH
+      };
+
+      const numQuad = {
+        x1: cursorX, y1: cursorY,
+        x2: cursorX + numSize, y2: cursorY,
+        x3: cursorX + numSize, y3: cursorY + numSize,
+        x4: cursorX, y4: cursorY + numSize
+      };
+
+      glr.drawQuadTextured(hudTex, numQuad, numUV);
+      cursorX += numSize + numPad;
+    }
+
+    // Render flying pickups
+    for (let i = flyingPickups.length - 1; i >= 0; i--) {
+      const p = flyingPickups[i];
+      p.t += dt;
+      if (p.t >= p.duration) {
+        flyingPickups.splice(i, 1);
+        hudIconPulse = pulseDuration;
+        continue;
+      }
+
+      const progress = p.t / p.duration;
+      const ease = progress * progress; // EaseInQuad for speed up
+
+      // Quadratic Bezier for arc
+      // P0: Start, P2: Target (iconX, iconY), P1: Control (TargetX, StartY)
+      const p0x = p.startX;
+      const p0y = p.startY;
+      const p2x = iconX;
+      const p2y = iconY;
+      const p1x = p2x;
+      const p1y = p0y;
+
+      const invT = 1 - ease;
+      const b0 = invT * invT;
+      const b1 = 2 * invT * ease;
+      const b2 = ease * ease;
+
+      const curX = b0 * p0x + b1 * p1x + b2 * p2x;
+      const curY = b0 * p0y + b1 * p1y + b2 * p2y;
+
+      const flyQuad = {
+        x1: curX, y1: curY,
+        x2: curX + iconSize, y2: curY,
+        x3: curX + iconSize, y3: curY + iconSize,
+        x4: curX, y4: curY + iconSize
+      };
+      glr.drawQuadTextured(hudTex, flyQuad, iconUV);
+    }
+
+    // Render Timer
+    if (state.race.active && Config.game.mode === 'timeTrial') {
+      const timeVal = Math.ceil(Math.max(0, state.race.timeRemaining || 0));
+      const timeStr = String(timeVal);
+      const tNumSize = 32;
+      const tNumPad = -6;
+      const totalW = timeStr.length * (tNumSize + tNumPad) - tNumPad;
+      let tCursorX = (W - totalW) * 0.5;
+      const tCursorY = 16;
+
+      for (let i = 0; i < timeStr.length; i++) {
+        const digit = parseInt(timeStr[i], 10);
+        if (Number.isNaN(digit)) continue;
+
+        const cellS = 128;
+        const col = digit % 4;
+        const row = Math.floor(digit / 4);
+        const uX = col * cellS;
+        const uY = row * cellS;
+
+        const numUV = {
+          u1: uX / texW, v1: uY / texH,
+          u2: (uX + cellS) / texW, v2: uY / texH,
+          u3: (uX + cellS) / texW, v3: (uY + cellS) / texH,
+          u4: uX / texW, v4: (uY + cellS) / texH
+        };
+
+        const numQuad = {
+          x1: tCursorX, y1: tCursorY,
+          x2: tCursorX + tNumSize, y2: tCursorY,
+          x3: tCursorX + tNumSize, y3: tCursorY + tNumSize,
+          x4: tCursorX, y4: tCursorY + tNumSize
+        };
+
+        glr.drawQuadTextured(hudTex, numQuad, numUV);
+        tCursorX += tNumSize + tNumPad;
+      }
+    }
+  }
+
+  function renderScene(dt){
     if (!glr || !canvas3D) return;
 
+    pitchOffset = state.isMenu ? (state.menuPitch || 0) : -20;
+
+    // Temporarily disable fog in menu mode for clarity
+    const originalFogEnabled = Config.fog.enabled;
+    if (state.isMenu) Config.fog.enabled = false;
     glr.begin([0.9,0.95,1.0,1]);
+    if (state.isMenu) Config.fog.enabled = originalFogEnabled;
+    resetPointPool();
 
     const frame = createCameraFrame();
     renderHorizon();
 
-    const baseSeg = segmentAtS(frame.sCam);
+    // Fix for loop jitter: Wrap sCam to [0, trackLength] for world segment generation.
+    // This ensures basePct and segment depth calculations remain consistent when sCam is negative.
+    const trackLength = getTrackLength();
+    let sCamWorld = frame.sCam;
+    if (trackLength > 0) {
+      sCamWorld = wrap(sCamWorld, trackLength);
+    }
+
+    const baseSeg = segmentAtS(sCamWorld);
     if (!baseSeg) {
       glr.end();
       return;
     }
 
-    const basePct = pctRem(frame.sCam, segmentLength);
+    const basePct = pctRem(sCamWorld, segmentLength);
     const zoneData = {
       road: zonesFor('road'),
       rail: zonesFor('rail'),
       cliff: zonesFor('cliff'),
     };
 
-    const drawList = buildWorldDrawList(baseSeg, basePct, frame, zoneData);
+    // Use wrapped sCam for world generation, but original linear sCam for player projection
+    const worldFrame = { ...frame, sCam: sCamWorld };
+    const drawList = buildWorldDrawList(baseSeg, basePct, worldFrame, zoneData);
     enqueuePlayer(drawList, frame);
+    enqueueMenuGhost(drawList, frame);
 
     drawList.sort((a, b) => b.depth - a.depth);
     renderDrawList(drawList);
+
+    // Render Title Dash
+    if (state.titleOpacity > 0.01 && textures.dash) {
+      const dashTex = textures.dash;
+      const opacity = state.titleOpacity;
+      const texW = 512; // Assuming standard size, or we could use aspect ratio
+      const texH = 256;
+      const scale = 1.0;
+      const w = texW * scale;
+      const h = texH * scale;
+      
+      // Lock to sky position:
+      // When pitch is 320 (Menu), we want it centered (H/2).
+      // pitchOffset adds to the center Y.
+      // y = CenterY + (pitchOffset - MenuPitch)
+      const menuPitch = 320;
+      const yOffset = pitchOffset - menuPitch;
+      const cx = W * 0.5;
+      const cy = H * 0.5 + yOffset;
+
+      const quad = { x1: cx - w/2, y1: cy - h/2, x2: cx + w/2, y2: cy - h/2, x3: cx + w/2, y3: cy + h/2, x4: cx - w/2, y4: cy + h/2 };
+      const uv = { u1: 0, v1: 0, u2: 1, v2: 0, u3: 1, v3: 1, u4: 0, v4: 1 };
+      glr.drawQuadTextured(dashTex, quad, uv, [1, 1, 1, opacity]);
+    }
+
+    renderHUD(dt);
 
     glr.end();
   }
@@ -1153,8 +1308,13 @@
     const phys = state.phys;
     const sCar = phys.s;
     const sCam = sCar - camera.backSegments * segmentLength;
-    const camX = state.playerN * roadWidthAt(sCar);
-    const camY = state.camYSmooth;
+    let camX = state.playerN * roadWidthAt(sCar);
+    let camY = state.camYSmooth;
+
+    if (state.isMenu) {
+      camY += state.menuCameraHeight;
+      camX += 400;
+    }
 
     applyCameraTilt({ camX, camY, sCam, phys });
 
@@ -1234,22 +1394,37 @@
       const rightA2 = cliffEnd.rightA.dy * yScale2;
       const rightB1 = (cliffStart.rightA.dy + cliffStart.rightB.dy) * yScale1;
       const rightB2 = (cliffEnd.rightA.dy + cliffEnd.rightB.dy) * yScale2;
+      
+      // Optimization: Only project cliff points if cliffs are present/visible
+      const hasLeft = Math.abs(cliffStart.leftA.dx) > 0.1 || Math.abs(cliffStart.leftA.dy) > 0.1 || 
+                      Math.abs(cliffEnd.leftA.dx) > 0.1 || Math.abs(cliffEnd.leftA.dy) > 0.1 ||
+                      Math.abs(cliffStart.leftB.dx) > 0.1 || Math.abs(cliffStart.leftB.dy) > 0.1;
+      
+      const hasRight = Math.abs(cliffStart.rightA.dx) > 0.1 || Math.abs(cliffStart.rightA.dy) > 0.1 || 
+                       Math.abs(cliffEnd.rightA.dx) > 0.1 || Math.abs(cliffEnd.rightA.dy) > 0.1 ||
+                       Math.abs(cliffStart.rightB.dx) > 0.1 || Math.abs(cliffStart.rightB.dy) > 0.1;
 
-      const p1LA = projectSegPoint(seg.p1, leftA1, camX1, camY, camSRef);
-      const p2LA = projectSegPoint(seg.p2, leftA2, camX2, camY, camSRef);
-      const p1LB = projectSegPoint(seg.p1, leftB1, camX1, camY, camSRef);
-      const p2LB = projectSegPoint(seg.p2, leftB2, camX2, camY, camSRef);
-      const p1RA = projectSegPoint(seg.p1, rightA1, camX1, camY, camSRef);
-      const p2RA = projectSegPoint(seg.p2, rightA2, camX2, camY, camSRef);
-      const p1RB = projectSegPoint(seg.p1, rightB1, camX1, camY, camSRef);
-      const p2RB = projectSegPoint(seg.p2, rightB2, camX2, camY, camSRef);
+      let p1LA, p2LA, p1LB, p2LB, p1RA, p2RA, p1RB, p2RB;
+
+      if (hasLeft) {
+        p1LA = projectSegPoint(seg.p1, leftA1, camX1, camY, camSRef);
+        p2LA = projectSegPoint(seg.p2, leftA2, camX2, camY, camSRef);
+        p1LB = projectSegPoint(seg.p1, leftB1, camX1, camY, camSRef);
+        p2LB = projectSegPoint(seg.p2, leftB2, camX2, camY, camSRef);
+      }
+      if (hasRight) {
+        p1RA = projectSegPoint(seg.p1, rightA1, camX1, camY, camSRef);
+        p2RA = projectSegPoint(seg.p2, rightA2, camX2, camY, camSRef);
+        p1RB = projectSegPoint(seg.p1, rightB1, camX1, camY, camSRef);
+        p2RB = projectSegPoint(seg.p2, rightB2, camX2, camY, camSRef);
+      }
 
       const p1LS = projectSegPoint(seg.p1, track.wallShort.left * yScale1, camX1, camY, camSRef);
       const p2LS = projectSegPoint(seg.p2, track.wallShort.left * yScale2, camX2, camY, camSRef);
       const p1RS = projectSegPoint(seg.p1, track.wallShort.right * yScale1, camX1, camY, camSRef);
       const p2RS = projectSegPoint(seg.p2, track.wallShort.right * yScale2, camX2, camY, camSRef);
-
-      const L = makeCliffLeftQuads(
+      
+      const L = hasLeft ? makeCliffLeftQuads(
         p1.screen.x, p1.screen.y, w1,
         p2.screen.x, visibleRoad ? p2.screen.y : (p1.screen.y - 1),
         w2,
@@ -1259,8 +1434,9 @@
         cliffStart.leftB.dx, cliffEnd.leftB.dx,
         0, 1,
         rw1, rw2
-      );
-      const R = makeCliffRightQuads(
+      ) : null;
+
+      const R = hasRight ? makeCliffRightQuads(
         p1.screen.x, p1.screen.y, w1,
         p2.screen.x, visibleRoad ? p2.screen.y : (p1.screen.y - 1),
         w2,
@@ -1270,7 +1446,7 @@
         cliffStart.rightB.dx, cliffEnd.rightB.dx,
         0, 1,
         rw1, rw2
-      );
+      ) : null;
 
       const [v0Road, v1Road] = vSpanForSeg(zoneData.road, idx);
       const [v0Rail, v1Rail] = vSpanForSeg(zoneData.rail, idx);
@@ -1334,10 +1510,16 @@
 
       for (let i = 0; i < seg.cars.length; i++){
         const car = seg.cars[i];
-        const t = ((car.z - seg.p1.world.z + trackLength) % trackLength) / segmentLength;
+        const t = wrap(car.z - seg.p1.world.z, trackLength) / segmentLength;
         const scale = lerp(p1.screen.scale, p2.screen.scale, t);
         const rw = lerp(rw1, rw2, t);
         const xCenter = lerp(p1.screen.x, p2.screen.x, t) + scale * car.offset * rw * HALF_VIEW;
+
+        // Optimization: Cull tiny or off-screen cars
+        const wPxRaw = scale * car.meta.wN * rw * HALF_VIEW;
+        if (wPxRaw < 10) continue;
+        if (xCenter + wPxRaw < 0 || xCenter - wPxRaw > W) continue;
+
         const yBase = lerp(p1.screen.y, p2.screen.y, t);
         const zObj = lerp(p1.camera.z, p2.camera.z, t);
         const wPx = scale * car.meta.wN * rw * HALF_VIEW;
@@ -1358,13 +1540,6 @@
           return textures.car || (car.meta && typeof car.meta.tex === 'function' ? car.meta.tex() : null);
         })();
         const npcUv = npcAtlasUvFromBuckets(npcColor.buckets);
-        const hitboxScale = (() => {
-          const hb = (car.meta && Number.isFinite(car.meta.hitboxWN) && car.meta.hitboxWN > 0)
-            ? car.meta.hitboxWN
-            : car.meta.wN;
-          const denom = car.meta && Number.isFinite(car.meta.wN) && car.meta.wN > 0 ? car.meta.wN : hb || 1;
-          return denom !== 0 ? hb / denom : 1;
-        })();
         drawList.push({
           type: 'npc',
           depth: zObj,
@@ -1379,18 +1554,25 @@
           colorKey: `npc:${car.type || 'car'}`,
           npcColorIndex: npcColor.index,
           npcColorBuckets: npcColor.buckets,
-          hitboxScale,
         });
       }
 
       for (let i = 0; i < seg.sprites.length; i++){
         const spr = seg.sprites[i];
-        const meta = SPRITE_META[spr.kind] || SPRITE_META.SIGN;
+        const meta = SPRITE_META[spr.kind] || SPRITE_META.SIGN || { wN: 0.2, aspect: 1, tint: [1, 1, 1, 1] };
         const spriteS = Number.isFinite(spr.s) ? spr.s : seg.p1.world.z;
-        const deltaS = (spriteS - seg.p1.world.z + trackLength) % trackLength;
+        const deltaS = wrap(spriteS - seg.p1.world.z, trackLength);
         const t = clamp(deltaS / Math.max(1e-6, segmentLength), 0, 1);
         const scale = lerp(p1.screen.scale, p2.screen.scale, t);
         const rw = lerp(rw1, rw2, t);
+
+        // Optimization: Cull tiny sprites early
+        const scaleFactor = Number.isFinite(spr.scale) ? spr.scale : 1;
+        const wPxRaw = scale * meta.wN * rw * HALF_VIEW * scaleFactor;
+        // Dynamic threshold: Cull large objects (trees) at a larger pixel size to match draw distance of smaller objects
+        const cullThreshold = Math.max(2, 12 * meta.wN);
+        if (wPxRaw < cullThreshold) continue;
+
         const baseX = lerp(p1.screen.x, p2.screen.x, t);
         const baseY = lerp(p1.screen.y, p2.screen.y, t);
         const sAbs = Math.abs(spr.offset);
@@ -1408,13 +1590,28 @@
           const o = (cliffProgress && Number.isFinite(cliffProgress.o))
             ? cliffProgress.o
             : Math.min(2, Math.max(0, sAbs - 1.0));
-          if (sideLeft){
+          if (sideLeft && L){
             const xInner = lerp(L.x1_inner, L.x2_inner, t);
             const xA = lerp(L.x1_A, L.x2_A, t);
             const xB = lerp(L.x1_B, L.x2_B, t);
             const yInner = lerp(p1.screen.y, p2.screen.y, t);
-            const yA = lerp(p1LA.screen.y, p2LA.screen.y, t);
-            const yB = lerp(p1LB.screen.y, p2LB.screen.y, t);
+            const yA = p1LA && p2LA ? lerp(p1LA.screen.y, p2LA.screen.y, t) : yInner;
+            const yB = p1LB && p2LB ? lerp(p1LB.screen.y, p2LB.screen.y, t) : yInner;
+            if (o <= 1){
+              xCenter = lerp(xInner, xA, o);
+              yBase = lerp(yInner, yA, o);
+            } else {
+              const t2 = o - 1;
+              xCenter = lerp(xA, xB, t2);
+              yBase = lerp(yA, yB, t2);
+            }
+          } else if (!sideLeft && R) {
+            const xInner = lerp(R.x1_inner, R.x2_inner, t);
+            const xA = lerp(R.x1_A, R.x2_A, t);
+            const xB = lerp(R.x1_B, R.x2_B, t);
+            const yInner = lerp(p1.screen.y, p2.screen.y, t);
+            const yA = p1RA && p2RA ? lerp(p1RA.screen.y, p2RA.screen.y, t) : yInner;
+            const yB = p1RB && p2RB ? lerp(p1RB.screen.y, p2RB.screen.y, t) : yInner;
             if (o <= 1){
               xCenter = lerp(xInner, xA, o);
               yBase = lerp(yInner, yA, o);
@@ -1424,31 +1621,23 @@
               yBase = lerp(yA, yB, t2);
             }
           } else {
-            const xInner = lerp(R.x1_inner, R.x2_inner, t);
-            const xA = lerp(R.x1_A, R.x2_A, t);
-            const xB = lerp(R.x1_B, R.x2_B, t);
-            const yInner = lerp(p1.screen.y, p2.screen.y, t);
-            const yA = lerp(p1RA.screen.y, p2RA.screen.y, t);
-            const yB = lerp(p1RB.screen.y, p2RB.screen.y, t);
-            if (o <= 1){
-              xCenter = lerp(xInner, xA, o);
-              yBase = lerp(yInner, yA, o);
-            } else {
-              const t2 = o - 1;
-              xCenter = lerp(xA, xB, t2);
-              yBase = lerp(yA, yB, t2);
-            }
+            // Fallback if cliffs are missing but sprite is far out
+            xCenter = baseX + scale * spr.offset * rw * HALF_VIEW;
+            yBase = baseY;
           }
         }
         const zObj = lerp(p1.camera.z, p2.camera.z, t) + 1e-3;
-        const scaleFactor = Number.isFinite(spr.scale) ? spr.scale : 1;
         const stretchFactor = Number.isFinite(spr.stretch) ? spr.stretch : 1;
         let wPx = scale * meta.wN * rw * HALF_VIEW;
         let hPx = wPx * meta.aspect;
         wPx *= scaleFactor;
         hPx *= scaleFactor * stretchFactor;
-        let angle = null;
+
+        // Optimization: Cull off-screen sprites
         const screenOffsetX = Number.isFinite(spr.screenOffsetX) ? spr.screenOffsetX : 0;
+        if ((xCenter + screenOffsetX) + wPx < 0 || (xCenter + screenOffsetX) - wPx > W) continue;
+
+        let angle = null;
         const screenOffsetY = Number.isFinite(spr.screenOffsetY) ? spr.screenOffsetY : 0;
         const drawX = xCenter + screenOffsetX;
         const drawY = yBase + screenOffsetY;
@@ -1484,6 +1673,41 @@
     return drawList;
   }
 
+  function computeCurvatureOffset(sStart, dist) {
+    if (dist <= 0) return 0;
+    const trackLength = getTrackLength();
+    let sCurrent = sStart;
+    if (trackLength > 0) {
+      sCurrent = wrap(sCurrent, trackLength);
+    }
+
+    const startSeg = segmentAtS(sCurrent);
+    if (!startSeg) return 0;
+
+    const basePct = pctRem(sCurrent, segmentLength);
+    let x = 0;
+    let dx = -(startSeg.curve * basePct);
+
+    let currentDist = 0;
+    const maxSegments = Math.ceil(dist / segmentLength) + 2;
+
+    for (let i = 0; i < maxSegments; i++) {
+      const segIndex = (startSeg.index + i) % segments.length;
+      const seg = segments[segIndex];
+
+      if (currentDist + segmentLength > dist) {
+        const remaining = dist - currentDist;
+        const pct = remaining / segmentLength;
+        return x + dx * pct;
+      }
+
+      x += dx;
+      dx += seg.curve;
+      currentDist += segmentLength;
+    }
+    return x;
+  }
+
   function enqueuePlayer(drawList, frame){
     const { phys, camX, camY, sCam } = frame;
     const SPRITE_META = state.spriteMeta;
@@ -1491,8 +1715,16 @@
     const carX = state.playerN * roadWidthAt(phys.s);
     const floor = floorElevationAt(phys.s, state.playerN);
     const bodyWorldY = phys.grounded ? floor : phys.y;
-    const body = projectWorldPoint({ x: carX, y: bodyWorldY, z: phys.s }, camX, camY, sCam);
-    const shadow = projectWorldPoint({ x: carX, y: floor, z: phys.s }, camX, camY, sCam);
+    const offsetZ = (state.isMenu && Number.isFinite(state.menuCarOffsetZ)) ? state.menuCarOffsetZ : 0;
+
+    let curveOffsetX = 0;
+    if (Math.abs(offsetZ) > 1) {
+      const dist = (phys.s + offsetZ) - sCam;
+      curveOffsetX = computeCurvatureOffset(sCam, dist);
+    }
+
+    const body = projectWorldPoint({ x: carX + curveOffsetX, y: bodyWorldY, z: phys.s + offsetZ }, camX, camY, sCam);
+    const shadow = projectWorldPoint({ x: carX + curveOffsetX, y: floor, z: phys.s + offsetZ }, camX, camY, sCam);
     if (body.camera.z > state.camera.nearZ){
       const pixScale = body.screen.scale * HALF_VIEW;
       const widthNorm = Number.isFinite(playerMeta.wN) ? playerMeta.wN : 0.16;
@@ -1516,14 +1748,54 @@
     }
   }
 
+  function enqueueMenuGhost(drawList, frame){
+    if (!state.isMenu || !state.menuGhostCar) return;
+    const ghost = state.menuGhostCar;
+    const { phys, camX, camY, sCam } = frame;
+    const SPRITE_META = state.spriteMeta;
+    const playerMeta = SPRITE_META.PLAYER || {};
+    const carX = state.playerN * roadWidthAt(phys.s);
+    const floor = floorElevationAt(phys.s, state.playerN);
+    const bodyWorldY = phys.grounded ? floor : phys.y;
+    const offsetZ = Number.isFinite(ghost.offsetZ) ? ghost.offsetZ : 0;
+
+    let curveOffsetX = 0;
+    if (Math.abs(offsetZ) > 1) {
+      const dist = (phys.s + offsetZ) - sCam;
+      curveOffsetX = computeCurvatureOffset(sCam, dist);
+    }
+
+    const body = projectWorldPoint({ x: carX + curveOffsetX, y: bodyWorldY, z: phys.s + offsetZ }, camX, camY, sCam);
+    const shadow = projectWorldPoint({ x: carX + curveOffsetX, y: floor, z: phys.s + offsetZ }, camX, camY, sCam);
+    
+    if (body.camera.z > state.camera.nearZ){
+      const pixScale = body.screen.scale * HALF_VIEW;
+      const widthNorm = Number.isFinite(playerMeta.wN) ? playerMeta.wN : 0.16;
+      const aspect = Number.isFinite(playerMeta.aspect) ? playerMeta.aspect : 0.7;
+      const w = widthNorm * state.getKindScale('PLAYER') * roadWidthAt(phys.s) * pixScale;
+      const h = w * aspect;
+      
+      const ghostTex = textures[ghost.textureKey] || textures.car;
+      const sprite = computePlayerSpriteSamples(frame, { ...playerMeta, tex: () => ghostTex });
+      
+      drawList.push({
+        type: 'player',
+        depth: body.camera.z - 1e-3,
+        x: body.screen.x,
+        w, h,
+        bodyY: body.screen.y, shadowY: shadow.screen.y,
+        zBody: body.camera.z, zShadow: shadow.camera.z,
+        meta: playerMeta,
+        sprite: { ...sprite, texture: ghostTex }
+      });
+    }
+  }
+
   function renderDrawList(drawList){
     const SPRITE_META = state.spriteMeta;
     const items = Array.isArray(drawList) ? drawList : [];
     perf.registerDrawListSize(items.length);
     if (!items.length) return;
-    const showDebugBoxes = overlayEnabled();
-    const hitboxColor = [1, 0.2, 0.2, 1];
-    const textureColor = [0.2, 0.9, 1, 1];
     for (const item of items){
       if (item.type === 'strip'){
         perf.registerStrip();
@@ -1542,35 +1814,6 @@
           item.uv,
           item.colorKey,
         );
-        if (showDebugBoxes){
-          const quadTex = {
-            x1: item.x - item.w * 0.5,
-            y1: item.y - item.h,
-            x2: item.x + item.w * 0.5,
-            y2: item.y - item.h,
-            x3: item.x + item.w * 0.5,
-            y3: item.y,
-            x4: item.x - item.w * 0.5,
-            y4: item.y,
-          };
-          const hbScale = (Number.isFinite(item.hitboxScale) && item.hitboxScale > 0) ? item.hitboxScale : 1;
-          const hbW = item.w * hbScale;
-          const aspect = (item.w > 0) ? (item.h / item.w) : 1;
-          const hbH = hbW * aspect;
-          const quadHb = {
-            x1: item.x - hbW * 0.5,
-            y1: item.y - hbH,
-            x2: item.x + hbW * 0.5,
-            y2: item.y - hbH,
-            x3: item.x + hbW * 0.5,
-            y3: item.y,
-            x4: item.x - hbW * 0.5,
-            y4: item.y,
-          };
-          const fog = fogArray(item.z);
-          drawQuadOutline(quadTex, textureColor, 2, fog);
-          drawQuadOutline(quadHb, hitboxColor, 2, fog);
-        }
       } else if (item.type === 'prop'){
         perf.registerSprite('prop');
         const hasAngle = Number.isFinite(item.angle) && Math.abs(item.angle) > 1e-4;
@@ -1647,8 +1890,9 @@
       const sway = Math.sin(animTime * flake.swayFreq + flake.phase) * flake.swayAmp;
       const normX = clamp((flake.baseX - 0.5) + sway, -0.6, 0.6);
       const localY = normY - 0.5;
+      const menuHeightMult = state.isMenu ? 4.0 : 1.0;
       const px = x + normX * diameter;
-      const py = y + localY * diameter;
+      const py = y + localY * diameter * menuHeightMult;
       const baseSizePx = lerp(snowSizeRange.min, snowSizeRange.max, clamp(flake.size, 0, 1));
       const perspectiveScale = clamp(radius / 128, 0.25, 2.0);
       const flakeSizePx = Math.max(1, Math.round(baseSizePx * perspectiveScale));
@@ -1737,11 +1981,11 @@
     const x2 = p2.screen.x;
     const y2 = visibleRoad ? p2.screen.y : p1.screen.y - 1;
 
-    const leftAvgY = 0.25 * (L.quadA.y1 + L.quadA.y4 + L.quadB.y1 + L.quadB.y4);
-    const rightAvgY = 0.25 * (R.quadA.y2 + R.quadA.y3 + R.quadB.y2 + R.quadB.y3);
+    const leftAvgY = L ? 0.25 * (L.quadA.y1 + L.quadA.y4 + L.quadB.y1 + L.quadB.y4) : 0;
+    const rightAvgY = R ? 0.25 * (R.quadA.y2 + R.quadA.y3 + R.quadB.y2 + R.quadB.y3) : 0;
     const roadMidY = 0.5 * (y1 + y2);
-    const leftIsNegative = leftAvgY > roadMidY;
-    const rightIsNegative = rightAvgY > roadMidY;
+    const leftIsNegative = L && leftAvgY > roadMidY;
+    const rightIsNegative = R && rightAvgY > roadMidY;
 
     const fogCliff = fogArray(p1.camera.z, p2.camera.z);
     const group = ((segIndex / debug.span) | 0) % 2;
@@ -1750,34 +1994,54 @@
     const cliffTex = texturesEnabled ? (textures.cliff || glr.whiteTex) : null;
     const fillCliffs = debugFill || !texturesEnabled;
 
-    const leftQuadA = padWithSpriteOverlap(L.quadA);
-    const leftQuadB = padWithSpriteOverlap(L.quadB);
-    const rightQuadA = padWithSpriteOverlap(R.quadA);
-    const rightQuadB = padWithSpriteOverlap(R.quadB);
+    const leftQuadA = L ? padWithSpriteOverlap(L.quadA) : null;
+    const leftQuadB = L ? padWithSpriteOverlap(L.quadB) : null;
+    const rightQuadA = R ? padWithSpriteOverlap(R.quadA) : null;
+    const rightQuadB = R ? padWithSpriteOverlap(R.quadB) : null;
 
     const drawLeftCliffs = (solid = false) => {
+      if (!L) return;
       const uvA = { ...L.uvA, v1: v0Cliff, v2: v0Cliff, v3: v1Cliff, v4: v1Cliff };
       const uvB = { ...L.uvB, v1: v0Cliff, v2: v0Cliff, v3: v1Cliff, v4: v1Cliff };
-      if (solid || !cliffTex){
+
+      // If outer (B) is higher (smaller Y) than inner (A), draw A then B.
+      // If outer (B) is lower (larger Y) than inner (A), draw B then A.
+      const bIsHigher = L.quadB.y1 < L.quadA.y1;
+      const first = bIsHigher ? leftQuadA : leftQuadB;
+      const second = bIsHigher ? leftQuadB : leftQuadA;
+      const uv1 = bIsHigher ? uvA : uvB;
+      const uv2 = bIsHigher ? uvB : uvA;
+
+      if (solid || !cliffTex) {
         const solidTint = debugFill ? tint : randomColorFor(`cliffL:${segIndex}`);
-        glr.drawQuadSolid(leftQuadA, solidTint, fogCliff);
-        glr.drawQuadSolid(leftQuadB, solidTint, fogCliff);
+        glr.drawQuadSolid(first, solidTint, fogCliff);
+        glr.drawQuadSolid(second, solidTint, fogCliff);
       } else {
-        glr.drawQuadTextured(cliffTex, leftQuadA, uvA, undefined, fogCliff);
-        glr.drawQuadTextured(cliffTex, leftQuadB, uvB, undefined, fogCliff);
+        glr.drawQuadTextured(cliffTex, first, uv1, undefined, fogCliff);
+        glr.drawQuadTextured(cliffTex, second, uv2, undefined, fogCliff);
       }
     };
 
     const drawRightCliffs = (solid = false) => {
+      if (!R) return;
       const uvA = { ...R.uvA, v1: v0Cliff, v2: v0Cliff, v3: v1Cliff, v4: v1Cliff };
       const uvB = { ...R.uvB, v1: v0Cliff, v2: v0Cliff, v3: v1Cliff, v4: v1Cliff };
-      if (solid || !cliffTex){
+
+      // If outer (B) is higher (smaller Y) than inner (A), draw A then B.
+      // If outer (B) is lower (larger Y) than inner (A), draw B then A.
+      const bIsHigher = R.quadB.y2 < R.quadA.y2;
+      const first = bIsHigher ? rightQuadA : rightQuadB;
+      const second = bIsHigher ? rightQuadB : rightQuadA;
+      const uv1 = bIsHigher ? uvA : uvB;
+      const uv2 = bIsHigher ? uvB : uvA;
+
+      if (solid || !cliffTex) {
         const solidTint = debugFill ? tint : randomColorFor(`cliffR:${segIndex}`);
-        glr.drawQuadSolid(rightQuadA, solidTint, fogCliff);
-        glr.drawQuadSolid(rightQuadB, solidTint, fogCliff);
+        glr.drawQuadSolid(first, solidTint, fogCliff);
+        glr.drawQuadSolid(second, solidTint, fogCliff);
       } else {
-        glr.drawQuadTextured(cliffTex, rightQuadA, uvA, undefined, fogCliff);
-        glr.drawQuadTextured(cliffTex, rightQuadB, uvB, undefined, fogCliff);
+        glr.drawQuadTextured(cliffTex, first, uv1, undefined, fogCliff);
+        glr.drawQuadTextured(cliffTex, second, uv2, undefined, fogCliff);
       }
     };
 
@@ -1806,8 +2070,8 @@
       drawBoostZonesOnStrip(boostZones, x1, y1, x2, y2, w1, w2, fogRoad, segIndex);
     }
 
-    if (!leftIsNegative) drawLeftCliffs(fillCliffs);
-    if (!rightIsNegative) drawRightCliffs(fillCliffs);
+    if (L && !leftIsNegative) drawLeftCliffs(fillCliffs);
+    if (R && !rightIsNegative) drawRightCliffs(fillCliffs);
 
     if (seg && seg.features && seg.features.rail){
       const texRail = texturesEnabled ? (textures.rail || glr.whiteTex) : null;
@@ -1856,20 +2120,24 @@
     const texturesEnabled = areTexturesEnabled();
     const fogShadow = fogArray(item.zShadow || 0);
     const fogBody = fogArray(item.zBody || 0);
-    const shH = item.h * 0.06;
+    const shH = item.w;
 
-    const bodyBottom = Math.min(item.bodyY, item.shadowY - shH);
-    const bodyTop = bodyBottom - item.h;
     const bodyCX = item.x;
-    const bodyCY = (bodyTop + bodyBottom) * 0.5;
+    const bodyCY = item.bodyY - item.h * 0.5;
     const shCX = item.x;
     const shCY = item.shadowY - shH * 0.5;
 
     const ang = (state.playerTiltDeg * Math.PI) / 180;
 
     const shQuad = makeRotatedQuad(shCX, shCY, item.w, shH, ang);
-    const shadowColor = texturesEnabled ? [0.13, 0.13, 0.13, 1] : randomColorFor('player:shadow');
-    glr.drawQuadSolid(shQuad, shadowColor, fogShadow);
+    const shadowTex = texturesEnabled ? textures.shadow : null;
+    if (shadowTex) {
+      const shUV = { u1: 0, v1: 0, u2: 1, v2: 0, u3: 1, v3: 1, u4: 0, v4: 1 };
+      glr.drawQuadTextured(shadowTex, shQuad, shUV, [1, 1, 1, 1], fogShadow);
+    } else {
+      const shadowColor = texturesEnabled ? [0.13, 0.13, 0.13, 1] : randomColorFor('player:shadow');
+      glr.drawQuadSolid(shQuad, shadowColor, fogShadow);
+    }
 
     const bodyQuad = makeRotatedQuad(bodyCX, bodyCY, item.w, item.h, ang);
     const meta = (item && item.meta) || (state.spriteMeta && state.spriteMeta.PLAYER) || {};
@@ -1948,19 +2216,6 @@
       const bodyColor = texturesEnabled ? fallbackTint : randomColorFor('player:body');
       glr.drawQuadSolid(bodyQuad, bodyColor, fogBody);
     }
-
-    if (overlayEnabled()) {
-      const hb = Number.isFinite(meta.hitboxWN) && meta.hitboxWN > 0 ? meta.hitboxWN : meta.wN;
-      const denom = Number.isFinite(meta.wN) && meta.wN > 0 ? meta.wN : hb || 1;
-      const hbScale = denom !== 0 ? hb / denom : 1;
-      const hbW = item.w * hbScale;
-      const hbH = item.h * hbScale;
-      const hbCY = item.shadowY - (hbH * 0.5);
-      const hitQuad = makeRotatedQuad(bodyCX, hbCY, hbW, hbH, ang);
-      // Texture outline stays on the body; hitbox outline anchored to ground/shadow.
-      drawQuadOutline(bodyQuad, [0.2, 0.9, 1, 1], 2, fogBody);
-      drawQuadOutline(hitQuad, [1, 0.2, 0.2, 1], 2, fogBody);
-    }
   }
 
   function renderOverlay(){
@@ -1973,9 +2228,11 @@
     const FR_SHRINK = 32, FR_WAIT = 10, FR_EXPAND = 34, FR_TOTAL = FR_SHRINK + FR_WAIT + FR_EXPAND;
     let active = false, t = 0, scale = 1, didAction = false, mode = 'reset';
     let respawnS = 0, respawnN = 0;
-    function start(nextMode='reset', sForRespawn=null, nForRespawn=0){
+    let transitionCallback = null;
+    function start(nextMode='reset', sForRespawn=null, nForRespawn=0, cb=null){
       if (active) return;
       active = true; t = 0; scale = 1; didAction = false; mode = nextMode;
+      transitionCallback = cb;
       if (nextMode === 'respawn') { respawnS = (sForRespawn == null) ? state.phys.s : sForRespawn; respawnN = nForRespawn; }
       state.resetMatteActive = true;
     }
@@ -1989,6 +2246,8 @@
           if (typeof state.callbacks.onResetScene === 'function') state.callbacks.onResetScene();
         } else if (mode === 'respawn') {
           if (typeof Gameplay.respawnPlayerAt === 'function') Gameplay.respawnPlayerAt(respawnS, respawnN);
+        } else if (mode === 'transition') {
+          if (typeof transitionCallback === 'function') transitionCallback();
         }
         didAction = true;
       }
@@ -2052,7 +2311,7 @@
         stepsThisFrame += 1;
       }
       perf.registerPhysicsSteps(stepsThisFrame);
-      renderScene();
+      renderScene(dt);
       perf.endFrame();
       renderOverlay();
       resetMatte.draw();
@@ -2062,16 +2321,47 @@
     requestAnimationFrame(loop);
   }
 
+  async function updateTrackTextures(theme) {
+    if (!glr || !theme) return;
+    const { road, cliff, rail, horizon } = theme;
+    
+    const load = async (key, url) => {
+      if (!url) return;
+      const resolved = (World && typeof World.resolveAssetUrl === 'function') 
+        ? World.resolveAssetUrl(url) 
+        : url;
+      const tex = await glr.loadTexture(resolved);
+      if (tex && textures) {
+        textures[key] = tex;
+      }
+    };
+
+    const promises = [];
+    if (road) promises.push(load('road', road));
+    if (cliff) promises.push(load('cliff', cliff));
+    if (rail) promises.push(load('rail', rail));
+    if (Array.isArray(horizon)) {
+      if (horizon[0]) promises.push(load('horizon1', horizon[0]));
+      if (horizon[1]) promises.push(load('horizon2', horizon[1]));
+      if (horizon[2]) promises.push(load('horizon3', horizon[2]));
+    }
+    
+    await Promise.all(promises);
+  }
+
   global.Renderer = {
     attach,
     frame,
     matte: {
       startReset(){ resetMatte.start('reset'); },
       startRespawn(s, n=0){ resetMatte.start('respawn', s, n); },
+      startTransition(cb){ resetMatte.start('transition', null, 0, cb); },
       tick(){ resetMatte.tick(); },
       draw(){ resetMatte.draw(); },
     },
     renderScene,
     renderOverlay,
+    triggerPickupAnimation,
+    updateTrackTextures,
   };
 })(window);

@@ -1,15 +1,9 @@
 (function (global) {
-  const { Gameplay, AppScreens, Config, World } = global;
+  const { Gameplay, AppScreens, Config, World, Renderer, MathUtil } = global;
 
-  if (!Gameplay || !AppScreens || !Config || !World) {
-    throw new Error('App module requires Gameplay, AppScreens, Config, and World globals');
+  if (!Gameplay || !AppScreens || !Config || !World || !MathUtil) {
+    throw new Error('App module requires Gameplay, AppScreens, Config, World globals');
   }
-
-  const mainMenuOptions = [
-    { key: 'start', label: 'Start Race' },
-    { key: 'leaderboard', label: 'Leaderboard' },
-    { key: 'settings', label: 'Settings' },
-  ];
 
   const pauseMenuOptions = [
     { key: 'resume', label: 'Resume' },
@@ -32,6 +26,54 @@
       atlasTextureKey: 'playerVan',
       previewPath: 'tex/player-select-van.png',
       previewAtlas: { columns: 9, rows: 9, frameCount: 81, frameRate: 24 },
+    },
+  ];
+
+  const trackOptions = [
+    {
+      key: 'demo',
+      label: 'Coastal Breeze',
+      description: 'A scenic route along the ocean.',
+      trackPath: 'tracks/demo/demo-track.csv',
+      cliffsPath: 'tracks/demo/demo-cliffs.csv',
+      placementPath: 'tracks/demo/demo-placement.csv',
+      previewPlacementPath: 'tracks/demo/demo-select.csv',
+      theme: {
+        road: 'tex/demo-road-seg.png',
+        cliff: 'tex/demo-cliff.png',
+        rail: 'tex/demo-guardrail.png',
+        horizon: ['tex/demo-paralax-1.png', 'tex/demo-paralax-2.png', 'tex/demo-paralax-3.png'],
+      },
+    },
+    {
+      key: 'summer',
+      label: 'Summer Highway',
+      description: 'High speed highway through the night.',
+      trackPath: 'tracks/summer/summer-track.csv',
+      cliffsPath: 'tracks/summer/summer-cliffs.csv',
+      placementPath: 'tracks/summer/summer-placement.csv',
+      previewPlacementPath: 'tracks/summer/summer-select.csv',
+      theme: {
+        road: 'tex/summer-road-seg.png',
+        cliff: 'tex/summer-cliff.png',
+        rail: 'tex/summer-guardrail.png',
+        horizon: ['tex/summer-paralax-1.png', 'tex/summer-paralax-2.png', 'tex/summer-paralax-3.png'],
+      },
+    },
+    {
+      key: 'winter',
+      label: 'Winter Pass',
+      description: 'Slippery roads through snowy peaks.',
+      trackPath: 'tracks/winter/winter-track.csv',
+      cliffsPath: 'tracks/winter/winter-cliffs.csv',
+      placementPath: 'tracks/winter/winter-placement.csv',
+      previewPlacementPath: 'tracks/winter/winter-select.csv',
+      theme: {
+        road: 'tex/winter-road-seg.png',
+        cliff: 'tex/winter-cliff.png',
+        rail: 'tex/winter-guardrail.png',
+        horizon: ['tex/winter-paralax-1.png', 'tex/winter-paralax-2.png', 'tex/winter-paralax-3.png'],
+      },
     },
   ];
 
@@ -59,7 +101,9 @@
     pauseMenuIndex: 0,
     settingsMenuIndex: 0,
     vehicleSelectIndex: 0,
+    trackSelectIndex: 0,
     selectedVehicleKey: vehicleOptions.length ? vehicleOptions[0].key : null,
+    selectedTrackKey: trackOptions.length ? trackOptions[0].key : null,
     settings: { snowEnabled: true, debugEnabled: false },
     lastInteractionAt: Date.now(),
     leaderboard: {
@@ -74,6 +118,13 @@
       menuPanel: null,
       attractVideo: null,
       vehiclePreview: null,
+      raceMessage: null,
+    },
+    vehicleSwitch: {
+      active: false,
+      phase: 'idle',
+      timer: 0,
+      targetKey: null,
     },
   };
 
@@ -270,6 +321,7 @@
     }
     state.dom.menuLayer = menuLayer;
     state.dom.menuPanel = menuPanel;
+    state.dom.raceMessage = document.getElementById('raceMessage');
   }
 
   function renderMainMenu() {
@@ -277,9 +329,9 @@
     return AppScreens.mainMenu(
       {
         title: 'Outrun',
-        subtitle: 'Neon Grand Prix',
-        options: mainMenuOptions,
-        selectedIndex: state.mainMenuIndex,
+        subtitle: 'Press Start',
+        options: [],
+        selectedIndex: -1,
       },
       { escapeHtml },
     );
@@ -349,7 +401,7 @@
   function renderVehicleSelect() {
     if (!AppScreens.vehicleSelect) return '';
     const total = vehicleOptions.length;
-    const index = clampIndex(state.vehicleSelectIndex, total);
+    const index = MathUtil.wrap(state.vehicleSelectIndex, total);
     const option = vehicleOptions[index] || vehicleOptions[0] || {};
 
     return AppScreens.vehicleSelect(
@@ -432,6 +484,8 @@
       html = renderPauseMenu();
     } else if (state.mode === 'vehicleSelect') {
       html = renderVehicleSelect();
+    } else if (state.mode === 'trackSelect') {
+      html = renderTrackSelect();
     } else if (state.mode === 'attract') {
       html = renderAttract();
     } else if (state.mode === 'raceComplete') {
@@ -542,34 +596,46 @@
     applyVehiclePreviewFrame(preview);
   }
 
-  function clampIndex(index, total) {
-    if (total <= 0) return 0;
-    const mod = ((index % total) + total) % total;
-    return mod;
-  }
-
-  function changeMainMenuSelection(delta) {
-    const total = mainMenuOptions.length;
-    state.mainMenuIndex = clampIndex(state.mainMenuIndex + delta, total);
-    updateMenuLayer();
-  }
-
   function changePauseMenuSelection(delta) {
     const total = pauseMenuOptions.length;
-    state.pauseMenuIndex = clampIndex(state.pauseMenuIndex + delta, total);
+    state.pauseMenuIndex = MathUtil.wrap(state.pauseMenuIndex + delta, total);
     updateMenuLayer();
   }
 
   function changeSettingsSelection(delta) {
     const total = settingsMenuKeys.length;
-    state.settingsMenuIndex = clampIndex(state.settingsMenuIndex + delta, total);
+    state.settingsMenuIndex = MathUtil.wrap(state.settingsMenuIndex + delta, total);
     updateMenuLayer();
   }
 
   function changeVehicleSelection(delta) {
+    if (state.vehicleSwitch.active) return;
+
     const total = vehicleOptions.length;
     if (total <= 0) return;
-    state.vehicleSelectIndex = clampIndex(state.vehicleSelectIndex + delta, total);
+    
+    const nextIndex = MathUtil.wrap(state.vehicleSelectIndex + delta, total);
+    const option = vehicleOptions[nextIndex];
+    
+    startVehicleSwitch(nextIndex, option ? option.key : null);
+    
+    updateMenuLayer();
+  }
+
+  function changeTrackSelection(delta) {
+    const total = trackOptions.length;
+    if (total <= 0) return;
+    state.trackSelectIndex = MathUtil.wrap(state.trackSelectIndex + delta, total);
+    
+    const option = trackOptions[state.trackSelectIndex];
+    if (option && option.previewPlacementPath) {
+      if (Gameplay.invalidateSpriteCache) Gameplay.invalidateSpriteCache();
+      Gameplay.spawnProps(option.previewPlacementPath);
+    }
+    if (option && option.theme && Renderer && Renderer.updateTrackTextures) {
+      Renderer.updateTrackTextures(option.theme);
+    }
+
     updateMenuLayer();
   }
 
@@ -578,13 +644,30 @@
     return vehicleOptions.find((option) => option && option.key === key) || null;
   }
 
+  function startVehicleSwitch(nextIndex, nextKey) {
+    const currentOption = vehicleOptions[state.vehicleSelectIndex];
+    const currentAtlasKey = currentOption ? (currentOption.atlasTextureKey || 'playerCar') : 'playerCar';
+    
+    Gameplay.state.menuGhostCar = {
+      textureKey: currentAtlasKey,
+      offsetZ: Gameplay.state.menuCarOffsetZ,
+    };
+
+    state.vehicleSelectIndex = nextIndex;
+    applyVehicleSelection(nextKey);
+    Gameplay.state.menuCarOffsetZ = -2000;
+
+    state.vehicleSwitch.active = true;
+    state.vehicleSwitch.timer = 0;
+  }
+
   function applyVehicleSelection(vehicleKey) {
     const option = getVehicleOptionByKey(vehicleKey) || vehicleOptions[0] || null;
     if (!option) return;
     state.selectedVehicleKey = option.key;
     const idx = vehicleOptions.findIndex((candidate) => candidate && candidate.key === option.key);
     if (idx >= 0) {
-      state.vehicleSelectIndex = clampIndex(idx, vehicleOptions.length);
+      state.vehicleSelectIndex = MathUtil.wrap(idx, vehicleOptions.length);
     }
     const textures = (World && World.assets && World.assets.textures)
       ? World.assets.textures
@@ -601,14 +684,14 @@
   function showVehicleSelect() {
     const total = vehicleOptions.length;
     if (total <= 0) {
-      startRace();
+      showTrackSelect();
       return;
     }
     const currentIndex = vehicleOptions.findIndex((option) => option && option.key === state.selectedVehicleKey);
     if (currentIndex >= 0) {
-      state.vehicleSelectIndex = clampIndex(currentIndex, total);
+      state.vehicleSelectIndex = MathUtil.wrap(currentIndex, total);
     } else {
-      state.vehicleSelectIndex = clampIndex(state.vehicleSelectIndex, total);
+      state.vehicleSelectIndex = MathUtil.wrap(state.vehicleSelectIndex, total);
     }
     setMode('vehicleSelect');
   }
@@ -616,13 +699,47 @@
   function activateVehicleSelection() {
     const total = vehicleOptions.length;
     if (total <= 0) {
+      showTrackSelect();
+      return;
+    }
+    const index = MathUtil.wrap(state.vehicleSelectIndex, total);
+    const option = vehicleOptions[index];
+    if (!option) return;
+    applyVehicleSelection(option.key);
+    showTrackSelect();
+  }
+
+  function showTrackSelect() {
+    const total = trackOptions.length;
+    if (total <= 0) {
       startRace();
       return;
     }
-    const index = clampIndex(state.vehicleSelectIndex, total);
-    const option = vehicleOptions[index];
+    const currentIndex = trackOptions.findIndex((option) => option && option.key === state.selectedTrackKey);
+    if (currentIndex >= 0) {
+      state.trackSelectIndex = MathUtil.wrap(currentIndex, total);
+    } else {
+      state.trackSelectIndex = 0;
+    }
+    
+    setMode('trackSelect');
+
+    const option = trackOptions[state.trackSelectIndex];
+    if (option && option.previewPlacementPath) {
+      if (Gameplay.invalidateSpriteCache) Gameplay.invalidateSpriteCache();
+      Gameplay.spawnProps(option.previewPlacementPath);
+    }
+    if (option && option.theme && Renderer && Renderer.updateTrackTextures) {
+      Renderer.updateTrackTextures(option.theme);
+    }
+  }
+
+  function activateTrackSelection() {
+    const index = MathUtil.wrap(state.trackSelectIndex, trackOptions.length);
+    const option = trackOptions[index];
     if (!option) return;
-    startRace(option.key);
+    state.selectedTrackKey = option.key;
+    startRace();
   }
 
   function adjustCurrentNameLetter(delta) {
@@ -705,6 +822,35 @@
 
   function goToAttract() {
     setMode('attract');
+
+    state.mainMenuIndex = 0;
+    state.pauseMenuIndex = 0;
+    state.settingsMenuIndex = 0;
+    state.vehicleSelectIndex = 0;
+    state.trackSelectIndex = 0;
+    state.vehicleSwitch.active = false;
+    state.vehicleSwitch.timer = 0;
+    state.vehicleSwitch.phase = 'idle';
+
+    Gameplay.setMenuMode(true);
+    Gameplay.state.menuCameraHeight = 4000;
+    Gameplay.state.menuPitch = 320;
+    Gameplay.state.menuSpeed = 0;
+
+    Gameplay.resetScene({
+      track: 'tracks/select/select-track.csv',
+      cliffs: 'tracks/select/select-cliffs.csv',
+      placement: 'tracks/demo/demo-select.csv',
+    }).catch((err) => console.warn('Attract reset failed', err));
+
+    if (Renderer && Renderer.updateTrackTextures) {
+      Renderer.updateTrackTextures({
+        road: 'tex/demo-road-seg.png',
+        cliff: 'tex/demo-cliff.png',
+        rail: 'tex/demo-guardrail.png',
+        horizon: ['tex/demo-paralax-1.png', 'tex/demo-paralax-2.png', 'tex/demo-paralax-3.png'],
+      });
+    }
   }
 
   function toggleSnowSetting() {
@@ -743,18 +889,36 @@
     input.hop = false;
   }
 
-  function startRace(vehicleKey = state.selectedVehicleKey) {
+  function startRace(vehicleKey = state.selectedVehicleKey, trackKey = state.selectedTrackKey) {
     applyVehicleSelection(vehicleKey);
-    resetRaceCompleteState();
-    setMode('playing');
-    resetGameplayInputs();
-    Promise.resolve(Gameplay.resetScene && Gameplay.resetScene())
-      .then(() => {
-        if (Gameplay && typeof Gameplay.startRaceSession === 'function') {
-          Gameplay.startRaceSession({ laps: 1 });
-        }
-      })
-      .catch((err) => console.error('Failed to start race', err));
+    state.selectedTrackKey = trackKey;
+    const trackOption = trackOptions.find(t => t.key === trackKey) || trackOptions[0];
+    if (trackOption && trackOption.theme && Renderer && Renderer.updateTrackTextures) {
+      Renderer.updateTrackTextures(trackOption.theme);
+    }
+
+    const launch = () => {
+      resetRaceCompleteState();
+      setMode('playing');
+      resetGameplayInputs();
+      Gameplay.setMenuMode(false);
+      Promise.resolve(Gameplay.resetScene && Gameplay.resetScene({
+        track: trackOption ? trackOption.trackPath : 'tracks/demo/demo-track.csv',
+        cliffs: trackOption ? trackOption.cliffsPath : 'tracks/demo/demo-cliffs.csv',
+        placement: trackOption ? trackOption.placementPath : 'tracks/demo/demo-placement.csv',
+      }))
+        .then(() => {
+          if (Gameplay && typeof Gameplay.startRaceSession === 'function') {
+            Gameplay.startRaceSession({ laps: 3 });
+          }
+        })
+        .catch((err) => console.error('Failed to start race', err));
+    };
+    if (Renderer && Renderer.matte) {
+      Renderer.matte.startTransition(launch);
+    } else {
+      launch();
+    }
   }
 
   function handleRaceFinish(timeMs) {
@@ -784,21 +948,30 @@
   }
 
   function quitToMenu() {
-    setMode('menu');
-    resetGameplayInputs();
-    Promise.resolve(Gameplay.resetScene && Gameplay.resetScene())
-      .catch((err) => console.error('Failed to reset scene after quitting', err));
-  }
+    const launch = () => {
+      setMode('menu');
+      resetGameplayInputs();
+      Gameplay.setMenuMode(true);
+      Promise.resolve(Gameplay.resetScene && Gameplay.resetScene({
+        track: 'tracks/select/select-track.csv',
+        cliffs: 'tracks/select/select-cliffs.csv',
+        placement: 'tracks/demo/demo-select.csv',
+      }))
+        .catch((err) => console.error('Failed to reset scene after quitting', err));
 
-  function activateMainMenuSelection() {
-    const option = mainMenuOptions[state.mainMenuIndex];
-    if (!option) return;
-    if (option.key === 'start') {
-      showVehicleSelect();
-    } else if (option.key === 'leaderboard') {
-      showLeaderboard();
-    } else if (option.key === 'settings') {
-      showSettings();
+      if (Renderer && Renderer.updateTrackTextures) {
+        Renderer.updateTrackTextures({
+          road: 'tex/demo-road-seg.png',
+          cliff: 'tex/demo-cliff.png',
+          rail: 'tex/demo-guardrail.png',
+          horizon: ['tex/demo-paralax-1.png', 'tex/demo-paralax-2.png', 'tex/demo-paralax-3.png'],
+        });
+      }
+    };
+    if (Renderer && Renderer.matte) {
+      Renderer.matte.startTransition(launch);
+    } else {
+      launch();
     }
   }
 
@@ -860,10 +1033,6 @@
     }, 50);
   }
 
-  function handleMenuNavigation(delta) {
-    changeMainMenuSelection(delta);
-  }
-
   function handlePauseNavigation(delta) {
     changePauseMenuSelection(delta);
   }
@@ -873,18 +1042,8 @@
   }
 
   function handleMenuKeyDown(e) {
-    if (['ArrowUp', 'ArrowLeft'].includes(e.code)) {
-      handleMenuNavigation(-1);
-      e.preventDefault();
-      return true;
-    }
-    if (['ArrowDown', 'ArrowRight'].includes(e.code)) {
-      handleMenuNavigation(1);
-      e.preventDefault();
-      return true;
-    }
     if (['Space', 'Enter'].includes(e.code)) {
-      activateMainMenuSelection();
+      showVehicleSelect();
       e.preventDefault();
       return true;
     }
@@ -958,6 +1117,30 @@
       return true;
     }
     if (e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+      e.preventDefault();
+      return true;
+    }
+    return false;
+  }
+
+  function handleTrackSelectKeyDown(e) {
+    if (e.code === 'ArrowLeft') {
+      changeTrackSelection(-1);
+      e.preventDefault();
+      return true;
+    }
+    if (e.code === 'ArrowRight') {
+      changeTrackSelection(1);
+      e.preventDefault();
+      return true;
+    }
+    if (['Space', 'Enter'].includes(e.code)) {
+      activateTrackSelection();
+      e.preventDefault();
+      return true;
+    }
+    if (e.code === 'Escape') {
+      showVehicleSelect();
       e.preventDefault();
       return true;
     }
@@ -1073,6 +1256,8 @@
       handled = handleMenuKeyDown(e);
     } else if (state.mode === 'vehicleSelect') {
       handled = handleVehicleSelectKeyDown(e);
+    } else if (state.mode === 'trackSelect') {
+      handled = handleTrackSelectKeyDown(e);
     } else if (state.mode === 'leaderboard') {
       handled = handleLeaderboardKeyDown(e);
     } else if (state.mode === 'settings') {
@@ -1090,6 +1275,33 @@
     }
   }
 
+  function updateRaceMessage() {
+    const el = state.dom.raceMessage;
+    if (!el) return;
+    
+    const race = Gameplay.state.race;
+    let text = '';
+    let visible = false;
+
+    if (race.active) {
+      if (race.phase === 'countdown') {
+        const t = Math.ceil(race.countdownTimer);
+        if (t > 0 && t <= 3) {
+          text = String(t);
+          visible = true;
+        }
+      } else if (race.message) {
+        text = race.message;
+        visible = true;
+      }
+    }
+
+    if (el.textContent !== text) {
+      el.textContent = text;
+    }
+    el.classList.toggle('is-visible', visible);
+  }
+
   function handleKeyUp(e) {
     if (state.mode === 'playing') {
       if (e.code === 'KeyP') {
@@ -1099,15 +1311,74 @@
     }
   }
 
+  function updateVehicleSwitch(dt) {
+    const sw = state.vehicleSwitch;
+    if (!sw.active) return;
+
+    sw.timer += dt;
+    const DURATION_IN = 1.0;
+    const DURATION_OUT = 1.0;
+    const DRIVE_OUT_DIST = 10000;
+    const DRIVE_IN_START = -2000;
+
+    const tIn = Math.min(1, sw.timer / DURATION_IN);
+    
+    const easeIn = 1 - Math.pow(1 - tIn, 3);
+    Gameplay.state.menuCarOffsetZ = DRIVE_IN_START * (1 - easeIn);
+
+    if (Gameplay.state.menuGhostCar) {
+      const tOut = Math.min(1, sw.timer / DURATION_OUT);
+      const easeOut = tOut * tOut;
+      Gameplay.state.menuGhostCar.offsetZ = easeOut * DRIVE_OUT_DIST;
+    }
+
+    if (sw.timer >= Math.max(DURATION_IN, DURATION_OUT)) {
+      sw.active = false;
+      Gameplay.state.menuCarOffsetZ = 0;
+      Gameplay.state.menuGhostCar = null;
+    }
+  }
+
   function step(dt) {
-    if (state.mode === 'playing') {
+    if (state.mode === 'playing' || state.mode === 'vehicleSelect' || state.mode === 'menu' || state.mode === 'trackSelect') {
       Gameplay.step(dt);
+      updateRaceMessage();
     }
     if (state.mode === 'raceComplete') {
       updateRaceComplete(dt);
     }
 
+    updateVehicleSwitch(dt);
     updateVehiclePreviewAnimation(dt);
+
+    if (state.mode === 'menu' || state.mode === 'vehicleSelect' || state.mode === 'trackSelect') {
+      const targetHeight = state.mode === 'menu' ? 4000 : -300;
+      const targetPitch = state.mode === 'menu' ? 320 : 40;
+      const targetSpeed = state.mode === 'menu' ? 0 : -6000;
+
+      if (state.mode === 'vehicleSelect') {
+        const currentHeight = Gameplay.state.menuCameraHeight;
+        const currentPitch = Gameplay.state.menuPitch;
+        const currentSpeed = Gameplay.state.menuSpeed;
+        Gameplay.state.menuCameraHeight = MathUtil.lerp(currentHeight, targetHeight, dt * 3);
+        Gameplay.state.menuPitch = MathUtil.lerp(currentPitch, targetPitch, dt * 3);
+        Gameplay.state.menuSpeed = MathUtil.lerp(currentSpeed, targetSpeed, dt * 2);
+        Gameplay.state.titleOpacity = MathUtil.lerp(Gameplay.state.titleOpacity, 0, dt * 5);
+      } else if (state.mode === 'trackSelect') {
+        const currentHeight = Gameplay.state.menuCameraHeight;
+        const currentPitch = Gameplay.state.menuPitch;
+        Gameplay.state.menuCameraHeight = MathUtil.lerp(currentHeight, targetHeight, dt * 3);
+        Gameplay.state.menuPitch = MathUtil.lerp(currentPitch, targetPitch, dt * 3);
+        Gameplay.state.titleOpacity = MathUtil.lerp(Gameplay.state.titleOpacity, 0, dt * 5);
+      } else {
+        Gameplay.state.menuCameraHeight = targetHeight;
+        Gameplay.state.menuPitch = targetPitch;
+        Gameplay.state.menuSpeed = targetSpeed;
+        Gameplay.state.titleOpacity = MathUtil.lerp(Gameplay.state.titleOpacity, 1, dt * 5);
+      }
+    } else {
+      Gameplay.state.titleOpacity = MathUtil.lerp(Gameplay.state.titleOpacity, 0, dt * 5);
+    }
 
     if (state.mode !== 'playing') {
       const suppressIdle = state.mode === 'raceComplete' && state.raceComplete.active && state.raceComplete.phase !== 'entry';
@@ -1143,6 +1414,24 @@
 
   function isDebugEnabled() {
     return !!state.settings.debugEnabled;
+  }
+
+  function renderTrackSelect() {
+    if (!AppScreens.trackSelect) return '';
+    const total = trackOptions.length;
+    const index = MathUtil.wrap(state.trackSelectIndex, total);
+    const option = trackOptions[index] || trackOptions[0] || {};
+
+    return AppScreens.trackSelect(
+      {
+        title: 'Select Track',
+        trackLabel: option.label || '',
+        trackDescription: option.description || '',
+        optionIndex: index,
+        optionCount: total,
+      },
+      { escapeHtml }
+    );
   }
 
   global.App = {

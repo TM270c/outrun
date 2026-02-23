@@ -15,6 +15,7 @@
     clamp01,
     lerp,
     getEase01,
+    wrap,
     CURVE_EASE,
     EASE_CURVES_01,
   } = MathUtil;
@@ -53,6 +54,7 @@
     horizon1:  resolveAssetUrl('tex/paralax-1.png'),
     horizon2:  resolveAssetUrl('tex/paralax-2.png'),
     horizon3:  resolveAssetUrl('tex/paralax-3.png'),
+    hud:       resolveAssetUrl('tex/hud.png'),
     car:       resolveAssetUrl('tex/player-car.png'),
     playerVan: resolveAssetUrl('tex/player-van.png'),
     npcCar01:  resolveAssetUrl('tex/npc-car-01.png'),
@@ -73,8 +75,14 @@
     npcSpecial07: resolveAssetUrl('tex/npc-special-07.png'),
     npcSpecial08: resolveAssetUrl('tex/npc-special-08.png'),
     npcSpecial09: resolveAssetUrl('tex/npc-special-09.png'),
+    gate:         resolveAssetUrl('tex/gate.png'),
+    dash:         resolveAssetUrl('tex/dash.png'),
+    shadow:       resolveAssetUrl('tex/shadow.png'),
+    selectRoad:   resolveAssetUrl('tex/select-road-seg.png'),
+    selectCliff:  resolveAssetUrl('tex/select-cliff.png'),
+    selectRail:   resolveAssetUrl('tex/select-guardrail.png'),
   };
-
+  
   const textures = {};
 
   async function loadImage(url){
@@ -171,7 +179,7 @@
     return segments.length ? segments[segments.length - 1].p2.world.y : 0;
   }
 
-  function addRoad(length, curve, dyInSegments = 0, elevationProfile = 'smooth', featurePayload = {}){
+  function addRoad(length, curve, dyInSegments = 0, elevationProfile = 'smooth', featurePayload = {}, curveMode = 'ease'){
     const len = Math.max(0, length | 0);
     if (len <= 0) return;
 
@@ -196,6 +204,8 @@
     delete extras.rail;
     delete extras.boostRange;
     delete extras.boostZones;
+    const gateValue = extras.gate ? parseInt(extras.gate, 10) : 0;
+    delete extras.gate;
 
     let zoneSpecs = boostZonesRaw && boostZonesRaw.length ? boostZonesRaw : null;
     if ((!zoneSpecs || zoneSpecs.length === 0) && boostRangeRaw && boostRangeRaw.length >= 2) {
@@ -234,6 +244,9 @@
       } else {
         segFeatures.boost = false;
       }
+      if (gateValue > 0 && segOffset === 0) {
+        segFeatures.gate = gateValue;
+      }
       return segFeatures;
     };
 
@@ -243,8 +256,9 @@
       const t = len > 1 ? n / (len - 1) : 1;
       const easedT = easeFn(t);
       const y = hasElevationChange ? lerp(startY, endY, easedT) : startY;
+      const segmentCurve = (curveMode === 'fixed') ? curve : lerp(0, curve, easedT);
       addSegment(
-        lerp(0, curve, easedT),
+        segmentCurve,
         y,
         buildFeatures(n),
       );
@@ -290,6 +304,7 @@
       hill: 'smoothHill', h: 'smoothHill', rise: 'smoothHill',
       smoothhill: 'smoothHill', smooth: 'smoothHill',
       sharphill: 'sharpHill', sharp: 'sharpHill',
+      circular: 'circular', circle: 'circular',
     };
 
     const lines = text.split(/\r?\n/);
@@ -349,10 +364,11 @@
       const rail = !isBoolToken(railRaw) ? true : toBool(railRaw, true);
       const boostStart = toInt(boostStartRaw, null);
       const boostEnd = toInt(boostEndRaw, null);
-      const boostTypeRaw = findAfter('boostType') ?? findAfter('boost');
-      const boostLaneStartRaw = findAfter('boostLaneStart');
-      const boostLaneEndRaw = findAfter('boostLaneEnd');
-      const boostVisibleRaw = findAfter('boostVisible');
+      const boostTypeRaw = findAfter('boostType') ?? findAfter('boost') ?? (cells.length > 8 ? cells[8] : null);
+      const boostLaneStartRaw = findAfter('boostLaneStart') ?? (cells.length > 9 ? cells[9] : null);
+      const boostLaneEndRaw = findAfter('boostLaneEnd') ?? (cells.length > 10 ? cells[10] : null);
+      const boostVisibleRaw = findAfter('boostVisible') ?? (cells.length > 11 ? cells[11] : null);
+      const gateRaw = findAfter('gate') ?? (cells.length > 12 ? cells[12] : null);
 
       const repeatsKeywordIdx = findIndex('repeats');
       if (repeatsKeywordIdx != null) {
@@ -374,8 +390,15 @@
       else if (type === 'sharphill') {
         elevationProfile = 'sharp';
       }
+      
+      let curveMode = 'ease';
+      if (type === 'circular') {
+        curveMode = 'fixed';
+        elevationProfile = 'smooth';
+      }
 
-      const features = { rail };
+      const gate = toInt(gateRaw, 0);
+      const features = { rail, gate };
       if (boostStart != null && boostEnd != null && boostEnd >= boostStart) {
         const start = Math.max(0, boostStart | 0);
         const end = Math.max(start, boostEnd | 0);
@@ -405,7 +428,7 @@
       }
 
       for (let i = 0; i < reps; i++){
-        addRoad(len, curve, dySegments, elevationProfile, features);
+        addRoad(len, curve, dySegments, elevationProfile, features, curveMode);
       }
     }
 
@@ -624,35 +647,61 @@
     return num;
   }
 
+  const segmentAtIndex = (idx) => {
+    if (!segments.length) return null;
+    const i = wrap(idx, segments.length);
+    return segments[i];
+  };
+
   const segmentAtS = (s) => {
     if (!segments.length || trackLength <= 0) return null;
-    const wrapped = ((s % trackLength) + trackLength) % trackLength;
+    const wrapped = wrap(s, trackLength);
     const idx = Math.floor(wrapped / segmentLength) % segments.length;
     return segments[idx];
   };
 
   function elevationAt(s){
     if (trackLength <= 0 || !segments.length) return 0;
-    let ss = s % trackLength;
-    if (ss < 0) ss += trackLength;
+    const ss = wrap(s, trackLength);
     const i = Math.floor(ss / segmentLength);
     const seg = segments[i % segments.length];
     const t = (ss - seg.p1.world.z) / segmentLength;
     return lerp(seg.p1.world.y, seg.p2.world.y, t);
   }
 
+  function groundProfileAt(s) {
+    const y = elevationAt(s);
+    if (!segments.length) return { y, dy: 0, d2y: 0 };
+    const h = Math.max(5, segmentLength * 0.1);
+    const y1 = elevationAt(s - h);
+    const y2 = elevationAt(s + h);
+    const dy = (y2 - y1) / (2 * h);
+    const d2y = (y2 - 2 * y + y1) / (h * h);
+    return { y, dy, d2y };
+  }
+
+  const cliffParamsPool = Array.from({ length: 16 }, () => ({
+    leftA:  { dx:0, dy:0 },
+    leftB:  { dx:0, dy:0 },
+    rightA: { dx:0, dy:0 },
+    rightB: { dx:0, dy:0 },
+  }));
+  let cliffParamsIdx = 0;
+
   function cliffParamsAt(segIndex, t = 0){
     const segCount = segments.length;
     const sectionsPerSeg = CLIFF_SECTIONS_PER_SEG;
     const totalSections = segCount * sectionsPerSeg;
 
+    const result = cliffParamsPool[cliffParamsIdx];
+    cliffParamsIdx = (cliffParamsIdx + 1) % cliffParamsPool.length;
+
     if (totalSections <= 0 || !CLIFF_READY) {
-      return {
-        leftA:  { dx:0, dy:0 },
-        leftB:  { dx:0, dy:0 },
-        rightA: { dx:0, dy:0 },
-        rightB: { dx:0, dy:0 },
-      };
+      result.leftA.dx = 0; result.leftA.dy = 0;
+      result.leftB.dx = 0; result.leftB.dy = 0;
+      result.rightA.dx = 0; result.rightA.dy = 0;
+      result.rightB.dx = 0; result.rightB.dy = 0;
+      return result;
     }
 
     const segNorm = ((segIndex % segCount) + segCount) % segCount;
@@ -664,23 +713,21 @@
     const idx0 = ((base % total) + total) % total;
     const idx1 = (idx0 + 1) % total;
 
-    const lerpSeries = (series) => {
+    const lerpSeries = (series, target) => {
       const dx0 = series.dx[idx0] != null ? series.dx[idx0] : 0;
       const dx1 = series.dx[idx1] != null ? series.dx[idx1] : dx0;
       const dy0 = series.dy[idx0] != null ? series.dy[idx0] : 0;
       const dy1 = series.dy[idx1] != null ? series.dy[idx1] : dy0;
-      return {
-        dx: lerp(dx0, dx1, frac),
-        dy: lerp(dy0, dy1, frac),
-      };
+      target.dx = lerp(dx0, dx1, frac);
+      target.dy = lerp(dy0, dy1, frac);
     };
 
-    return {
-      leftA:  lerpSeries(CLIFF_SERIES.leftA),
-      leftB:  lerpSeries(CLIFF_SERIES.leftB),
-      rightA: lerpSeries(CLIFF_SERIES.rightA),
-      rightB: lerpSeries(CLIFF_SERIES.rightB),
-    };
+    lerpSeries(CLIFF_SERIES.leftA, result.leftA);
+    lerpSeries(CLIFF_SERIES.leftB, result.leftB);
+    lerpSeries(CLIFF_SERIES.rightA, result.rightA);
+    lerpSeries(CLIFF_SERIES.rightB, result.rightB);
+
+    return result;
   }
 
   function cliffSurfaceInfoAt(segIndex, nNorm, t = 0){
@@ -785,6 +832,10 @@
     assets: { manifest: assetManifest, textures },
     resolveAssetUrl,
     loadTexturesWith,
+    segmentAtS,
+    segmentAtIndex,
+    elevationAt,
+    groundProfileAt,
     roadWidthAt,
     buildTrackFromCSV,
     pushZone,
@@ -793,6 +844,8 @@
     enforceCliffWrap,
     floorElevationAt,
     cliffParamsAt,
+    cliffSurfaceInfoAt,
+    cliffLateralSlopeAt,
     lane: {
       clampBoostLane,
       clampRoadLane,

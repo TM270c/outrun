@@ -25,14 +25,14 @@ const grid = {
   roadColsFar: 2,
   colWidthPx: 96,
   rowHeightPx: 18,
-  maxRows: 64,
+  maxRows: 32,
 };
 
 // Track geometry and texture sampling values.
 const track = {
   segmentSize: 200,
   roadWidth: 2400,
-  drawDistance: 200,
+  drawDistance: 160,
   railInset: 0.95,
   wallShort: { left: 400, right: 400 },
   metersPerPixel: { x: 8, y: 40 },
@@ -101,7 +101,7 @@ const parallaxLayers = [
 
 // Road traffic tuning for non-player cars.
 const traffic = {
-  total: 100,
+  total: 50,
   edgePad: 0.02,
   avoidLookaheadSegs: 20,
   vehicleWeights: {
@@ -161,6 +161,11 @@ const boost = {
       solid: [33 / 255, 150 / 255, 243 / 255, 1],
     },
   },
+  manual: {
+    impulse: 2500,
+    duration: 2.0,
+    fovPeak: 148,
+  },
   textures: { jump: 'boostJump', drive: 'boostDrive' },
 };
 
@@ -183,6 +188,13 @@ const nearMiss = {
   forwardDistanceFallback: 12,
 };
 
+const game = {
+  mode: 'timeTrial', // 'race' | 'timeTrial'
+  timeTrial: {
+    startTime: 30,
+  },
+};
+
 const forceLandingOnCarImpact = false;
 
 window.Config = {
@@ -203,6 +215,7 @@ window.Config = {
   lanes,
   tilt,
   nearMiss,
+  game,
   forceLandingOnCarImpact,
   snowScreenDistance,
   snowScreenDensity,

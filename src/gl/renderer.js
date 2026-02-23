@@ -10,6 +10,10 @@
     u3: 1, v3: 1,
     u4: 0, v4: 1,
   });
+  
+  const MAX_BATCH_QUADS = 2048;
+  const FLOATS_PER_VERT = 9;
+  const VERTS_PER_QUAD = 6;
 
   class GLRenderer {
     constructor(canvas) {
@@ -47,8 +51,8 @@
         varying float v_fog;
         void main(){
           vec4 base = (u_useTex==1)? texture2D(u_tex, v_uv) : vec4(1.0);
-          vec4 shaded = vec4(base.rgb * v_color.rgb, base.a * v_color.a);
-          if (u_fogEnabled == 1) {
+          vec4 shaded = base * v_color;
+          if (u_fogEnabled == 1 && v_fog > 0.0) {
             float f = clamp(v_fog, 0.0, 1.0);
             shaded.rgb = mix(shaded.rgb, u_fogColor, f);
           }
@@ -75,8 +79,8 @@
       // streaming slab
       this.vbo = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
-      gl.bufferData(gl.ARRAY_BUFFER, 54*4, gl.DYNAMIC_DRAW); // 6 verts * 9 floats * 4B
-      const stride = 9*4;
+      gl.bufferData(gl.ARRAY_BUFFER, MAX_BATCH_QUADS * VERTS_PER_QUAD * FLOATS_PER_VERT * 4, gl.DYNAMIC_DRAW);
+      const stride = FLOATS_PER_VERT * 4;
       gl.enableVertexAttribArray(this.a_pos);
       gl.vertexAttribPointer(this.a_pos,2,gl.FLOAT,false,stride,0);
       gl.enableVertexAttribArray(this.a_uv);
@@ -86,7 +90,9 @@
       gl.enableVertexAttribArray(this.a_fog);
       gl.vertexAttribPointer(this.a_fog,1,gl.FLOAT,false,stride,8*4);
 
-      this.slab = new Float32Array(54);
+      this.batchData = new Float32Array(MAX_BATCH_QUADS * VERTS_PER_QUAD * FLOATS_PER_VERT);
+      this.batchCount = 0;
+      this.currentTexture = null;
 
       gl.viewport(0,0,canvas.width,canvas.height);
       gl.disable(gl.DEPTH_TEST);
@@ -147,6 +153,8 @@
       });
     }
     begin(clear){
+      this.batchCount = 0;
+      this.currentTexture = null;
       const clearColor = clear === undefined ? DEFAULT_CLEAR_COLOR : clear;
       const gl=this.gl;
       gl.viewport(0,0,gl.canvas.width,gl.canvas.height);
@@ -169,12 +177,39 @@
         gl.uniform3f(this.u_fogColor, r, g, b);
       }
     }
-    setRollPivot(rad, px, py){ const gl=this.gl; gl.uniform1f(this.u_roll, rad); gl.uniform2f(this.u_pivot, px, py); }
+    setRollPivot(rad, px, py){ 
+      this.flush();
+      const gl=this.gl; 
+      gl.uniform1f(this.u_roll, rad); 
+      gl.uniform2f(this.u_pivot, px, py); 
+    }
+    flush(){
+      if (this.batchCount === 0) return;
+      const gl = this.gl;
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
+      const view = this.batchData.subarray(0, this.batchCount * VERTS_PER_QUAD * FLOATS_PER_VERT);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, view);
+      
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.currentTexture || this.whiteTex);
+      // Always use texture mode, whiteTex handles solid colors
+      gl.uniform1i(this.u_useTex, 1);
+      
+      gl.drawArrays(gl.TRIANGLES, 0, this.batchCount * VERTS_PER_QUAD);
+      this.batchCount = 0;
+    }
     drawQuadTextured(tex, quad, uv, tint, fog){
+      const targetTex = tex || this.whiteTex;
+      if (this.currentTexture !== targetTex || this.batchCount >= MAX_BATCH_QUADS) {
+        this.flush();
+      }
+      this.currentTexture = targetTex;
+
       const tintArray = tint === undefined ? DEFAULT_TINT : tint;
       const fogArray = fog === undefined ? DEFAULT_FOG : fog;
-      const v = this.slab;
-      let i=0;
+      const v = this.batchData;
+      let i = this.batchCount * VERTS_PER_QUAD * FLOATS_PER_VERT;
+      
       // tri 1
       v[i++]=quad.x1; v[i++]=quad.y1; v[i++]=uv.u1; v[i++]=uv.v1; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[0];
       v[i++]=quad.x2; v[i++]=quad.y2; v[i++]=uv.u2; v[i++]=uv.v2; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[1];
@@ -183,13 +218,8 @@
       v[i++]=quad.x1; v[i++]=quad.y1; v[i++]=uv.u1; v[i++]=uv.v1; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[0];
       v[i++]=quad.x3; v[i++]=quad.y3; v[i++]=uv.u3; v[i++]=uv.v3; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[2];
       v[i++]=quad.x4; v[i++]=quad.y4; v[i++]=uv.u4; v[i++]=uv.v4; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[3];
-      const gl=this.gl;
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, v);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, tex || this.whiteTex);
-      gl.uniform1i(this.u_useTex, tex ? 1 : 0);
-      gl.drawArrays(gl.TRIANGLES,0,6);
+      
+      this.batchCount++;
     }
     drawQuadSolid(quad, color, fog){
       const colorArray = color === undefined ? DEFAULT_SOLID_COLOR : color;
@@ -215,10 +245,12 @@
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       return t;
     }
-    end(){}
+    end(){
+      this.flush();
+    }
   }
 
-  function padQuad(q, { padLeft=0, padRight=0, padTop=0, padBottom=0 } = {}) {
+  function padQuad(q, { padLeft=0, padRight=0, padTop=0, padBottom=0 } = {}, out) {
     // Returns a new quad with edges expanded in screen space. Positive padding values
     // enlarge the quad outward along each axis regardless of vertex winding/order.
     const { x1, x2, x3, x4, y1, y2, y3, y4 } = q;
@@ -248,15 +280,15 @@
     const adjX4 = x4 + (Math.abs(x4 - minX) <= Math.abs(x4 - maxX) ? -padLeft : padRight);
     const adjY4 = y4 + (Math.abs(y4 - minY) <= Math.abs(y4 - maxY) ? -padTop : padBottom);
 
-    return {
-      x1: adjX1, y1: adjY1,
-      x2: adjX2, y2: adjY2,
-      x3: adjX3, y3: adjY3,
-      x4: adjX4, y4: adjY4,
-    };
+    const res = out || { x1:0, y1:0, x2:0, y2:0, x3:0, y3:0, x4:0, y4:0 };
+    res.x1 = adjX1; res.y1 = adjY1;
+    res.x2 = adjX2; res.y2 = adjY2;
+    res.x3 = adjX3; res.y3 = adjY3;
+    res.x4 = adjX4; res.y4 = adjY4;
+    return res;
   }
 
-  function makeRotatedQuad(cx, cy, w, h, rad){
+  function makeRotatedQuad(cx, cy, w, h, rad, out){
     const c = Math.cos(rad), s = Math.sin(rad);
     const hw = w * 0.5, hh = h * 0.5;
     const x1=-hw, y1=-hh, x2= hw, y2=-hh, x3= hw, y3= hh, x4=-hw, y4= hh;
@@ -264,7 +296,13 @@
     const rx2 = c*x2 - s*y2 + cx, ry2 = s*x2 + c*y2 + cy;
     const rx3 = c*x3 - s*y3 + cx, ry3 = s*x3 + c*y3 + cy;
     const rx4 = c*x4 - s*y4 + cx, ry4 = s*x4 + c*y4 + cy;
-    return { x1:rx1, y1:ry1, x2:rx2, y2:ry2, x3:rx3, y3:ry3, x4:rx4, y4:ry4 };
+    
+    const res = out || { x1:0, y1:0, x2:0, y2:0, x3:0, y3:0, x4:0, y4:0 };
+    res.x1 = rx1; res.y1 = ry1;
+    res.x2 = rx2; res.y2 = ry2;
+    res.x3 = rx3; res.y3 = ry3;
+    res.x4 = rx4; res.y4 = ry4;
+    return res;
   }
 
   window.RenderGL = { GLRenderer, padQuad, makeRotatedQuad };

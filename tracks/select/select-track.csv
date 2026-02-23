@@ -1,0 +1,3 @@
+# Columns: type,length,curve,dy,railpresent,boostStart,boostEnd,repeats,boostType,boostLaneStart,boostLaneEnd,boostVisible,gate
+# Continuous curve for menu background
+circular,500,4,0,true,,,,,,,,,

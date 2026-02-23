@@ -1,0 +1,14 @@
+# side,len,aEase,aDx,aDy,bEase,bDx,bDy,mode,repeats
+# Baseline geometry for each side
+L,1,linear:io, 2000,1000,     linear:io, 400000,0,  abs,1
+R,1,linear:io, 2000,1000,  linear:io,400000,0,    abs,1
+L,100,linear:io, 2000,3000,     linear:io, 400000,0,  abs,1
+R,100,linear:io, 2000,3000,  linear:io,400000,0,    abs,1
+L,100,linear:io, 2000,-3000,     linear:io, 400000,0,  abs,1
+R,100,linear:io, 2000,3000,  linear:io,400000,0,    abs,1
+L,100,linear:io, 2000,0,     linear:io, 400000,0,  abs,1
+R,100,linear:io, 2000,-3000,  linear:io,400000,0,    abs,1
+L,100,linear:io, 2000,0,     linear:io, 400000,0,  abs,1
+R,100,linear:io, 2000,0,  linear:io,400000,0,    abs,1
+L,200,linear:io, 0,6000,     linear:io, -500,0,  abs,1
+R,200,linear:io, 0,6000,  linear:io,-500,0,    abs,1

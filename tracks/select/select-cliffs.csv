@@ -1,0 +1,4 @@
+# side,len,aEase,aDx,aDy,bEase,bDx,bDy,mode,repeats
+# Constant distant cliffs
+L,3000,linear:io, 4000,1000, linear:io, 4000,1000, abs,1
+R,3000,linear:io, 4000,1000, linear:io, 4000,1000, abs,1

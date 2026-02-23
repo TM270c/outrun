@@ -280,10 +280,17 @@
           `Pickups: ${fmtCount(metrics.pickupsCollected)}`,
           `Air time: ${fmtSeconds(metrics.airTime)}`,
           `Drift time: ${fmtSeconds(metrics.driftTime)}`,
+          `Speed: ${fmtSpeed(Math.abs(state.phys.vtan))} u/s`,
           `Top speed: ${fmtSpeed(metrics.topSpeed)} u/s`,
           `Respawns: ${fmtCount(metrics.respawnCount)}`,
           `Off-road time: ${fmtSeconds(metrics.offRoadTime)}`,
         );
+      }
+
+      if (state.race) {
+        const collected = state.race.collectedGates ? state.race.collectedGates.size : 0;
+        const total = state.race.checkpoints || 0;
+        debugLines.push(`Gates: ${collected}/${total}`);
       }
 
       if (perf && typeof perf.getLastFrameStats === 'function') {

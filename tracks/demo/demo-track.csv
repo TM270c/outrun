@@ -1,0 +1,22 @@
+# Columns: type,length,curve,dy,railpresent,boostStart,boostEnd,repeats,boostType,boostLaneStart,boostLaneEnd,boostVisible,gate[,comment]
+# Set railpresent=true to drop guardrails for that build step. Hill types: smoothHill (eased), smoothHill (mirrored sharp), straight (linear grade).
+# Provide a boost window via boostStart/boostEnd (segment offsets within the generated block) to auto-spawn pickups and apply the boost multiplier. Use boostStart=0 and boostEnd=0 to skip spawning a boost zone for that row.
+# Optional boostType column accepts "jump" (orange hop boost) or "drive" (blue drive-over boost). Provide boostLaneStart/boostLaneEnd values to constrain the boost zone laterally using player-normalized coordinates (-2 at far left, +2 at far right).
+straight,100,0,0,true,,,1,drive,-1,2
+straight,6,0,4,false,,,1,drive,-1,2
+straight,6,0,-4,false,,,1,drive,-1,2
+straight,50,0,12,true,,,1,drive,-1,2
+straight,100,10,-24,true,,,1,drive,-1,2,true,10
+straight,100,20,14,false,,,1,drive,-1,2
+straight,140,-20,-30,false,,,1,drive,-1,2
+straight,200,10,-10,false,,,1,drive,-1,2,true,10
+straight,20,0,0,false,,,1,drive,-1,2
+straight,10,0,2,false,,,1,drive,-1,2
+straight,10,0,-2,false,,,1,drive,-1,2
+straight,20,0,0,false,,,1,drive,-1,2
+straight,50,20,-12,true,,,1,drive,-1,2
+straight,100,0,20,true,,,1,drive,-1,2
+straight,50,0,-30,false,,,1,drive,-1,2
+straight,50,0,10,false,,,1,drive,-1,2
+straight,200,-20,0,false,,,1,drive,-1,2,true,10
+straight,100,-10,12,false,,,1,drive,-1,2

@@ -52,6 +52,11 @@ function setupCallbacks() {
       App.handleRaceFinish(timeMs);
     }
   };
+  Gameplay.state.callbacks.onPickupCollected = () => {
+    if (Renderer && typeof Renderer.triggerPickupAnimation === 'function') {
+      Renderer.triggerPickupAnimation();
+    }
+  };
 }
 
 await loadAssets();
@@ -62,7 +67,20 @@ if (App && typeof App.init === 'function') {
 }
 setupCallbacks();
 
-await Gameplay.resetScene();
+await Gameplay.resetScene({
+  track: 'tracks/select/select-track.csv',
+  cliffs: 'tracks/select/select-cliffs.csv',
+  placement: 'tracks/demo/demo-select.csv',
+});
+if (Renderer && Renderer.updateTrackTextures) {
+  await Renderer.updateTrackTextures({
+    road: 'tex/demo-road-seg.png',
+    cliff: 'tex/demo-cliff.png',
+    rail: 'tex/demo-guardrail.png',
+    horizon: ['tex/demo-paralax-1.png', 'tex/demo-paralax-2.png', 'tex/demo-paralax-3.png'],
+  });
+}
+Gameplay.setMenuMode(true);
 
 const keydownHandler = (App && typeof App.handleKeyDown === 'function')
   ? App.handleKeyDown

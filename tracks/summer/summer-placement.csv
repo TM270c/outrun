@@ -1,0 +1,10 @@
+name,sprite,segment,lane,repeatSegment,repeatLane,scaleRange,randomSeed,jitterSeg,jitterLane,placementMode,comment
+forest-demo,tree_forest_taper,30-220,1.2-4,4,0.2,0.7-1.25,1337,0-0.25,0-0.25,taperBoth,Demonstrates tapered scale and atlas sampling for roadside trees
+centerpiece,tree_anim,128,0,,,,,,,,Looping atlas animation for a single median tree
+centerpiece,tree_forest,128-148,1,,,,,,,,Looping atlas animation for a single median tree
+pickup-demo,pickup_orb,60-120,-0.35-0.35,2,,0.95-1.05,2023,0-0.15,0-0.1,uniform,Collectable pickups that toggle off when the player touches them
+snowman-obstacle,snowman,100,0,,,,,,,,Snowman obstacle
+ghost-bushes,bush_ghost,10-200,2.5-5,10,0.5,0.8-1.2,555,0-2,0-1,uniform,Passive decorative bushes
+coins,coin_gold,160-180,0,2,,,,,,,Line of gold coins
+crates,crate_break,50,-0.5,,,,,,,,Breakable crate
+hazards,hazard_signal,200-210,-2,5,,,,,,,Flashing hazard signals
