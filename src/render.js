@@ -660,6 +660,28 @@
     return pointPool[pointPoolIndex++];
   }
 
+  // Object Pool for strip items to reduce GC pressure
+  const stripItemPool = [];
+  let stripItemPoolIndex = 0;
+  const currentStripItems = [];
+
+  function resetStripItemPool() {
+    stripItemPoolIndex = 0;
+  }
+
+  function allocStripItem(type, obj, i) {
+    if (stripItemPoolIndex >= stripItemPool.length) {
+      for (let k = 0; k < 64; k++) {
+        stripItemPool.push({ type: null, obj: null, i: 0 });
+      }
+    }
+    const item = stripItemPool[stripItemPoolIndex++];
+    item.type = type;
+    item.obj = obj;
+    item.i = i;
+    return item;
+  }
+
   let overlayApi = {
     setOverlayCanvas(){},
     syncOverlayVisibility(){ return false; },
@@ -926,6 +948,7 @@
         const t0 = i / rows, t1 = (i + 1) / rows;
         const y0 = lerp(yNear, yFar, t0);
         const y1 = lerp(yNear, yFar, t1);
+
         const leftNear  = lerp(nearMin, farMin, t0);
         const rightNear = lerp(nearMax, farMax, t0);
         const leftFar   = lerp(nearMin, farMin, t1);
@@ -1233,6 +1256,17 @@
   function renderScene(dt){
     if (!glr || !canvas3D) return;
 
+    if (canvas3D.width !== W || canvas3D.height !== H) {
+      W = canvas3D.width;
+      H = canvas3D.height;
+      HALF_VIEW = W * 0.5;
+    }
+    if (canvasHUD && (canvasHUD.width !== HUD_W || canvasHUD.height !== HUD_H)) {
+      HUD_W = canvasHUD.width;
+      HUD_H = canvasHUD.height;
+      HUD_COVER_RADIUS = Math.hypot(HUD_W, HUD_H) * 0.5 + 2;
+    }
+
     pitchOffset = state.isMenu ? (state.menuPitch || 0) : -20;
 
     // Temporarily disable fog in menu mode for clarity
@@ -1241,6 +1275,7 @@
     glr.begin([0.9,0.95,1.0,1]);
     if (state.isMenu) Config.fog.enabled = originalFogEnabled;
     resetPointPool();
+    resetStripItemPool();
 
     const frame = createCameraFrame();
     renderHorizon();
@@ -1349,23 +1384,83 @@
       ? Math.max(0, Math.floor(snowScreenDistance))
       : track.drawDistance;
     const snowStride = Math.max(1, Math.floor(snowScreenDensity || 1));
+    const snowEnabled = isSnowFeatureEnabled();
     let x = 0;
     let dx = -(baseSeg.curve * basePct);
 
-    for (let n = 0; n < track.drawDistance; n++){
+    let p1 = projectSegPoint(baseSeg.p1, 0, camX - x, camY, sCam);
+
+    const startIdx = baseSeg.index;
+    const startCliff = cliffParamsAt(startIdx, 0);
+    let p1LA = projectSegPoint(baseSeg.p1, startCliff.leftA.dy, camX - x, camY, sCam);
+    let p1LB = projectSegPoint(baseSeg.p1, startCliff.leftA.dy + startCliff.leftB.dy, camX - x, camY, sCam);
+    let p1RA = projectSegPoint(baseSeg.p1, startCliff.rightA.dy, camX - x, camY, sCam);
+    let p1RB = projectSegPoint(baseSeg.p1, startCliff.rightA.dy + startCliff.rightB.dy, camX - x, camY, sCam);
+    let p1LS = projectSegPoint(baseSeg.p1, track.wallShort.left, camX - x, camY, sCam);
+    let p1RS = projectSegPoint(baseSeg.p1, track.wallShort.right, camX - x, camY, sCam);
+
+    let n = 0;
+    while (n < track.drawDistance) {
+      let step = 1;
+      if (n >= 120) step = 20;
+      else if (n >= 80) step = 16;
+      else if (n >= 50) step = 8;
+      else if (n >= 20) step = 4;
+
+      if (n + step > track.drawDistance) {
+        step = track.drawDistance - n;
+      }
+
       const idx = (baseSeg.index + n) % segments.length;
       const seg = segments[idx];
       const looped = seg.index < baseSeg.index;
       const camSRef = sCam - (looped ? trackLength : 0);
 
       const camX1 = camX - x;
-      const camX2 = camX - x - dx;
-      const p1 = projectSegPoint(seg.p1, 0, camX1, camY, camSRef);
-      const p2 = projectSegPoint(seg.p2, 0, camX2, camY, camSRef);
 
-      x += dx;
-      dx += seg.curve;
-      if (p1.camera.z <= state.camera.nearZ) continue;
+      let currentX = x;
+      let currentDx = dx;
+      currentStripItems.length = 0;
+      const boostZonesSet = new Set();
+
+      for (let i = 0; i < step; i++) {
+        const subIdx = (baseSeg.index + n + i) % segments.length;
+        const subSeg = segments[subIdx];
+        if (subSeg.cars.length > 0) {
+          for (const car of subSeg.cars) currentStripItems.push(allocStripItem('car', car, i));
+        }
+        if (subSeg.sprites.length > 0) {
+          for (const spr of subSeg.sprites) currentStripItems.push(allocStripItem('sprite', spr, i));
+        }
+        if (snowEnabled && subSeg.snowScreen && (n + i) < snowMaxSegments && (subSeg.index % snowStride === 0)) {
+          currentStripItems.push(allocStripItem('snowScreen', subSeg, i));
+        }
+        const bz = boostZonesOnSegment(subSeg);
+        for (const z of bz) boostZonesSet.add(z);
+        currentX += currentDx;
+        currentDx += subSeg.curve;
+      }
+
+      const idxEnd = (baseSeg.index + n + step - 1) % segments.length;
+      const segEnd = segments[idxEnd];
+      const loopedEnd = segEnd.index < baseSeg.index;
+      const camSRefEnd = sCam - (loopedEnd ? trackLength : 0);
+
+      const camX2 = camX - currentX;
+      const p2 = projectSegPoint(segEnd.p2, 0, camX2, camY, camSRefEnd);
+
+      x = currentX;
+      dx = currentDx;
+
+      let p2LA, p2LB, p2RA, p2RB, p2LS, p2RS;
+
+      if (p1.camera.z <= state.camera.nearZ) {
+        n += step;
+        p1 = p2;
+        p1LA = null; p1LB = null; p1RA = null; p1RB = null;
+        p1LS = null; p1RS = null;
+        continue;
+      }
 
       perf.registerSegment();
 
@@ -1378,23 +1473,12 @@
       const w2 = p2.screen.scale * rw2 * HALF_VIEW;
 
       const fogRoad = fogArray(p1.camera.z, p2.camera.z);
-      const yScale1 = 1.0;
-      const yScale2 = 1.0;
 
-      const boostZonesHere = boostZonesOnSegment(seg);
+      const boostZonesHere = Array.from(boostZonesSet);
 
       const cliffStart = cliffParamsAt(idx, 0);
-      const cliffEnd = cliffParamsAt(idx, 1);
+      const cliffEnd = cliffParamsAt(idxEnd, 1);
 
-      const leftA1 = cliffStart.leftA.dy * yScale1;
-      const leftA2 = cliffEnd.leftA.dy * yScale2;
-      const leftB1 = (cliffStart.leftA.dy + cliffStart.leftB.dy) * yScale1;
-      const leftB2 = (cliffEnd.leftA.dy + cliffEnd.leftB.dy) * yScale2;
-      const rightA1 = cliffStart.rightA.dy * yScale1;
-      const rightA2 = cliffEnd.rightA.dy * yScale2;
-      const rightB1 = (cliffStart.rightA.dy + cliffStart.rightB.dy) * yScale1;
-      const rightB2 = (cliffEnd.rightA.dy + cliffEnd.rightB.dy) * yScale2;
-      
       // Optimization: Only project cliff points if cliffs are present/visible
       const hasLeft = Math.abs(cliffStart.leftA.dx) > 0.1 || Math.abs(cliffStart.leftA.dy) > 0.1 || 
                       Math.abs(cliffEnd.leftA.dx) > 0.1 || Math.abs(cliffEnd.leftA.dy) > 0.1 ||
@@ -1404,25 +1488,26 @@
                        Math.abs(cliffEnd.rightA.dx) > 0.1 || Math.abs(cliffEnd.rightA.dy) > 0.1 ||
                        Math.abs(cliffStart.rightB.dx) > 0.1 || Math.abs(cliffStart.rightB.dy) > 0.1;
 
-      let p1LA, p2LA, p1LB, p2LB, p1RA, p2RA, p1RB, p2RB;
-
       if (hasLeft) {
-        p1LA = projectSegPoint(seg.p1, leftA1, camX1, camY, camSRef);
-        p2LA = projectSegPoint(seg.p2, leftA2, camX2, camY, camSRef);
-        p1LB = projectSegPoint(seg.p1, leftB1, camX1, camY, camSRef);
-        p2LB = projectSegPoint(seg.p2, leftB2, camX2, camY, camSRef);
+        if (!p1LA) p1LA = projectSegPoint(seg.p1, cliffStart.leftA.dy, camX1, camY, camSRef);
+        p2LA = projectSegPoint(segEnd.p2, cliffEnd.leftA.dy, camX2, camY, camSRefEnd);
+        
+        if (!p1LB) p1LB = projectSegPoint(seg.p1, cliffStart.leftA.dy + cliffStart.leftB.dy, camX1, camY, camSRef);
+        p2LB = projectSegPoint(segEnd.p2, cliffEnd.leftA.dy + cliffEnd.leftB.dy, camX2, camY, camSRefEnd);
       }
       if (hasRight) {
-        p1RA = projectSegPoint(seg.p1, rightA1, camX1, camY, camSRef);
-        p2RA = projectSegPoint(seg.p2, rightA2, camX2, camY, camSRef);
-        p1RB = projectSegPoint(seg.p1, rightB1, camX1, camY, camSRef);
-        p2RB = projectSegPoint(seg.p2, rightB2, camX2, camY, camSRef);
+        if (!p1RA) p1RA = projectSegPoint(seg.p1, cliffStart.rightA.dy, camX1, camY, camSRef);
+        p2RA = projectSegPoint(segEnd.p2, cliffEnd.rightA.dy, camX2, camY, camSRefEnd);
+        
+        if (!p1RB) p1RB = projectSegPoint(seg.p1, cliffStart.rightA.dy + cliffStart.rightB.dy, camX1, camY, camSRef);
+        p2RB = projectSegPoint(segEnd.p2, cliffEnd.rightA.dy + cliffEnd.rightB.dy, camX2, camY, camSRefEnd);
       }
 
-      const p1LS = projectSegPoint(seg.p1, track.wallShort.left * yScale1, camX1, camY, camSRef);
-      const p2LS = projectSegPoint(seg.p2, track.wallShort.left * yScale2, camX2, camY, camSRef);
-      const p1RS = projectSegPoint(seg.p1, track.wallShort.right * yScale1, camX1, camY, camSRef);
-      const p2RS = projectSegPoint(seg.p2, track.wallShort.right * yScale2, camX2, camY, camSRef);
+      if (!p1LS) p1LS = projectSegPoint(seg.p1, track.wallShort.left, camX1, camY, camSRef);
+      p2LS = projectSegPoint(segEnd.p2, track.wallShort.left, camX2, camY, camSRefEnd);
+      
+      if (!p1RS) p1RS = projectSegPoint(seg.p1, track.wallShort.right, camX1, camY, camSRef);
+      p2RS = projectSegPoint(segEnd.p2, track.wallShort.right, camX2, camY, camSRefEnd);
       
       const L = hasLeft ? makeCliffLeftQuads(
         p1.screen.x, p1.screen.y, w1,
@@ -1448,9 +1533,12 @@
         rw1, rw2
       ) : null;
 
-      const [v0Road, v1Road] = vSpanForSeg(zoneData.road, idx);
-      const [v0Rail, v1Rail] = vSpanForSeg(zoneData.rail, idx);
-      const [v0Cliff, v1Cliff] = vSpanForSeg(zoneData.cliff, idx);
+      let [v0Road, v1Road] = vSpanForSeg(zoneData.road, idx);
+      v1Road = v0Road + (v1Road - v0Road) * step;
+      let [v0Rail, v1Rail] = vSpanForSeg(zoneData.rail, idx);
+      v1Rail = v0Rail + (v1Rail - v0Rail) * step;
+      let [v0Cliff, v1Cliff] = vSpanForSeg(zoneData.cliff, idx);
+      v1Cliff = v0Cliff + (v1Cliff - v0Cliff) * step;
 
       drawList.push({
         type: 'strip',
@@ -1479,38 +1567,11 @@
         p2RS,
       });
 
-      const snowScreenActive =
-        isSnowFeatureEnabled()
-        && seg && seg.snowScreen && snowMaxSegments > 0 && n < snowMaxSegments && (seg.index % snowStride === 0);
-      if (snowScreenActive){
-        const midT = 0.5;
-        const scaleMid = lerp(p1.screen.scale, p2.screen.scale, midT);
-        const rwMid = lerp(rw1, rw2, midT);
-        const centerX = lerp(p1.screen.x, p2.screen.x, midT);
-        const centerY = lerp(p1.screen.y, p2.screen.y, midT);
-        const zMid = lerp(p1.camera.z, p2.camera.z, midT);
-        const baseRadius = computeSnowScreenBaseRadius(scaleMid, rwMid);
-        const sizePx = baseRadius * 2;
-        const color = (seg.snowScreen && Array.isArray(seg.snowScreen.color))
-          ? seg.snowScreen.color
-          : [1, 1, 1, 1];
-        if (sizePx > 0){
-          drawList.push({
-            type: 'snowScreen',
-            depth: zMid + 1e-3,
-            x: centerX,
-            y: centerY,
-            size: sizePx,
-            color,
-            z: zMid,
-            segIndex: seg.index,
-          });
-        }
-      }
-
-      for (let i = 0; i < seg.cars.length; i++){
-        const car = seg.cars[i];
-        const t = wrap(car.z - seg.p1.world.z, trackLength) / segmentLength;
+      for (const item of currentStripItems) {
+        if (item.type === 'car') {
+          const car = item.obj;
+          const localT = wrap(car.z - segments[(baseSeg.index + n + item.i) % segments.length].p1.world.z, trackLength) / segmentLength;
+          const t = (item.i + localT) / step;
         const scale = lerp(p1.screen.scale, p2.screen.scale, t);
         const rw = lerp(rw1, rw2, t);
         const xCenter = lerp(p1.screen.x, p2.screen.x, t) + scale * car.offset * rw * HALF_VIEW;
@@ -1555,14 +1616,41 @@
           npcColorIndex: npcColor.index,
           npcColorBuckets: npcColor.buckets,
         });
-      }
+        } else if (item.type === 'snowScreen') {
+          const subSeg = item.obj;
+          const t = (item.i + 0.5) / step;
+          const scale = lerp(p1.screen.scale, p2.screen.scale, t);
+          const rw = lerp(rw1, rw2, t);
+          const centerX = lerp(p1.screen.x, p2.screen.x, t);
+          const centerY = lerp(p1.screen.y, p2.screen.y, t);
+          const zMid = lerp(p1.camera.z, p2.camera.z, t);
 
-      for (let i = 0; i < seg.sprites.length; i++){
-        const spr = seg.sprites[i];
+          const baseRadius = computeSnowScreenBaseRadius(scale, rw);
+          const sizePx = baseRadius * 2;
+          const color = (subSeg.snowScreen && Array.isArray(subSeg.snowScreen.color))
+            ? subSeg.snowScreen.color
+            : [1, 1, 1, 1];
+
+          if (sizePx > 0) {
+            drawList.push({
+              type: 'snowScreen',
+              depth: zMid + 1e-3,
+              x: centerX,
+              y: centerY,
+              size: sizePx,
+              color,
+              z: zMid,
+              segIndex: subSeg.index,
+            });
+          }
+        } else if (item.type === 'sprite') {
+          const spr = item.obj;
         const meta = SPRITE_META[spr.kind] || SPRITE_META.SIGN || { wN: 0.2, aspect: 1, tint: [1, 1, 1, 1] };
-        const spriteS = Number.isFinite(spr.s) ? spr.s : seg.p1.world.z;
-        const deltaS = wrap(spriteS - seg.p1.world.z, trackLength);
-        const t = clamp(deltaS / Math.max(1e-6, segmentLength), 0, 1);
+          const segStartZ = segments[(baseSeg.index + n + item.i) % segments.length].p1.world.z;
+          const spriteS = Number.isFinite(spr.s) ? spr.s : segStartZ;
+          const deltaS = wrap(spriteS - segStartZ, trackLength);
+          const localT = clamp(deltaS / Math.max(1e-6, segmentLength), 0, 1);
+          const t = (item.i + localT) / step;
         const scale = lerp(p1.screen.scale, p2.screen.scale, t);
         const rw = lerp(rw1, rw2, t);
 
@@ -1580,7 +1668,7 @@
         let yBase;
         let cliffProgress = null;
         if (sAbs > 1.0){
-          cliffProgress = computeCliffLaneProgress(seg.index, spr.offset, t, rw);
+            cliffProgress = computeCliffLaneProgress(seg.index, spr.offset, localT, rw);
         }
         if (sAbs <= 1.0){
           xCenter = baseX + scale * spr.offset * rw * HALF_VIEW;
@@ -1667,9 +1755,13 @@
           colorKey: `prop:${spr.kind || 'generic'}`,
         });
       }
-
+      }
+      n += step;
+      p1 = p2;
+      p1LA = p2LA; p1LB = p2LB;
+      p1RA = p2RA; p1RB = p2RB;
+      p1LS = p2LS; p1RS = p2RS;
     }
-
     return drawList;
   }
 
@@ -1972,6 +2064,7 @@
       p2LS,
       p1RS,
       p2RS,
+      clipT = 0,
     } = it;
 
     const texturesEnabled = areTexturesEnabled();

@@ -23,16 +23,16 @@ const player = {
 const grid = {
   roadColsNear: 6,
   roadColsFar: 2,
-  colWidthPx: 96,
+  colWidthPx: 18,
   rowHeightPx: 18,
-  maxRows: 32,
+  maxRows: 4,
 };
 
 // Track geometry and texture sampling values.
 const track = {
-  segmentSize: 200,
+  segmentSize: 250,
   roadWidth: 2400,
-  drawDistance: 160,
+  drawDistance: 120,
   railInset: 0.95,
   wallShort: { left: 400, right: 400 },
   metersPerPixel: { x: 8, y: 40 },
@@ -42,7 +42,7 @@ const track = {
 const camera = {
   fovDeg: 140,
   height: 800,
-  backSegments: 3,
+  backSegments: 2,
   heightEase: 0.1,
 };
 
@@ -71,9 +71,9 @@ const fog = {
 // Default fallback tint values for world primitives.
 // Snow screen rendering controls.
 const snowScreenDistance = 40;
-const snowScreenDensity = 2;
+const snowScreenDensity = 4;
 const snowScreenSize = 1;
-const snowDensity = .6;
+const snowDensity = 0.3;
 const snowSize = { min: 0.75, max: 1.25 };
 const snowSpeed = { min: 0.1, max: .2 };
 const snowStretch = 10;
@@ -101,7 +101,7 @@ const parallaxLayers = [
 
 // Road traffic tuning for non-player cars.
 const traffic = {
-  total: 50,
+  total: 30,
   edgePad: 0.02,
   avoidLookaheadSegs: 20,
   vehicleWeights: {

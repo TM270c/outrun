@@ -23,11 +23,11 @@
       boostZonesOnSegment = () => [],
     } = deps;
 
-    const DEBUG_PANEL_MARGIN = 24;
-    const DEBUG_PANEL_GAP = 16;
+    const DEBUG_PANEL_MARGIN = 8;
+    const DEBUG_PANEL_GAP = 8;
     const BOOST_PANEL_WIDTH = 220;
-    const BOOST_PANEL_HEIGHT = 120;
-    const PROFILE_PANEL_PADDING = { top: 16, right: 18, bottom: 26, left: 18 };
+    const BOOST_PANEL_HEIGHT = 84;
+    const PROFILE_PANEL_PADDING = { top: 14, right: 14, bottom: 18, left: 14 };
 
     let canvasOverlay = null;
     let ctxSide = null;
@@ -312,28 +312,34 @@
       if (debugLines.length) {
         const listPanelX = DEBUG_PANEL_MARGIN;
         const listPanelY = boostPanel.y + boostPanel.height + DEBUG_PANEL_GAP;
-        const listPanelWidth = Math.max(180, Math.min(300, SW - listPanelX - DEBUG_PANEL_MARGIN));
-        const lineHeight = 16;
-        const listPanelHeight = debugLines.length * lineHeight + 12;
-        if (listPanelWidth > 0 && listPanelHeight > 0 && listPanelY < SH) {
-          const availableHeight = Math.max(0, SH - listPanelY - DEBUG_PANEL_MARGIN);
-          const clampedHeight = Math.max(0, Math.min(listPanelHeight, availableHeight));
+        const listPanelWidth = SW - (DEBUG_PANEL_MARGIN * 2);
+        const availableHeight = Math.max(0, SH - listPanelY - DEBUG_PANEL_MARGIN - 20);
+
+        if (listPanelWidth > 0 && availableHeight > 0) {
           ctxSide.fillStyle = 'rgba(0,0,0,0.55)';
-          if (clampedHeight > 0) {
-            ctxSide.fillRect(listPanelX, listPanelY, listPanelWidth, clampedHeight);
-            ctxSide.strokeStyle = 'rgba(255,255,255,0.25)';
-            ctxSide.lineWidth = 1;
-            ctxSide.strokeRect(listPanelX, listPanelY, listPanelWidth, clampedHeight);
-            ctxSide.fillStyle = '#ffffff';
-            ctxSide.font = '12px system-ui, Arial';
-            ctxSide.textBaseline = 'top';
-            const textX = listPanelX + 8;
-            let textY = listPanelY + 6;
-            for (const line of debugLines) {
-              if (textY + lineHeight > listPanelY + clampedHeight) break;
-              ctxSide.fillText(line, textX, textY);
-              textY += lineHeight;
+          ctxSide.fillRect(listPanelX, listPanelY, listPanelWidth, availableHeight);
+          ctxSide.strokeStyle = 'rgba(255,255,255,0.25)';
+          ctxSide.lineWidth = 1;
+          ctxSide.strokeRect(listPanelX, listPanelY, listPanelWidth, availableHeight);
+
+          ctxSide.fillStyle = '#ffffff';
+          ctxSide.font = '10px system-ui, Arial';
+          ctxSide.textBaseline = 'top';
+
+          const lineHeight = 11;
+          const colWidth = listPanelWidth;
+          let textX = listPanelX + 6;
+          let textY = listPanelY + 6;
+          const maxY = listPanelY + availableHeight - 6;
+
+          for (const line of debugLines) {
+            if (textY + lineHeight > maxY) {
+              textY = listPanelY + 6;
+              textX += colWidth;
+              if (textX > listPanelX + listPanelWidth) break;
             }
+            ctxSide.fillText(line, textX, textY);
+            textY += lineHeight;
           }
         }
       }

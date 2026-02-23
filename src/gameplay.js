@@ -1127,6 +1127,7 @@
     spriteMeta: DEFAULT_SPRITE_META,
     getKindScale: defaultGetKindScale,
     input: { left: false, right: false, up: false, down: false, hop: false },
+    gamepad: { hopPressed: false },
     callbacks: {
       onQueueReset: null,
       onToggleOverlay: null,
@@ -2063,8 +2064,33 @@
     const { phys } = state;
     if (!hasSegments()) return;
 
+    // Gamepad polling
+    const gamepads = (navigator.getGamepads && navigator.getGamepads()) || [];
+    const gp = gamepads[0];
+    let gpLeft = false, gpRight = false, gpUp = false, gpDown = false, gpHop = false;
+
+    if (gp) {
+      gpUp = gp.buttons[12]?.pressed;
+      gpDown = gp.buttons[13]?.pressed;
+      gpLeft = gp.buttons[14]?.pressed;
+      gpRight = gp.buttons[15]?.pressed;
+      const btnHop = gp.buttons[5]?.pressed;
+      if (btnHop && !state.gamepad.hopPressed) {
+        gpHop = true;
+      }
+      state.gamepad.hopPressed = btnHop;
+    }
+
+    // Merge inputs
+    let input = {
+      left: state.input.left || gpLeft,
+      right: state.input.right || gpRight,
+      up: state.input.up || gpUp,
+      down: state.input.down || gpDown,
+      hop: state.input.hop || gpHop,
+    };
+
     // Input override based on race phase
-    let input = state.input;
     if (state.isMenu) {
       input = { left: false, right: false, up: false, down: false, hop: false };
     } else if (state.race.active) {
@@ -2085,7 +2111,7 @@
 
     if (input.hop) {
       doHop();
-      input.hop = false;
+      state.input.hop = false;
     }
 
     const steerAxis = (input.left && input.right) ? 0 : (input.left ? -1 : (input.right ? 1 : 0));
@@ -2786,6 +2812,7 @@
     state.camYSmooth = phys.y + cameraHeight;
 
     state.hopHeld = false;
+    state.gamepad.hopPressed = false;
     state.driftState = 'idle';
     state.driftDirSnapshot = 0;
     state.driftCharge = 0;

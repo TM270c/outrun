@@ -4,6 +4,13 @@ const dom = {
   hud: document.getElementById('hudMatte'),
 };
 
+const RES_W = 480;
+const RES_H = 360;
+
+if (dom.canvas) { dom.canvas.width = RES_W; dom.canvas.height = RES_H; }
+if (dom.overlay) { dom.overlay.width = RES_W; dom.overlay.height = RES_H; }
+if (dom.hud) { dom.hud.width = RES_W; dom.hud.height = RES_H; }
+
 const glr = new RenderGL.GLRenderer(dom.canvas);
 const App = window.App || null;
 
