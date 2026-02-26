@@ -75,6 +75,7 @@
 
       this._canvasWidth = canvas.width;
       this._canvasHeight = canvas.height;
+      this._textureCache = new Map();
 
       // streaming slab
       this.vbo = gl.createBuffer();
@@ -133,6 +134,9 @@
       return t;
     }
     loadTexture(url){
+      if (this._textureCache.has(url)) {
+        return Promise.resolve(this._textureCache.get(url));
+      }
       const gl=this.gl;
       return new Promise((resolve)=>{
         const img=new Image();
@@ -146,6 +150,7 @@
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+          this._textureCache.set(url, t);
           resolve(t);
         };
         img.onerror=()=>resolve(null);
