@@ -324,8 +324,20 @@
     TRUCK:  { wN: 0.36, hitboxWN: 0.2, aspect: 1, tint: [0.35, 0.75, 0.6, 1], tex: () => null },
     SEMI:   { wN: 0.38, hitboxWN: 0.22, aspect: 1, tint: [0.85, 0.85, 0.85, 1], tex: () => null },
     SPECIAL:{ wN: 0.35, hitboxWN: 0.2, aspect: 1, tint: [1, 0.95, 0.7, 1], tex: () => null },
-    DRIFT_SMOKE: { wN: 0.1, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], textureKey: 'driftSmoke' },
-    SPARKS: { wN: 0.01, aspect: 1.0, tint: [1.0, 0.6, 0.2, 0.9], textureKey: 'sparks' },
+    DRIFT_SMOKE: {
+      wN: 0.1,
+      aspect: 1.0,
+      tint: [0.3, 0.5, 1.0, 0.85],
+      textureKey: 'driftSmoke',
+      tex: () => (World && World.assets && World.assets.textures) ? World.assets.textures.driftSmoke : null,
+    },
+    SPARKS: {
+      wN: 0.01,
+      aspect: 1.0,
+      tint: [1.0, 0.6, 0.2, 0.9],
+      textureKey: 'sparks',
+      tex: () => (World && World.assets && World.assets.textures) ? World.assets.textures.sparks : null,
+    },
   };
 
   const SPRITE_METRIC_FALLBACK = SpriteCatalog && SpriteCatalog.metricsFallback

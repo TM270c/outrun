@@ -4,10 +4,10 @@
   const resolve = (p) => (World && typeof World.resolveAssetUrl === 'function' ? World.resolveAssetUrl(p) : p);
 
   const TEXTURE_MANIFEST = Object.freeze({
-    tree: resolve('tex/tree.png'),
-    animPlate01: resolve('tex/anim-plate-01.png'),
-    jeriplate: resolve('tex/jeriplate.png'),
-    snowman: resolve('tex/snowman.png'),
+    tree: resolve('tex/temptex.png'),
+    animPlate01: resolve('tex/temptex.png'),
+    jeriplate: resolve('tex/temptex.png'),
+    snowman: resolve('tex/temptex.png'),
   });
 
   const METRIC_FALLBACK = Object.freeze({

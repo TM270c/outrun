@@ -28,7 +28,7 @@
     let resolved = path;
     try {
       const chromeApi = global.chrome;
-      if (chromeApi && chromeApi.runtime && typeof chromeApi.runtime.getURL === 'function') {
+      if (chromeApi && chromeAptexi.runtime && typeof chromeApi.runtime.getURL === 'function') {
         resolved = chromeApi.runtime.getURL(path);
       } else {
         const base = global.location && global.location.href ? global.location.href : null;
@@ -46,44 +46,55 @@
   }
 
   const assetManifest = {
-    road:      resolveAssetUrl('tex/road-seg.png'),
-    rail:      resolveAssetUrl('tex/guardrail.png'),
-    cliff:     resolveAssetUrl('tex/cliff.png'),
-    boostJump: resolveAssetUrl('tex/boost.png'),
-    boostDrive:resolveAssetUrl('tex/boost.png'),
-    horizon1:  resolveAssetUrl('tex/paralax-1.png'),
-    horizon2:  resolveAssetUrl('tex/paralax-2.png'),
-    horizon3:  resolveAssetUrl('tex/paralax-3.png'),
-    hud:       resolveAssetUrl('tex/hud.png'),
-    car:       resolveAssetUrl('tex/player-car-new.png'),
-    playerVan: resolveAssetUrl('tex/player-van.png'),
-    npcCar01:  resolveAssetUrl('tex/npc-car-01.png'),
-    npcCar02:  resolveAssetUrl('tex/npc-car-02.png'),
-    npcCar03:  resolveAssetUrl('tex/npc-car-03.png'),
-    npcVan01:  resolveAssetUrl('tex/npc-van-01.png'),
-    npcVan02:  resolveAssetUrl('tex/npc-van-02.png'),
-    npcVan03:  resolveAssetUrl('tex/npc-van-03.png'),
-    npcSemi01: resolveAssetUrl('tex/npc-semi-01.png'),
-    npcSemi02: resolveAssetUrl('tex/npc-semi-02.png'),
-    npcSemi03: resolveAssetUrl('tex/npc-semi-03.png'),
-    npcSpecial01: resolveAssetUrl('tex/npc-special-01.png'),
-    npcSpecial02: resolveAssetUrl('tex/npc-special-02.png'),
-    npcSpecial03: resolveAssetUrl('tex/npc-special-03.png'),
-    npcSpecial04: resolveAssetUrl('tex/npc-special-04.png'),
-    npcSpecial05: resolveAssetUrl('tex/npc-special-05.png'),
-    npcSpecial06: resolveAssetUrl('tex/npc-special-06.png'),
-    npcSpecial07: resolveAssetUrl('tex/npc-special-07.png'),
-    npcSpecial08: resolveAssetUrl('tex/npc-special-08.png'),
-    npcSpecial09: resolveAssetUrl('tex/npc-special-09.png'),
-    gate:         resolveAssetUrl('tex/gate.png'),
-    dash:         resolveAssetUrl('tex/dash.png'),
-    shadow:       resolveAssetUrl('tex/shadow.png'),
-    selectRoad:   resolveAssetUrl('tex/select-road-seg.png'),
-    selectCliff:  resolveAssetUrl('tex/select-cliff.png'),
-    selectRail:   resolveAssetUrl('tex/select-guardrail.png'),
+    // Environment
+    road:         resolveAssetUrl('tex/temptex.png'),
+    rail:         resolveAssetUrl('tex/temptex.png'),
+    cliff:        resolveAssetUrl('tex/temptex.png'),
+    horizon1:     resolveAssetUrl('tex/temptex.png'),
+    horizon2:     resolveAssetUrl('tex/temptex.png'),
+    horizon3:     resolveAssetUrl('tex/temptex.png'),
+
+    // Track Selection
+    selectRoad:   resolveAssetUrl('tex/temptex.png'),
+    selectCliff:  resolveAssetUrl('tex/temptex.png'),
+    selectRail:   resolveAssetUrl('tex/temptex.png'),
+
+    // Gameplay Elements
+    gate:         resolveAssetUrl('tex/temptex.png'),
+    boostJump:    resolveAssetUrl('tex/temptex.png'),
+    boostDrive:   resolveAssetUrl('tex/temptex.png'),
+
+    // Player Vehicles
+    car:          resolveAssetUrl('tex/temptex.png'),
+    playerVan:    resolveAssetUrl('tex/temptex.png'),
+
+    // NPC Vehicles
+    npcCar01:     resolveAssetUrl('tex/temptex.png'),
+    npcCar02:     resolveAssetUrl('tex/temptex.png'),
+    npcCar03:     resolveAssetUrl('tex/temptex.png'),
+    npcVan01:     resolveAssetUrl('tex/temptex.png'),
+    npcVan02:     resolveAssetUrl('tex/temptex.png'),
+    npcVan03:     resolveAssetUrl('tex/temptex.png'),
+    npcSemi01:    resolveAssetUrl('tex/temptex.png'),
+    npcSemi02:    resolveAssetUrl('tex/temptex.png'),
+    npcSemi03:    resolveAssetUrl('tex/temptex.png'),
+    npcSpecial01: resolveAssetUrl('tex/temptex.png'),
+    npcSpecial02: resolveAssetUrl('tex/temptex.png'),
+    npcSpecial03: resolveAssetUrl('tex/temptex.png'),
+    npcSpecial04: resolveAssetUrl('tex/temptex.png'),
+    npcSpecial05: resolveAssetUrl('tex/temptex.png'),
+    npcSpecial06: resolveAssetUrl('tex/temptex.png'),
+    npcSpecial07: resolveAssetUrl('tex/temptex.png'),
+    npcSpecial08: resolveAssetUrl('tex/temptex.png'),
+    npcSpecial09: resolveAssetUrl('tex/temptex.png'),
+
+    // Effects & UI
     driftSmoke:   resolveAssetUrl('tex/temptex.png'),
     sparks:       resolveAssetUrl('tex/temptex.png'),
     snowFlake:    resolveAssetUrl('tex/temptex.png'),
+    shadow:       resolveAssetUrl('tex/temptex.png'),
+    hud:          resolveAssetUrl('tex/temptex.png'),
+    dash:         resolveAssetUrl('tex/temptex.png'),
   };
   
   const textures = {};

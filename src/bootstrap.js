@@ -81,10 +81,10 @@ await Gameplay.resetScene({
 });
 if (Renderer && Renderer.updateTrackTextures) {
   await Renderer.updateTrackTextures({
-    road: 'tex/demo-road-seg.png',
-    cliff: 'tex/demo-cliff.png',
-    rail: 'tex/demo-guardrail.png',
-    horizon: ['tex/demo-paralax-1.png', 'tex/demo-paralax-2.png', 'tex/demo-paralax-3.png'],
+    road: 'tex/temptex.png',
+    cliff: 'tex/temptex.png',
+    rail: 'tex/temptex.png',
+    horizon: ['tex/temptex.png', 'tex/temptex.png', 'tex/temptex.png'],
   });
 }
 Gameplay.setMenuMode(true);

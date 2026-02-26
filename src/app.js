@@ -39,10 +39,10 @@
       placementPath: 'tracks/demo/demo-placement.csv',
       previewPlacementPath: 'tracks/demo/demo-select.csv',
       theme: {
-        road: 'tex/demo-road-seg.png',
-        cliff: 'tex/demo-cliff.png',
-        rail: 'tex/demo-guardrail.png',
-        horizon: ['tex/demo-paralax-1.png', 'tex/demo-paralax-2.png', 'tex/demo-paralax-3.png'],
+        road: 'tex/temptex.png',
+        cliff: 'tex/temptex.png',
+        rail: 'tex/temptex.png',
+        horizon: ['tex/temptex.png', 'tex/temptex.png', 'tex/temptex.png'],
       },
     },
     {
@@ -54,10 +54,10 @@
       placementPath: 'tracks/summer/summer-placement.csv',
       previewPlacementPath: 'tracks/summer/summer-select.csv',
       theme: {
-        road: 'tex/summer-road-seg.png',
-        cliff: 'tex/summer-cliff.png',
-        rail: 'tex/summer-guardrail.png',
-        horizon: ['tex/summer-paralax-1.png', 'tex/summer-paralax-2.png', 'tex/summer-paralax-3.png'],
+        road: 'tex/temptex.png',
+        cliff: 'tex/temptex.png',
+        rail: 'tex/temptex.png',
+        horizon: ['tex/temptex.png', 'tex/temptex.png', 'tex/temptex.png'],
       },
     },
     {
@@ -69,10 +69,10 @@
       placementPath: 'tracks/winter/winter-placement.csv',
       previewPlacementPath: 'tracks/winter/winter-select.csv',
       theme: {
-        road: 'tex/winter-road-seg.png',
-        cliff: 'tex/winter-cliff.png',
-        rail: 'tex/winter-guardrail.png',
-        horizon: ['tex/winter-paralax-1.png', 'tex/winter-paralax-2.png', 'tex/winter-paralax-3.png'],
+        road: 'tex/temptex.png',
+        cliff: 'tex/temptex.png',
+        rail: 'tex/temptex.png',
+        horizon: ['tex/temptex.png', 'tex/temptex.png', 'tex/temptex.png'],
       },
     },
   ];
@@ -845,10 +845,10 @@
 
     if (Renderer && Renderer.updateTrackTextures) {
       Renderer.updateTrackTextures({
-        road: 'tex/demo-road-seg.png',
-        cliff: 'tex/demo-cliff.png',
-        rail: 'tex/demo-guardrail.png',
-        horizon: ['tex/demo-paralax-1.png', 'tex/demo-paralax-2.png', 'tex/demo-paralax-3.png'],
+        road: 'tex/temptex.png',
+        cliff: 'tex/temptex.png',
+        rail: 'tex/temptex.png',
+        horizon: ['tex/temptex.png', 'tex/temptex.png', 'tex/temptex.png'],
       });
     }
   }
@@ -961,10 +961,10 @@
 
       if (Renderer && Renderer.updateTrackTextures) {
         Renderer.updateTrackTextures({
-          road: 'tex/demo-road-seg.png',
-          cliff: 'tex/demo-cliff.png',
-          rail: 'tex/demo-guardrail.png',
-          horizon: ['tex/demo-paralax-1.png', 'tex/demo-paralax-2.png', 'tex/demo-paralax-3.png'],
+          road: 'tex/temptex.png',
+          cliff: 'tex/temptex.png',
+          rail: 'tex/temptex.png',
+          horizon: ['tex/temptex.png', 'tex/temptex.png', 'tex/temptex.png'],
         });
       }
     };
