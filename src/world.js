@@ -55,7 +55,7 @@
     horizon2:  resolveAssetUrl('tex/paralax-2.png'),
     horizon3:  resolveAssetUrl('tex/paralax-3.png'),
     hud:       resolveAssetUrl('tex/hud.png'),
-    car:       resolveAssetUrl('tex/player-car.png'),
+    car:       resolveAssetUrl('tex/player-car-new.png'),
     playerVan: resolveAssetUrl('tex/player-van.png'),
     npcCar01:  resolveAssetUrl('tex/npc-car-01.png'),
     npcCar02:  resolveAssetUrl('tex/npc-car-02.png'),
@@ -81,6 +81,9 @@
     selectRoad:   resolveAssetUrl('tex/select-road-seg.png'),
     selectCliff:  resolveAssetUrl('tex/select-cliff.png'),
     selectRail:   resolveAssetUrl('tex/select-guardrail.png'),
+    driftSmoke:   resolveAssetUrl('tex/temptex.png'),
+    sparks:       resolveAssetUrl('tex/temptex.png'),
+    snowFlake:    resolveAssetUrl('tex/temptex.png'),
   };
   
   const textures = {};
@@ -540,6 +543,24 @@
     CLIFF_READY = true;
   }
 
+  function cacheCliffValues(){
+    if (!CLIFF_READY || !segments.length) return;
+    const sectionsPerSeg = CLIFF_SECTIONS_PER_SEG;
+    
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      const idx0 = i * sectionsPerSeg;
+      
+      // Create persistent object structure matching cliffParamsPool
+      seg.cliffData = {
+         leftA: { dx: CLIFF_SERIES.leftA.dx[idx0] || 0, dy: CLIFF_SERIES.leftA.dy[idx0] || 0 },
+         leftB: { dx: CLIFF_SERIES.leftB.dx[idx0] || 0, dy: CLIFF_SERIES.leftB.dy[idx0] || 0 },
+         rightA: { dx: CLIFF_SERIES.rightA.dx[idx0] || 0, dy: CLIFF_SERIES.rightA.dy[idx0] || 0 },
+         rightB: { dx: CLIFF_SERIES.rightB.dx[idx0] || 0, dy: CLIFF_SERIES.rightB.dy[idx0] || 0 },
+      };
+    }
+  }
+
   function enforceCliffWrap(copySpan = 1){
     if (!CLIFF_READY || !segments.length) return;
     const sectionsPerSeg = CLIFF_SECTIONS_PER_SEG;
@@ -689,6 +710,15 @@
   let cliffParamsIdx = 0;
 
   function cliffParamsAt(segIndex, t = 0){
+    // Optimization: Use cached data for integer t
+    if (Math.abs(t) < 1e-6) {
+       const seg = segmentAtIndex(segIndex);
+       if (seg && seg.cliffData) return seg.cliffData;
+    }
+    if (Math.abs(t - 1) < 1e-6) {
+       const seg = segmentAtIndex(segIndex + 1);
+       if (seg && seg.cliffData) return seg.cliffData;
+    }
     const segCount = segments.length;
     const sectionsPerSeg = CLIFF_SECTIONS_PER_SEG;
     const totalSections = segCount * sectionsPerSeg;
@@ -841,6 +871,7 @@
     pushZone,
     vSpanForSeg,
     buildCliffsFromCSV_Lite,
+    cacheCliffValues,
     enforceCliffWrap,
     floorElevationAt,
     cliffParamsAt,

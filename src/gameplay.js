@@ -308,7 +308,7 @@
       hitboxWN: 0.2,
       aspect: 1,
       tint: [0.9, 0.22, 0.21, 1],
-      atlas: { columns: 9, totalFrames: 81 },
+      atlas: { columns: 5, totalFrames: 25 },
       tex() {
         const textures = (World && World.assets && World.assets.textures)
           ? World.assets.textures
@@ -324,8 +324,8 @@
     TRUCK:  { wN: 0.36, hitboxWN: 0.2, aspect: 1, tint: [0.35, 0.75, 0.6, 1], tex: () => null },
     SEMI:   { wN: 0.38, hitboxWN: 0.22, aspect: 1, tint: [0.85, 0.85, 0.85, 1], tex: () => null },
     SPECIAL:{ wN: 0.35, hitboxWN: 0.2, aspect: 1, tint: [1, 0.95, 0.7, 1], tex: () => null },
-    DRIFT_SMOKE: { wN: 0.1, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], tex: () => null },
-    SPARKS: { wN: 0.01, aspect: 1.0, tint: [1.0, 0.6, 0.2, 0.9], tex: () => null },
+    DRIFT_SMOKE: { wN: 0.1, aspect: 1.0, tint: [0.3, 0.5, 1.0, 0.85], textureKey: 'driftSmoke' },
+    SPARKS: { wN: 0.01, aspect: 1.0, tint: [1.0, 0.6, 0.2, 0.9], textureKey: 'sparks' },
   };
 
   const SPRITE_METRIC_FALLBACK = SpriteCatalog && SpriteCatalog.metricsFallback
@@ -1121,6 +1121,7 @@
     },
     driftSmokeTimer: 0,
     driftSmokeNextInterval: computeDriftSmokeInterval(),
+    jumpPrepTimer: 0,
     sparksTimer: 0,
     sparksNextInterval: computeSparksInterval(),
     cars: [],
@@ -1223,7 +1224,7 @@
     const seg = segmentAtS(phys.s);
     if (!seg) return;
     const half = playerHalfWN();
-    const offsets = [state.playerN - half, state.playerN + half];
+    const offsets = [state.playerN - half * 0.7, state.playerN + half * 0.7];
     const sprites = ensureArray(seg, 'sprites');
     const baseS = Number.isFinite(phys.s)
       ? phys.s
@@ -1973,7 +1974,20 @@
 
   function updateSpriteAnimations(dt) {
     if (!hasSegments()) return;
-    for (const seg of segments) {
+
+    const playerSeg = segmentAtS(state.phys.s);
+    const segCount = segments.length;
+    const drawDist = (track && track.drawDistance) ? track.drawDistance : 200;
+    const forwardWindow = drawDist + 20;
+    const backWindow = 50;
+    const windowSize = forwardWindow + backWindow;
+    const loopCount = (segCount < windowSize) ? segCount : windowSize;
+    const startIdx = playerSeg ? (playerSeg.index - backWindow + segCount) % segCount : 0;
+
+    for (let n = 0; n < loopCount; n++) {
+      const idx = (startIdx + n) % segCount;
+      const seg = segments[idx];
+
       if (!seg || !Array.isArray(seg.sprites) || !seg.sprites.length) continue;
       for (let i = 0; i < seg.sprites.length; ) {
         const spr = seg.sprites[i];
@@ -2074,11 +2088,22 @@
       gpDown = gp.buttons[13]?.pressed;
       gpLeft = gp.buttons[14]?.pressed;
       gpRight = gp.buttons[15]?.pressed;
-      const btnHop = gp.buttons[5]?.pressed;
+
+      // Axis support for 8-way arcade sticks / analog sticks
+      if (gp.axes && gp.axes.length >= 2) {
+        const threshold = 0.4;
+        if (gp.axes[0] < -threshold) gpLeft = true;
+        if (gp.axes[0] > threshold) gpRight = true;
+        if (gp.axes[1] < -threshold) gpUp = true;
+        if (gp.axes[1] > threshold) gpDown = true;
+      }
+
+      const btnHop = gp.buttons[0]?.pressed || gp.buttons[5]?.pressed;
       if (btnHop && !state.gamepad.hopPressed) {
         gpHop = true;
+        if (state.lastSteerDir !== 0) state.pendingDriftDir = state.lastSteerDir;
       }
-      state.gamepad.hopPressed = btnHop;
+      state.gamepad.hopPressed = !!btnHop;
     }
 
     // Merge inputs
@@ -2109,15 +2134,29 @@
       metrics.guardRailCooldownTimer = Math.max(0, cooldown - dt);
     }
 
+    if (phys.boostFlashTimer > 0) {
+      phys.boostFlashTimer = Math.max(0, phys.boostFlashTimer - dt);
+    }
+
     if (input.hop) {
-      doHop();
+      if (state.phys.grounded && state.phys.t >= state.phys.nextHopTime && state.jumpPrepTimer <= 0) {
+        state.jumpPrepTimer = 0.15;
+      }
       state.input.hop = false;
+    }
+
+    if (state.jumpPrepTimer > 0) {
+      state.jumpPrepTimer -= dt;
+      if (state.jumpPrepTimer <= 0) {
+        state.jumpPrepTimer = 0;
+        doHop();
+      }
     }
 
     const steerAxis = (input.left && input.right) ? 0 : (input.left ? -1 : (input.right ? 1 : 0));
     if (steerAxis !== 0) {
       state.lastSteerDir = steerAxis;
-      if (state.hopHeld && state.driftState !== 'drifting') {
+      if ((state.hopHeld || state.gamepad.hopPressed) && state.driftState !== 'drifting') {
         state.pendingDriftDir = steerAxis;
       }
     }
@@ -2218,7 +2257,15 @@
         }
       }
     } else {
-      phys.vy -= player.gravity * dt;
+      // Dynamic gravity for "hang time" easing
+      let gravityScale = 1.0;
+      if (Math.abs(phys.vy) < player.hopImpulse * 0.25) {
+        gravityScale = 0.5; // Hang time at apex
+      } else if (phys.vy < 0) {
+        gravityScale = 1.2; // Snappier fall
+      }
+      phys.vy -= player.gravity * gravityScale * dt;
+
       if (player.airDrag) {
         phys.vx -= player.airDrag * phys.vx * dt;
         phys.vy -= player.airDrag * phys.vy * dt;
@@ -2243,7 +2290,7 @@
 
 
     if (!prevGrounded && phys.grounded) {
-      if (state.hopHeld && state.pendingDriftDir !== 0) {
+      if ((state.hopHeld || state.gamepad.hopPressed) && state.pendingDriftDir !== 0) {
         state.driftState = 'drifting';
         state.driftDirSnapshot = state.pendingDriftDir;
         state.driftCharge = 0;
@@ -2253,12 +2300,12 @@
         state.driftDirSnapshot = 0;
         state.driftCharge = 0;
         state.allowedBoost = false;
-        if (!state.hopHeld) state.pendingDriftDir = 0;
+        if (!(state.hopHeld || state.gamepad.hopPressed)) state.pendingDriftDir = 0;
       }
     }
 
     if (state.driftState === 'drifting') {
-      if (state.hopHeld) {
+      if (state.hopHeld || state.gamepad.hopPressed) {
         if (!state.allowedBoost) {
           state.driftCharge += dt;
           if (state.driftCharge >= drift.chargeMin) {
@@ -2820,6 +2867,7 @@
     state.pendingDriftDir = 0;
     state.lastSteerDir = 0;
     state.boostTimer = 0;
+    state.jumpPrepTimer = 0;
     state.driftSmokeTimer = 0;
     state.driftSmokeNextInterval = computeDriftSmokeInterval();
     state.sparksTimer = 0;
@@ -2899,6 +2947,9 @@
 
     if (typeof enforceCliffWrap === 'function') {
       enforceCliffWrap(1);
+    }
+    if (typeof World.cacheCliffValues === 'function') {
+      World.cacheCliffValues();
     }
 
     const segmentsNow = data && Array.isArray(data.segments) ? data.segments : [];

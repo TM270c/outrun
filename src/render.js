@@ -64,10 +64,10 @@
 
   const textures = assets ? assets.textures : {};
   const state = Gameplay.state;
-  const areTexturesEnabled = () => debug.textures !== false;
+  const areTexturesEnabled = () => debug.textures !== false && debug.mode !== 'fill';
 
-  const PLAYER_ATLAS_COLUMNS = 9;
-  const PLAYER_ATLAS_ROWS = 9;
+  const PLAYER_ATLAS_COLUMNS = 5;
+  const PLAYER_ATLAS_ROWS = 5;
   const PLAYER_SPRITE_DEADZONE = 0;
   const PLAYER_SPRITE_HEIGHT_DEADZONE = 0;
   const PLAYER_SPRITE_SMOOTH_TIME = 0.12;
@@ -88,6 +88,14 @@
     height: 0,
     initialized: false,
     lastTime: null,
+  };
+
+  const playerAnimState = {
+    wasGrounded: true,
+    activeAnim: null,
+    tick: 0,
+    scaleY: 1.0,
+    airDuration: 0.15,
   };
 
   const randomColorFor = (() => {
@@ -408,6 +416,7 @@
       boostQuadCount: 0,
       physicsSteps: 0,
       segments: 0,
+      solidBreakdown: {},
     });
 
     const stats = {
@@ -501,6 +510,10 @@
       },
       registerSegment(){
         stats.current.segments += 1;
+      },
+      registerSolidType(type){
+        const count = stats.current.solidBreakdown[type] || 0;
+        stats.current.solidBreakdown[type] = count + 1;
       },
       getLastFrameStats(){
         return {
@@ -854,6 +867,7 @@
     if (useTextures){
       glr.drawQuadTextured(tex, quad, uv);
     } else {
+      perf.registerSolidType('horizon');
       glr.drawQuadSolid(quad, randomColorFor(`parallax:${cfg.key || 'layer'}`));
     }
   }
@@ -878,6 +892,7 @@
     cols = clamp(cols, grid.roadColsFar, grid.roadColsNear);
 
     const fNear = fogRoad[0], fFar = fogRoad[2];
+    const isSolid = !texturesEnabled || !roadTex || roadTex === glr.whiteTex;
 
     for (let i = 0; i < rows; i++){
       const t0 = i / rows, t1 = (i + 1) / rows;
@@ -908,6 +923,7 @@
         });
         const uv = { u1:u0, v1:vv0, u2:u1, v2:vv0, u3:u1, v3:vv1, u4:u0, v4:vv1 };
         const fogValues = [fA, fA, fB, fB];
+        if (isSolid) perf.registerSolidType('road');
         if (texturesEnabled && roadTex){
           glr.drawQuadTextured(roadTex, quad, uv, undefined, fogValues);
         } else {
@@ -978,6 +994,8 @@
             ? solidColor
             : randomColorFor(`boost:${segIndex}:${zone.type || 'zone'}`);
           perf.registerBoostQuad();
+          const isSolid = !texturesEnabled || !tex || tex === glr.whiteTex;
+          if (isSolid) perf.registerSolidType('boost');
           if (texturesEnabled && tex) {
             glr.drawQuadTextured(tex, quad, uv, undefined, fog);
           } else {
@@ -1008,6 +1026,8 @@
     const fog = fogArray(fogZ);
     const quad = {x1:x1, y1:y1, x2:x2, y2:y1, x3:x2, y3:y2, x4:x1, y4:y2};
     const useTexture = texturesEnabled && texture;
+    const isSolid = !useTexture || texture === glr.whiteTex;
+    if (isSolid) perf.registerSolidType('sprite');
     if (useTexture) {
       glr.drawQuadTextured(texture, quad, uv, undefined, fog);
     } else {
@@ -1038,6 +1058,8 @@
     const centerY = baseY - hPx * 0.5;
     const quad = makeRotatedQuad(centerX, centerY, wPx, hPx, angleRad || 0);
     const useTexture = texturesEnabled && texture;
+    const isSolid = !useTexture || texture === glr.whiteTex;
+    if (isSolid) perf.registerSolidType('sprite');
     if (useTexture) {
       glr.drawQuadTextured(texture, quad, uv, undefined, fog);
     } else {
@@ -1251,6 +1273,47 @@
         tCursorX += tNumSize + tNumPad;
       }
     }
+
+    // Render Drift Charge
+    if (state.driftState === 'drifting') {
+      const barW = 120;
+      const barH = 8;
+      const cx = W * 0.5;
+      const cy = H - 80;
+
+      const maxCharge = drift.chargeMin || 1;
+      const pct = clamp(state.driftCharge / maxCharge, 0, 1);
+
+      // Background
+      const bgQuad = {
+        x1: cx - barW * 0.5, y1: cy - barH * 0.5,
+        x2: cx + barW * 0.5, y2: cy - barH * 0.5,
+        x3: cx + barW * 0.5, y3: cy + barH * 0.5,
+        x4: cx - barW * 0.5, y4: cy + barH * 0.5,
+      };
+      perf.registerSolidType('hud');
+      glr.drawQuadSolid(bgQuad, [0, 0, 0, 0.5]);
+
+      // Fill
+      if (pct > 0.01) {
+        const margin = 2;
+        const fillW = (barW - margin * 2) * pct;
+        const fillH = barH - margin * 2;
+        const xL = cx - barW * 0.5 + margin;
+        const yT = cy - barH * 0.5 + margin;
+
+        const fillQuad = {
+          x1: xL,         y1: yT,
+          x2: xL + fillW, y2: yT,
+          x3: xL + fillW, y3: yT + fillH,
+          x4: xL,         y4: yT + fillH,
+        };
+
+        const color = state.allowedBoost ? [0.2, 1, 0.4, 1] : [1, 0.7, 0, 1];
+        perf.registerSolidType('hud');
+        glr.drawQuadSolid(fillQuad, color);
+      }
+    }
   }
 
   function renderScene(dt){
@@ -1276,6 +1339,63 @@
     if (state.isMenu) Config.fog.enabled = originalFogEnabled;
     resetPointPool();
     resetStripItemPool();
+
+    // Update Player Animation State (Squash & Stretch)
+    const phys = state.phys;
+    const isGrounded = phys.grounded;
+
+    if (!isGrounded) {
+      playerAnimState.airDuration += dt;
+    }
+
+    const isHopping = phys.nextHopTime > phys.t;
+
+    if (state.jumpPrepTimer > 0) {
+      playerAnimState.activeAnim = 'jump';
+      playerAnimState.tick = 0.15 - state.jumpPrepTimer;
+    }
+
+    if (!isGrounded && playerAnimState.wasGrounded && phys.vy > 0 && isHopping) {
+      if (playerAnimState.activeAnim !== 'jump') {
+        playerAnimState.activeAnim = 'jump';
+        playerAnimState.tick = 0;
+      }
+    } else if (isGrounded && !playerAnimState.wasGrounded) {
+      if (playerAnimState.airDuration > 0.15) {
+        playerAnimState.activeAnim = 'land';
+        playerAnimState.tick = 0;
+      }
+    }
+    if (isGrounded) playerAnimState.airDuration = 0;
+    playerAnimState.wasGrounded = isGrounded;
+
+    if (playerAnimState.activeAnim === 'jump') {
+      playerAnimState.tick += dt;
+      const t = playerAnimState.tick;
+      if (t <= 0.05) {
+        playerAnimState.scaleY = MathUtil.easeOutQuad(1.0, 0.7, t / 0.05);
+      } else if (t <= 0.15) {
+        playerAnimState.scaleY = MathUtil.easeOutQuad(0.7, 1.1, (t - 0.05) / 0.1);
+      } else if (t <= 0.25) {
+        playerAnimState.scaleY = MathUtil.easeOutQuad(1.2, 1.0, (t - 0.15) / 0.1);
+      } else {
+        playerAnimState.scaleY = 1.0;
+        playerAnimState.activeAnim = null;
+      }
+    } else if (playerAnimState.activeAnim === 'land') {
+      playerAnimState.tick += dt;
+      const t = playerAnimState.tick;
+      if (t <= 0.05) {
+        playerAnimState.scaleY = MathUtil.easeOutQuad(1.0, 0.6, t / 0.05);
+      } else if (t <= 0.15) {
+        playerAnimState.scaleY = MathUtil.easeOutQuad(0.6, 1.0, (t - 0.05) / 0.1);
+      } else {
+        playerAnimState.scaleY = 1.0;
+        playerAnimState.activeAnim = null;
+      }
+    } else {
+      playerAnimState.scaleY = 1.0;
+    }
 
     const frame = createCameraFrame();
     renderHorizon();
@@ -1391,7 +1511,7 @@
     let p1 = projectSegPoint(baseSeg.p1, 0, camX - x, camY, sCam);
 
     const startIdx = baseSeg.index;
-    const startCliff = cliffParamsAt(startIdx, 0);
+    const startCliff = baseSeg.cliffData || cliffParamsAt(startIdx, 0);
     let p1LA = projectSegPoint(baseSeg.p1, startCliff.leftA.dy, camX - x, camY, sCam);
     let p1LB = projectSegPoint(baseSeg.p1, startCliff.leftA.dy + startCliff.leftB.dy, camX - x, camY, sCam);
     let p1RA = projectSegPoint(baseSeg.p1, startCliff.rightA.dy, camX - x, camY, sCam);
@@ -1476,8 +1596,9 @@
 
       const boostZonesHere = Array.from(boostZonesSet);
 
-      const cliffStart = cliffParamsAt(idx, 0);
-      const cliffEnd = cliffParamsAt(idxEnd, 1);
+      const cliffStart = seg.cliffData || cliffParamsAt(idx, 0);
+      const nextSeg = segments[(idxEnd + 1) % segments.length];
+      const cliffEnd = nextSeg.cliffData || cliffParamsAt(idxEnd, 1);
 
       // Optimization: Only project cliff points if cliffs are present/visible
       const hasLeft = Math.abs(cliffStart.leftA.dx) > 0.1 || Math.abs(cliffStart.leftA.dy) > 0.1 || 
@@ -1822,7 +1943,7 @@
       const widthNorm = Number.isFinite(playerMeta.wN) ? playerMeta.wN : 0.16;
       const aspect = Number.isFinite(playerMeta.aspect) ? playerMeta.aspect : 0.7;
       const w = widthNorm * state.getKindScale('PLAYER') * roadWidthAt(phys.s) * pixScale;
-      const h = w * aspect;
+      const h = w * aspect * playerAnimState.scaleY;
       const sprite = computePlayerSpriteSamples(frame, playerMeta);
       drawList.push({
         type: 'player',
@@ -1973,8 +2094,11 @@
     const viewCenterX = (HALF_VIEW && HALF_VIEW > 0) ? HALF_VIEW : (W * 0.5);
     const viewCenterY = (H && H > 0) ? H * 0.5 : y;
     const maxRadius = Math.max(1, Math.hypot(viewCenterX || 0, viewCenterY || 0));
+    const snowTex = textures.snowFlake;
+    const useTexture = areTexturesEnabled() && snowTex;
 
     for (let i = 0; i < flakes.length; i++){
+        if (!useTexture || snowTex === glr.whiteTex) perf.registerSolidType('snow');
       const flake = flakes[i];
       const fallT = animTime * flake.speed;
       let normY = (flake.baseY + fallT) % 1;
@@ -2037,7 +2161,11 @@
       }, {});
 
       perf.registerSnowQuad();
-      glr.drawQuadSolid(quad, flakeColor, fogVals);
+      if (useTexture) {
+        glr.drawQuadTextured(snowTex, quad, {u1:0,v1:0,u2:1,v2:0,u3:1,v3:1,u4:0,v4:1}, flakeColor, fogVals);
+      } else {
+        glr.drawQuadSolid(quad, flakeColor, fogVals);
+      }
     }
   }
 
@@ -2107,9 +2235,12 @@
 
       if (solid || !cliffTex) {
         const solidTint = debugFill ? tint : randomColorFor(`cliffL:${segIndex}`);
+        perf.registerSolidType('cliff');
+        perf.registerSolidType('cliff');
         glr.drawQuadSolid(first, solidTint, fogCliff);
         glr.drawQuadSolid(second, solidTint, fogCliff);
       } else {
+        if (cliffTex === glr.whiteTex) { perf.registerSolidType('cliff'); perf.registerSolidType('cliff'); }
         glr.drawQuadTextured(cliffTex, first, uv1, undefined, fogCliff);
         glr.drawQuadTextured(cliffTex, second, uv2, undefined, fogCliff);
       }
@@ -2130,9 +2261,12 @@
 
       if (solid || !cliffTex) {
         const solidTint = debugFill ? tint : randomColorFor(`cliffR:${segIndex}`);
+        perf.registerSolidType('cliff');
+        perf.registerSolidType('cliff');
         glr.drawQuadSolid(first, solidTint, fogCliff);
         glr.drawQuadSolid(second, solidTint, fogCliff);
       } else {
+        if (cliffTex === glr.whiteTex) { perf.registerSolidType('cliff'); perf.registerSolidType('cliff'); }
         glr.drawQuadTextured(cliffTex, first, uv1, undefined, fogCliff);
         glr.drawQuadTextured(cliffTex, second, uv2, undefined, fogCliff);
       }
@@ -2153,6 +2287,7 @@
         y4: y2,
       };
       const roadTint = debugFill ? tint : randomColorFor(`road:${segIndex}`);
+      perf.registerSolidType('road');
       glr.drawQuadSolid(quad, roadTint, fogRoad);
       if (!debugFill && !texturesEnabled){
         drawBoostZonesOnStrip(boostZones, x1, y1, x2, y2, w1, w2, fogRoad, segIndex);
@@ -2182,8 +2317,10 @@
       const quadLPadded = padWithSpriteOverlap(quadL);
       if (texturesEnabled && texRail){
         glr.drawQuadTextured(texRail, quadLPadded, uvL, undefined, railFogL);
+        if (texRail === glr.whiteTex) perf.registerSolidType('rail');
       } else {
         glr.drawQuadSolid(quadLPadded, randomColorFor(`railL:${segIndex}`), railFogL);
+        perf.registerSolidType('rail');
       }
 
       const xR1 = x1 + w1 * track.railInset;
@@ -2203,8 +2340,10 @@
       const quadRPadded = padWithSpriteOverlap(quadR);
       if (texturesEnabled && texRail){
         glr.drawQuadTextured(texRail, quadRPadded, uvR, undefined, railFogR);
+        if (texRail === glr.whiteTex) perf.registerSolidType('rail');
       } else {
         glr.drawQuadSolid(quadRPadded, randomColorFor(`railR:${segIndex}`), railFogR);
+        perf.registerSolidType('rail');
       }
     }
   }
@@ -2226,8 +2365,10 @@
     const shadowTex = texturesEnabled ? textures.shadow : null;
     if (shadowTex) {
       const shUV = { u1: 0, v1: 0, u2: 1, v2: 0, u3: 1, v3: 1, u4: 0, v4: 1 };
+      if (shadowTex === glr.whiteTex) perf.registerSolidType('shadow');
       glr.drawQuadTextured(shadowTex, shQuad, shUV, [1, 1, 1, 1], fogShadow);
     } else {
+      perf.registerSolidType('shadow');
       const shadowColor = texturesEnabled ? [0.13, 0.13, 0.13, 1] : randomColorFor('player:shadow');
       glr.drawQuadSolid(shQuad, shadowColor, fogShadow);
     }
@@ -2261,6 +2402,7 @@
       }];
     }
 
+    if (!texturesEnabled || !texture || texture === glr.whiteTex) perf.registerSolidType('player');
     if (texturesEnabled && texture && samples && samples.length) {
       const sortedSamples = samples
         .slice()
@@ -2318,23 +2460,27 @@
   }
 
   const resetMatte = (() => {
-    const FR_SHRINK = 32, FR_WAIT = 10, FR_EXPAND = 34, FR_TOTAL = FR_SHRINK + FR_WAIT + FR_EXPAND;
-    let active = false, t = 0, scale = 1, didAction = false, mode = 'reset';
+    const D_SHRINK = 32/60, D_WAIT = 10/60, D_EXPAND = 34/60;
+    const D_TOTAL = D_SHRINK + D_WAIT + D_EXPAND;
+    let active = false, timer = 0, scale = 1, didAction = false, mode = 'reset';
     let respawnS = 0, respawnN = 0;
     let transitionCallback = null;
     function start(nextMode='reset', sForRespawn=null, nForRespawn=0, cb=null){
       if (active) return;
-      active = true; t = 0; scale = 1; didAction = false; mode = nextMode;
+      active = true; timer = 0; scale = 1; didAction = false; mode = nextMode;
       transitionCallback = cb;
       if (nextMode === 'respawn') { respawnS = (sForRespawn == null) ? state.phys.s : sForRespawn; respawnN = nForRespawn; }
       state.resetMatteActive = true;
     }
-    function tick(){
+    function tick(dt){
       if (!active) return;
-      if (t < FR_SHRINK) scale = 1 - (t + 1) / FR_SHRINK;
-      else if (t < FR_SHRINK + FR_WAIT) scale = 0;
-      else if (t < FR_TOTAL) { const u = t - (FR_SHRINK + FR_WAIT); scale = (u + 1) / FR_EXPAND; }
-      if (!didAction && t >= FR_SHRINK) {
+      timer += dt;
+      if (timer < D_SHRINK) scale = 1 - (timer / D_SHRINK);
+      else if (timer < D_SHRINK + D_WAIT) scale = 0;
+      else if (timer < D_TOTAL) { const u = timer - (D_SHRINK + D_WAIT); scale = u / D_EXPAND; }
+      else scale = 1;
+
+      if (!didAction && timer >= D_SHRINK) {
         if (mode === 'reset') {
           if (typeof state.callbacks.onResetScene === 'function') state.callbacks.onResetScene();
         } else if (mode === 'respawn') {
@@ -2344,7 +2490,7 @@
         }
         didAction = true;
       }
-      t++; if (t >= FR_TOTAL) { active = false; scale = 1; didAction = false; state.resetMatteActive = false; if (ctxHUD) ctxHUD.clearRect(0,0,HUD_W,HUD_H); }
+      if (timer >= D_TOTAL) { active = false; scale = 1; didAction = false; state.resetMatteActive = false; if (ctxHUD) ctxHUD.clearRect(0,0,HUD_W,HUD_H); }
     }
     function draw(){
       if (!active || !ctxHUD) return;
@@ -2399,7 +2545,7 @@
       let stepsThisFrame = 0;
       while(acc>=step){
         if (typeof stepFn === 'function') stepFn(step);
-        resetMatte.tick();
+        resetMatte.tick(step);
         acc-=step;
         stepsThisFrame += 1;
       }
@@ -2408,7 +2554,6 @@
       perf.endFrame();
       renderOverlay();
       resetMatte.draw();
-      if (state.phys.boostFlashTimer>0) state.phys.boostFlashTimer=Math.max(0, state.phys.boostFlashTimer - dt);
       requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
@@ -2449,7 +2594,7 @@
       startReset(){ resetMatte.start('reset'); },
       startRespawn(s, n=0){ resetMatte.start('respawn', s, n); },
       startTransition(cb){ resetMatte.start('transition', null, 0, cb); },
-      tick(){ resetMatte.tick(); },
+      tick(dt){ resetMatte.tick(dt); },
       draw(){ resetMatte.draw(); },
     },
     renderScene,

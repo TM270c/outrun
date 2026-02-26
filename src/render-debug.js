@@ -306,6 +306,10 @@
             `Snow: ${fmtCount(perfStats.snowQuadCount)} quads across ${fmtCount(perfStats.snowScreenCount)} screens`,
             `Boost quads: ${fmtCount(perfStats.boostQuadCount)} | Physics steps: ${fmtCount(perfStats.physicsSteps)} | Segments: ${fmtCount(perfStats.segments)}`,
           );
+          if (perfStats.solidBreakdown) {
+            const parts = Object.entries(perfStats.solidBreakdown).map(([k, v]) => `${k}:${v}`).join(' ');
+            if (parts) debugLines.push(`Solids: ${parts}`);
+          }
         }
       }
 

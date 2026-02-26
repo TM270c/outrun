@@ -13,7 +13,7 @@ const player = {
   airDrag: 0,           // airborne drag factor
   steerRate: 2.0,       // base steering response
   curveLean: 0.1,       // curve lean contribution
-  hopImpulse: 1400,     // hop launch strength
+  hopImpulse: 2400,     // hop launch strength
   hopCooldown: 0.25,    // seconds between hops
   crestBoost: 1.25,     // crest boost multiplier
   scale: 1.0,           // sprite scale factor
