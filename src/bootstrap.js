@@ -40,6 +40,7 @@ async function loadAssets() {
     const spriteManifest = globalThis.SpriteCatalog.getTextureManifest();
     await loadManifestTextures(spriteManifest);
   }
+  await World.loadAtlasMap('tex/atlas.csv');
 }
 
 function setupCallbacks() {
@@ -64,6 +65,11 @@ function setupCallbacks() {
       Renderer.triggerPickupAnimation();
     }
   };
+  Gameplay.state.callbacks.onRequestPause = () => {
+    if (App && typeof App.togglePause === 'function') {
+      App.togglePause();
+    }
+  };
 }
 
 await loadAssets();
@@ -80,12 +86,7 @@ await Gameplay.resetScene({
   placement: 'tracks/demo/demo-select.csv',
 });
 if (Renderer && Renderer.updateTrackTextures) {
-  await Renderer.updateTrackTextures({
-    road: 'tex/temptex.png',
-    cliff: 'tex/temptex.png',
-    rail: 'tex/temptex.png',
-    horizon: ['tex/temptex.png', 'tex/temptex.png', 'tex/temptex.png'],
-  });
+  await Renderer.updateTrackTextures('tex/temptex-0.png');
 }
 Gameplay.setMenuMode(true);
 

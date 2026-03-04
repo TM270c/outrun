@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Outrun Atlas Editor</title>
+<style>
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #2d2d2d; color: #eee; margin: 0; display: flex; height: 100vh; overflow: hidden; }
+  #sidebar { width: 400px; background: #1e1e1e; border-right: 1px solid #333; display: flex; flex-direction: column; z-index: 10; box-shadow: 2px 0 10px rgba(0,0,0,0.3); }
+  #main { flex: 1; position: relative; overflow: auto; background: #333; display: flex; justify-content: center; align-items: center; }
+  
+  /* Checkerboard background for canvas area */
+  #main::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background-image: 
+      linear-gradient(45deg, #444 25%, transparent 25%), 
+      linear-gradient(-45deg, #444 25%, transparent 25%), 
+      linear-gradient(45deg, transparent 75%, #444 75%), 
+      linear-gradient(-45deg, transparent 75%, #444 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    opacity: 0.5; pointer-events: none;
+  }
+
+  canvas { background: transparent; box-shadow: 0 0 30px rgba(0,0,0,0.5); border: 1px solid #555; }
+  
+  .panel { padding: 15px; border-bottom: 1px solid #333; }
+  .panel h3 { margin: 0 0 10px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #888; }
+  
+  .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  button, .file-btn { 
+    background: #444; color: #ddd; border: 1px solid #555; padding: 8px; 
+    cursor: pointer; font-size: 12px; text-align: center; border-radius: 3px;
+    transition: background 0.2s; display: block; width: 100%; box-sizing: border-box;
+  }
+  button:hover, .file-btn:hover { background: #555; color: #fff; }
+  button.primary { background: #2b6cb0; border-color: #1a4971; color: white; }
+  button.primary:hover { background: #3182ce; }
+  
+  input[type="file"] { display: none; }
+  
+  #itemList { flex: 1; overflow-y: auto; list-style: none; padding: 0; margin: 0; }
+  #itemList li { 
+    padding: 8px 15px; border-bottom: 1px solid #2a2a2a; cursor: pointer; font-size: 13px; 
+    display: flex; align-items: center; transition: background 0.1s;
+  }
+  #itemList li:hover { background: #2a2a2a; }
+  #itemList li.selected { background: #2b6cb0; color: #fff; border-bottom-color: #2b6cb0; }
+  #itemList li .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; }
+  #itemList li .remove { 
+    color: #aaa; cursor: pointer; margin-left: 8px; font-weight: bold; padding: 2px 6px; border-radius: 3px;
+  }
+  #itemList li .remove:hover { background: rgba(255,0,0,0.2); color: #fff; }
+  
+  .props { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px; }
+  .props div { display: flex; flex-direction: column; }
+  .props label { color: #888; margin-bottom: 2px; font-size: 10px; }
+  .props input { 
+    background: #222; border: 1px solid #444; color: white; padding: 4px 6px; border-radius: 3px;
+    font-family: monospace;
+  }
+  .props input:focus { border-color: #2b6cb0; outline: none; }
+  .full-width { grid-column: span 2; }
+
+  #status { font-size: 11px; color: #aaa; margin-top: 5px; text-align: center; min-height: 1.2em; }
+</style>
+</head>
+<body>
+  <div id="sidebar">
+    <div class="panel">
+      <h3>Import</h3>
+      <div class="btn-group">
+        <label class="file-btn">
+          Load PNG
+          <input type="file" id="loadImg" accept="image/png">
+        </label>
+        <label class="file-btn">
+          Load CSV
+          <input type="file" id="loadCsv" accept=".csv">
+        </label>
+      </div>
+      <label class="file-btn" style="margin-bottom: 0;">
+        + Add Sprite Images
+        <input type="file" id="addSprites" accept="image/png" multiple>
+      </label>
+      <div id="status"></div>
+    </div>
+    
+    <div class="panel">
+      <h3>Snapping</h3>
+      <div class="props">
+        <div class="full-width">
+          <label style="display:flex; align-items:center; cursor:pointer;">
+            <input type="checkbox" id="snapEnabled" checked style="width:auto; margin-right:8px;"> Enabled
+          </label>
+        </div>
+        <div><label>Grid X</label><input id="snapX" type="number" value="16"></div>
+        <div><label>Grid Y</label><input id="snapY" type="number" value="16"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="propsPanel" style="display:none;">
+      <h3>Properties</h3>
+      <div class="props">
+        <div class="full-width"><label>ID</label><input id="propId"></div>
+        <div class="full-width"><label>Comment</label><input id="propComment"></div>
+        <div><label>X</label><input id="propX" type="number"></div>
+        <div><label>Y</label><input id="propY" type="number"></div>
+        <div><label>Width</label><input id="propW" type="number"></div>
+        <div><label>Height</label><input id="propH" type="number"></div>
+      </div>
+    </div>
+
+    <div class="panel" style="padding: 10px 15px; background: #252525; border-bottom: 1px solid #333;">
+      <h3>Sprites (<span id="count">0</span>)</h3>
+    </div>
+    <ul id="itemList"></ul>
+
+    <div class="panel" style="margin-top: auto; border-top: 1px solid #333; border-bottom: none;">
+      <h3>Export</h3>
+      <div class="btn-group">
+        <button id="resizeBtn">Resize Atlas</button>
+        <button id="sortBtn">Auto Sort</button>
+      </div>
+      <button id="exportBtn" class="primary">Download PNG & CSV</button>
+    </div>
+  </div>
+
+  <div id="main">
+    <canvas id="canvas" width="1024" height="1024"></canvas>
+  </div>
+
+<script>
+/**
+ * Outrun Atlas Editor
+ * Handles loading, slicing, arranging, and exporting texture atlases.
+ */
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const itemList = document.getElementById('itemList');
+const statusEl = document.getElementById('status');
+
+// State
+let items = []; // { id, x, y, w, h, img, comment }
+let selectedIds = new Set();
+let isDragging = false;
+let dragStart = { x: 0, y: 0 };
+let dragOffsets = []; // { id, dx, dy }
+let scale = 1;
+let snapEnabled = true;
+let snapGrid = { x: 16, y: 16 };
+
+// --- Core Logic ---
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Draw Items
+  items.forEach(item => {
+    if (item.img) {
+      ctx.drawImage(item.img, item.x, item.y, item.w, item.h);
+    } else {
+      // Placeholder if image missing
+      ctx.fillStyle = 'rgba(255, 0, 255, 0.2)';
+      ctx.fillRect(item.x, item.y, item.w, item.h);
+    }
+  });
+
+  // Draw Selection / Outlines
+  ctx.lineWidth = 1;
+  items.forEach(item => {
+    const isSel = selectedIds.has(item.id);
+    ctx.strokeStyle = isSel ? '#00ff00' : 'rgba(255,255,255,0.3)';
+    if (isSel) ctx.lineWidth = 2;
+    ctx.strokeRect(item.x, item.y, item.w, item.h);
+    if (isSel) ctx.lineWidth = 1;
+  });
+}
+
+function updateList() {
+  itemList.innerHTML = '';
+  document.getElementById('count').textContent = items.length;
+  
+  items.forEach(item => {
+    const li = document.createElement('li');
+    if (selectedIds.has(item.id)) li.classList.add('selected');
+    
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = item.id;
+    
+    const del = document.createElement('span');
+    del.className = 'remove';
+    del.textContent = '×';
+    del.onclick = (e) => {
+      e.stopPropagation();
+      deleteItem(item.id);
+    };
+
+    li.onclick = (e) => {
+      if (!e.ctrlKey && !e.metaKey) selectedIds.clear();
+      selectedIds.add(item.id);
+      updateSelection();
+    };
+
+    li.appendChild(name);
+    li.appendChild(del);
+    itemList.appendChild(li);
+  });
+}
+
+function updateSelection() {
+  const panel = document.getElementById('propsPanel');
+  const selectedItems = items.filter(i => selectedIds.has(i.id));
+  
+  if (selectedItems.length === 1) {
+    const item = selectedItems[0];
+    panel.style.display = 'block';
+    document.getElementById('propId').value = item.id;
+    document.getElementById('propComment').value = item.comment || '';
+    document.getElementById('propX').value = item.x;
+    document.getElementById('propY').value = item.y;
+    document.getElementById('propW').value = item.w;
+    document.getElementById('propH').value = item.h;
+  } else {
+    panel.style.display = 'none';
+  }
+  
+  // Update list highlighting
+  Array.from(itemList.children).forEach(li => {
+    const name = li.querySelector('.name').textContent;
+    li.classList.toggle('selected', selectedIds.has(name));
+  });
+  
+  render();
+}
+
+function deleteItem(id) {
+  items = items.filter(i => i.id !== id);
+  selectedIds.delete(id);
+  updateList();
+  render();
+}
+
+function addItem(item) {
+  // Ensure unique ID
+  let baseId = item.id;
+  let counter = 1;
+  while (items.find(i => i.id === item.id)) {
+    item.id = `${baseId}_${counter++}`;
+  }
+  items.push(item);
+  updateList();
+  render();
+}
+
+// --- Input Handling ---
+
+document.getElementById('loadImg').onchange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => {
+    // If we have CSV data loaded (items exist without images), try to slice this image
+    // Otherwise, just resize canvas to match
+    if (canvas.width < img.width) canvas.width = img.width;
+    if (canvas.height < img.height) canvas.height = img.height;
+    
+    // If items exist but have no images, assume this is the atlas source
+    let sliced = 0;
+    items.forEach(item => {
+      if (!item.img) {
+        const c = document.createElement('canvas');
+        c.width = item.w;
+        c.height = item.h;
+        c.getContext('2d').drawImage(img, -item.x, -item.y);
+        const subImg = new Image();
+        subImg.src = c.toDataURL();
+        item.img = subImg;
+        sliced++;
+      }
+    });
+    
+    if (sliced > 0) {
+      statusEl.textContent = `Sliced ${sliced} sprites from atlas`;
+    } else {
+      // Just background reference? No, we want editable sprites.
+      // If no items, maybe user loaded image first. We can't slice without CSV.
+      statusEl.textContent = 'Atlas loaded. Load CSV to slice sprites.';
+      // Store as global ref if needed, but for now we rely on items having images.
+      // We could add it as a "background" item?
+      // addItem({ id: 'background', x: 0, y: 0, w: img.width, h: img.height, img: img, comment: 'Base' });
+    }
+    render();
+  };
+  img.src = URL.createObjectURL(file);
+};
+
+document.getElementById('loadCsv').onchange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    const text = evt.target.result;
+    const lines = text.split(/\r?\n/);
+    let count = 0;
+    // Expect header: id,u0,v0,u1,v1,comment
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      const parts = line.split(',');
+      if (parts.length < 5) continue;
+      
+      const id = parts[0].trim();
+      const u0 = parseFloat(parts[1]);
+      const v0 = parseFloat(parts[2]);
+      const u1 = parseFloat(parts[3]);
+      const v1 = parseFloat(parts[4]);
+      const comment = parts[5] ? parts[5].trim() : '';
+      
+      const x = Math.round(u0 * canvas.width);
+      const y = Math.round(v0 * canvas.height);
+      const w = Math.round((u1 - u0) * canvas.width);
+      const h = Math.round((v1 - v0) * canvas.height);
+      
+      // Check if we already have this item (maybe from image load slicing?)
+      // If not, add it.
+      if (!items.find(it => it.id === id)) {
+        addItem({ id, x, y, w, h, img: null, comment });
+        count++;
+      }
+    }
+    statusEl.textContent = `Loaded ${count} definitions. Load Image to visualize.`;
+    render();
+  };
+  reader.readAsText(file);
+};
+
+document.getElementById('addSprites').onchange = (e) => {
+  Array.from(e.target.files).forEach(file => {
+    const img = new Image();
+    img.onload = () => {
+      const id = file.name.replace(/\.[^/.]+$/, ""); // remove extension
+      // Find empty spot? For now just place at 0,0
+      addItem({ id, x: 0, y: 0, w: img.width, h: img.height, img, comment: 'New' });
+    };
+    img.src = URL.createObjectURL(file);
+  });
+};
+
+document.getElementById('snapEnabled').onchange = (e) => { snapEnabled = e.target.checked; };
+document.getElementById('snapX').onchange = (e) => { snapGrid.x = Math.max(1, parseInt(e.target.value, 10) || 1); };
+document.getElementById('snapY').onchange = (e) => { snapGrid.y = Math.max(1, parseInt(e.target.value, 10) || 1); };
+
+// --- Interaction ---
+
+canvas.onmousedown = (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  
+  // Hit test (reverse order for top-most)
+  let hit = null;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (mx >= it.x && mx < it.x + it.w && my >= it.y && my < it.y + it.h) {
+      hit = it;
+      break;
+    }
+  }
+  
+  if (hit) {
+    if (!e.ctrlKey && !e.metaKey && !selectedIds.has(hit.id)) {
+      selectedIds.clear();
+    }
+    selectedIds.add(hit.id);
+    
+    isDragging = true;
+    dragStart = { x: mx, y: my };
+    dragOffsets = items.filter(i => selectedIds.has(i.id)).map(i => ({ id: i.id, dx: i.x, dy: i.y }));
+    updateSelection();
+  } else {
+    if (!e.ctrlKey) selectedIds.clear();
+    updateSelection();
+  }
+};
+
+window.onmousemove = (e) => {
+  if (isDragging) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    
+    const dx = mx - dragStart.x;
+    const dy = my - dragStart.y;
+    
+    dragOffsets.forEach(off => {
+      const item = items.find(i => i.id === off.id);
+      if (item) {
+        let nx = off.dx + dx;
+        let ny = off.dy + dy;
+        
+        if (snapEnabled) {
+          nx = Math.round(nx / snapGrid.x) * snapGrid.x;
+          ny = Math.round(ny / snapGrid.y) * snapGrid.y;
+        }
+        
+        item.x = nx;
+        item.y = ny;
+      }
+    });
+    
+    // Update props panel if single selection
+    if (selectedIds.size === 1) updateSelection();
+    render();
+  }
+};
+
+window.onmouseup = () => {
+  isDragging = false;
+};
+
+window.addEventListener('keydown', (e) => {
+  if (selectedIds.size === 0) return;
+  if (e.target.tagName === 'INPUT') return;
+
+  let dx = 0;
+  let dy = 0;
+  const step = e.shiftKey ? 10 : 1;
+
+  switch (e.key) {
+    case 'ArrowLeft': dx = -step; break;
+    case 'ArrowRight': dx = step; break;
+    case 'ArrowUp': dy = -step; break;
+    case 'ArrowDown': dy = step; break;
+    default: return;
+  }
+
+  e.preventDefault();
+
+  items.forEach(item => {
+    if (selectedIds.has(item.id)) {
+      item.x += dx;
+      item.y += dy;
+    }
+  });
+  
+  updateSelection();
+});
+
+// --- Properties ---
+
+['propId', 'propComment', 'propX', 'propY', 'propW', 'propH'].forEach(id => {
+  document.getElementById(id).onchange = (e) => {
+    if (selectedIds.size !== 1) return;
+    const item = items.find(i => i.id === Array.from(selectedIds)[0]);
+    if (!item) return;
+    
+    if (id === 'propId') item.id = e.target.value;
+    if (id === 'propComment') item.comment = e.target.value;
+    if (id === 'propX') item.x = parseInt(e.target.value, 10);
+    if (id === 'propY') item.y = parseInt(e.target.value, 10);
+    if (id === 'propW') item.w = parseInt(e.target.value, 10);
+    if (id === 'propH') item.h = parseInt(e.target.value, 10);
+    
+    updateList();
+    render();
+  };
+});
+
+// --- Tools ---
+
+document.getElementById('resizeBtn').onclick = () => {
+  const w = prompt("New Width:", canvas.width);
+  const h = prompt("New Height:", canvas.height);
+  if (w && h) {
+    canvas.width = parseInt(w, 10);
+    canvas.height = parseInt(h, 10);
+    render();
+  }
+};
+
+document.getElementById('sortBtn').onclick = () => {
+  // Simple shelf packing
+  items.sort((a, b) => b.h - a.h); // Sort by height
+  let x = 0;
+  let y = 0;
+  let rowH = 0;
+  const pad = 2;
+  
+  items.forEach(item => {
+    if (x + item.w > canvas.width) {
+      x = 0;
+      y += rowH + pad;
+      rowH = 0;
+    }
+    item.x = x;
+    item.y = y;
+    x += item.w + pad;
+    if (item.h > rowH) rowH = item.h;
+  });
+  render();
+};
+
+document.getElementById('exportBtn').onclick = () => {
+  // 1. Export PNG
+  const link = document.createElement('a');
+  link.download = 'temptex.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+  
+  // 2. Export CSV
+  let csv = "id,u0,v0,u1,v1,comment\n";
+  items.forEach(item => {
+    const u0 = (item.x / canvas.width).toFixed(4);
+    const v0 = (item.y / canvas.height).toFixed(4);
+    const u1 = ((item.x + item.w) / canvas.width).toFixed(4);
+    const v1 = ((item.y + item.h) / canvas.height).toFixed(4);
+    csv += `${item.id},${u0},${v0},${u1},${v1},${item.comment || ''}\n`;
+  });
+  
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const csvLink = document.createElement('a');
+  csvLink.download = 'atlas.csv';
+  csvLink.href = URL.createObjectURL(blob);
+  csvLink.click();
+};
+
+</script>
+</body>
+</html>

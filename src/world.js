@@ -45,59 +45,47 @@
     return `${resolved}${separator}t=${SESSION_TIMESTAMP}`;
   }
 
+  const SHEET_PATH = 'tex/temptex-0.png';
+
   const assetManifest = {
     // Environment
-    road:         resolveAssetUrl('tex/temptex.png'),
-    rail:         resolveAssetUrl('tex/temptex.png'),
-    cliff:        resolveAssetUrl('tex/temptex.png'),
-    horizon1:     resolveAssetUrl('tex/temptex.png'),
-    horizon2:     resolveAssetUrl('tex/temptex.png'),
-    horizon3:     resolveAssetUrl('tex/temptex.png'),
-
-    // Track Selection
-    selectRoad:   resolveAssetUrl('tex/temptex.png'),
-    selectCliff:  resolveAssetUrl('tex/temptex.png'),
-    selectRail:   resolveAssetUrl('tex/temptex.png'),
+    road:         resolveAssetUrl(SHEET_PATH),
+    rail:         resolveAssetUrl(SHEET_PATH),
+    cliff:        resolveAssetUrl(SHEET_PATH),
+    horizon1:     resolveAssetUrl(SHEET_PATH),
+    horizon2:     resolveAssetUrl(SHEET_PATH),
+    horizon3:     resolveAssetUrl(SHEET_PATH),
 
     // Gameplay Elements
-    gate:         resolveAssetUrl('tex/temptex.png'),
-    boostJump:    resolveAssetUrl('tex/temptex.png'),
-    boostDrive:   resolveAssetUrl('tex/temptex.png'),
+    gate:         resolveAssetUrl(SHEET_PATH),
+    boostJump:    resolveAssetUrl(SHEET_PATH),
+    boostDrive:   resolveAssetUrl(SHEET_PATH),
 
     // Player Vehicles
-    car:          resolveAssetUrl('tex/temptex.png'),
-    playerVan:    resolveAssetUrl('tex/temptex.png'),
+    car:          resolveAssetUrl(SHEET_PATH),
+    playerVan:    resolveAssetUrl(SHEET_PATH),
 
     // NPC Vehicles
-    npcCar01:     resolveAssetUrl('tex/temptex.png'),
-    npcCar02:     resolveAssetUrl('tex/temptex.png'),
-    npcCar03:     resolveAssetUrl('tex/temptex.png'),
-    npcVan01:     resolveAssetUrl('tex/temptex.png'),
-    npcVan02:     resolveAssetUrl('tex/temptex.png'),
-    npcVan03:     resolveAssetUrl('tex/temptex.png'),
-    npcSemi01:    resolveAssetUrl('tex/temptex.png'),
-    npcSemi02:    resolveAssetUrl('tex/temptex.png'),
-    npcSemi03:    resolveAssetUrl('tex/temptex.png'),
-    npcSpecial01: resolveAssetUrl('tex/temptex.png'),
-    npcSpecial02: resolveAssetUrl('tex/temptex.png'),
-    npcSpecial03: resolveAssetUrl('tex/temptex.png'),
-    npcSpecial04: resolveAssetUrl('tex/temptex.png'),
-    npcSpecial05: resolveAssetUrl('tex/temptex.png'),
-    npcSpecial06: resolveAssetUrl('tex/temptex.png'),
-    npcSpecial07: resolveAssetUrl('tex/temptex.png'),
-    npcSpecial08: resolveAssetUrl('tex/temptex.png'),
-    npcSpecial09: resolveAssetUrl('tex/temptex.png'),
+    npcCar01:     resolveAssetUrl(SHEET_PATH),
+    npcCar02:     resolveAssetUrl(SHEET_PATH),
+    npcVan01:     resolveAssetUrl(SHEET_PATH),
+    npcVan02:     resolveAssetUrl(SHEET_PATH),
+    npcSemi01:    resolveAssetUrl(SHEET_PATH),
+    npcSemi02:    resolveAssetUrl(SHEET_PATH),
+    npcSpecial01: resolveAssetUrl(SHEET_PATH),
+    npcSpecial02: resolveAssetUrl(SHEET_PATH),
 
     // Effects & UI
-    driftSmoke:   resolveAssetUrl('tex/temptex.png'),
-    sparks:       resolveAssetUrl('tex/temptex.png'),
-    snowFlake:    resolveAssetUrl('tex/temptex.png'),
-    shadow:       resolveAssetUrl('tex/temptex.png'),
-    hud:          resolveAssetUrl('tex/temptex.png'),
-    dash:         resolveAssetUrl('tex/temptex.png'),
+    driftSmoke:   resolveAssetUrl(SHEET_PATH),
+    sparks:       resolveAssetUrl(SHEET_PATH),
+    snowFlake:    resolveAssetUrl(SHEET_PATH),
+    shadow:       resolveAssetUrl(SHEET_PATH),
+    hud:          resolveAssetUrl(SHEET_PATH),
+    dash:         resolveAssetUrl(SHEET_PATH),
   };
   
   const textures = {};
+  const atlasMap = {};
 
   async function loadImage(url){
     return await new Promise((resolve, reject) => {
@@ -130,6 +118,34 @@
     }
 
     return textures;
+  }
+
+  async function loadAtlasMap(url) {
+    const resolved = resolveAssetUrl(url);
+    try {
+      const res = await fetch(resolved);
+      if (!res.ok) throw new Error(`Atlas CSV load failed: ${res.status}`);
+      const text = await res.text();
+      const lines = text.split(/\r?\n/);
+      // Skip header
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        const parts = line.split(',');
+        if (parts.length < 5) continue;
+        const id = parts[0].trim();
+        const u0 = parseFloat(parts[1]);
+        const v0 = parseFloat(parts[2]);
+        const u1 = parseFloat(parts[3]);
+        const v1 = parseFloat(parts[4]);
+        atlasMap[id] = {
+          uMin: u0, vMin: v0, uMax: u1, vMax: v1,
+          u1: u0, v1: v0, u2: u1, v2: v0, u3: u1, v3: v1, u4: u0, v4: v1
+        };
+      }
+    } catch (err) {
+      console.warn('Failed to load atlas map:', err);
+    }
   }
 
   const segmentLength = track.segmentSize;
@@ -870,9 +886,10 @@
       segments,
       get trackLength(){ return trackLength; },
     },
-    assets: { manifest: assetManifest, textures },
+    assets: { manifest: assetManifest, textures, atlasMap },
     resolveAssetUrl,
     loadTexturesWith,
+    loadAtlasMap,
     segmentAtS,
     segmentAtIndex,
     elevationAt,

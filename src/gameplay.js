@@ -308,6 +308,7 @@
       hitboxWN: 0.2,
       aspect: 1,
       tint: [0.9, 0.22, 0.21, 1],
+      textureKey: 'playerCar',
       atlas: { columns: 5, totalFrames: 25 },
       tex() {
         const textures = (World && World.assets && World.assets.textures)
@@ -348,6 +349,7 @@
       aspect: 1,
       tint: [1, 1, 1, 1],
       textureKey: null,
+      frameNames: null,
       atlas: null,
     });
 
@@ -379,6 +381,12 @@
         return null;
       },
       frameUv(frameIndex, spr) {
+        const names = (spr && spr.frameNames) ? spr.frameNames : base.frameNames;
+        if (names && Array.isArray(names) && names.length > 0) {
+          const idx = Number.isFinite(frameIndex) ? Math.floor(frameIndex) : 0;
+          const key = names[Math.max(0, Math.min(names.length - 1, idx))];
+          return (World.assets.atlasMap && World.assets.atlasMap[key]) || null;
+        }
         const atlasInfo = (spr && spr.atlasInfo) ? spr.atlasInfo : base.atlas;
         if (!atlasInfo) return null;
         const columns = Math.max(1, atlasInfo.columns | 0);
@@ -814,6 +822,9 @@
     if (instance.asset && Array.isArray(instance.asset.frames)) {
       sprite.assetFrames = instance.asset.frames.slice();
     }
+    if (metrics.frameNames) {
+      sprite.frameNames = metrics.frameNames;
+    }
     if (metrics.atlas) {
       sprite.atlasInfo = { ...metrics.atlas };
     } else if (instance.asset && instance.asset.type === 'atlas') {
@@ -1004,19 +1015,12 @@
     special: { base: 0.2, variance: 0.15 },
   };
   const NPC_VEHICLE_POOLS = {
-    car: ['npcCar01', 'npcCar02', 'npcCar03'],
-    truck: ['npcVan01', 'npcVan02', 'npcVan03'],
-    semi: ['npcSemi01', 'npcSemi02', 'npcSemi03'],
+    car: ['npcCar01', 'npcCar02'],
+    truck: ['npcVan01', 'npcVan02'],
+    semi: ['npcSemi01', 'npcSemi02'],
     special: [
       'npcSpecial01',
       'npcSpecial02',
-      'npcSpecial03',
-      'npcSpecial04',
-      'npcSpecial05',
-      'npcSpecial06',
-      'npcSpecial07',
-      'npcSpecial08',
-      'npcSpecial09',
     ],
   };
   const NPC_VEHICLE_META = {
@@ -1140,7 +1144,7 @@
     spriteMeta: DEFAULT_SPRITE_META,
     getKindScale: defaultGetKindScale,
     input: { left: false, right: false, up: false, down: false, hop: false },
-    gamepad: { hopPressed: false },
+    gamepad: { hopPressed: false, boostPressed: false, resetPressed: false, pausePressed: false },
     callbacks: {
       onQueueReset: null,
       onToggleOverlay: null,
@@ -1148,6 +1152,7 @@
       onQueueRespawn: null,
       onRaceFinish: null,
       onPickupCollected: null,
+      onRequestPause: null,
     },
     camera: {
       fieldOfView: camera.fovDeg,
@@ -1221,6 +1226,17 @@
     state.boostTimer = Math.max(state.boostTimer, drift.boostTime);
     applyBoostImpulse();
     state.phys.boostFlashTimer = Math.max(state.phys.boostFlashTimer, 0.3);
+  }
+
+  function triggerManualBoost() {
+    const manualCfg = boost.manual || { impulse: 2000, duration: 2.0 };
+    state.boostTimer = Math.max(state.boostTimer, manualCfg.duration);
+    const { phys } = state;
+    const boostCap = player.topSpeed * drift.boostScale;
+    const currentForward = Math.max(phys.vtan, 0);
+    const boosted = currentForward + manualCfg.impulse;
+    phys.vtan = clamp(boosted, 0, boostCap);
+    phys.boostFlashTimer = Math.max(phys.boostFlashTimer, 0.5);
   }
 
   function playerHalfWN() {
@@ -2070,20 +2086,22 @@
     }
   }
 
+  const segmentsCrossedBuffer = [];
+
   function collectSegmentsCrossed(startS, endS) {
-    if (!hasSegments() || !Number.isFinite(segmentLength) || segmentLength <= 0) return [];
+    segmentsCrossedBuffer.length = 0;
+    if (!hasSegments() || !Number.isFinite(segmentLength) || segmentLength <= 0) return segmentsCrossedBuffer;
     const startIndex = Math.floor(startS / segmentLength);
     const endIndex = Math.floor(endS / segmentLength);
     const deltaSegments = endIndex - startIndex;
-    if (deltaSegments === 0) return [];
+    if (deltaSegments === 0) return segmentsCrossedBuffer;
     const direction = deltaSegments > 0 ? 1 : -1;
-    const touched = [];
     for (let step = direction; direction > 0 ? step <= deltaSegments : step >= deltaSegments; step += direction) {
       const idx = wrap(startIndex + step, segments.length);
       const seg = segmentAtIndex(idx);
-      if (seg) touched.push(seg);
+      if (seg) segmentsCrossedBuffer.push(seg);
     }
-    return touched;
+    return segmentsCrossedBuffer;
   }
 
   function updatePhysics(dt) {
@@ -2093,7 +2111,8 @@
     // Gamepad polling
     const gamepads = (navigator.getGamepads && navigator.getGamepads()) || [];
     const gp = gamepads[0];
-    let gpLeft = false, gpRight = false, gpUp = false, gpDown = false, gpHop = false;
+    let gpLeft = false, gpRight = false, gpUp = false, gpDown = false;
+    let gpHop = false;
 
     if (gp) {
       gpUp = gp.buttons[12]?.pressed;
@@ -2106,16 +2125,44 @@
         const threshold = 0.4;
         if (gp.axes[0] < -threshold) gpLeft = true;
         if (gp.axes[0] > threshold) gpRight = true;
-        if (gp.axes[1] < -threshold) gpUp = true;
-        if (gp.axes[1] > threshold) gpDown = true;
+        // Joystick Y-axis ignored for steering-only setup
+        // if (gp.axes[1] < -threshold) gpUp = true;
+        // if (gp.axes[1] > threshold) gpDown = true;
       }
 
-      const btnHop = gp.buttons[0]?.pressed || gp.buttons[5]?.pressed;
+      // Button Mapping (GP2040-CE / Arcade Stick)
+      // B2: Hop (P1)
+      // B3: Boost (P2)
+      // B4: Brake (P3)
+      // B5: Accel (P4)
+      // B8: Reset (S1/Select)
+      // B9: Pause (S2/Start)
+      const btnHop = gp.buttons[2]?.pressed;
+      const btnBoost = gp.buttons[3]?.pressed;
+      const btnBrake = gp.buttons[4]?.pressed;
+      const btnAccel = gp.buttons[5]?.pressed;
+      const btnReset = gp.buttons[8]?.pressed;
+      const btnPause = gp.buttons[9]?.pressed;
+
       if (btnHop && !state.gamepad.hopPressed) {
         gpHop = true;
         if (state.lastSteerDir !== 0) state.pendingDriftDir = state.lastSteerDir;
       }
       state.gamepad.hopPressed = !!btnHop;
+
+      if (btnBoost && !state.gamepad.boostPressed) triggerManualBoost();
+      state.gamepad.boostPressed = !!btnBoost;
+
+      if (btnReset && !state.gamepad.resetPressed) queueReset();
+      state.gamepad.resetPressed = !!btnReset;
+
+      if (btnPause && !state.gamepad.pausePressed) {
+        if (typeof state.callbacks.onRequestPause === 'function') state.callbacks.onRequestPause();
+      }
+      state.gamepad.pausePressed = !!btnPause;
+
+      if (btnAccel) gpUp = true;
+      if (btnBrake) gpDown = true;
     }
 
     // Merge inputs
@@ -2233,10 +2280,19 @@
         phys.vtan = state.menuSpeed;
       } else {
         let a = 0;
-        if (input.up) a += accel;
-        if (input.down) a -= brake;
         a += -player.gravity * ty;
         a += -player.rollDrag * phys.vtan;
+
+        if (input.up) a += accel;
+        if (input.down) {
+          if (phys.vtan > 10) {
+            a -= brake;
+          } else {
+            const reverseCap = player.topSpeed * 0.3;
+            if (phys.vtan > -reverseCap) a -= (accel * 0.5);
+          }
+        }
+
         phys.vtan = clamp(phys.vtan + a * dt, -boostedMaxSpeed, boostedMaxSpeed);
       }
 
@@ -2805,14 +2861,7 @@
     KeyL: () => { if (typeof state.callbacks.onResetScene === 'function') state.callbacks.onResetScene(); },
     KeyZ: (e) => {
       if (e && e.repeat) return;
-      const manualCfg = boost.manual || { impulse: 2000, duration: 2.0 };
-      state.boostTimer = Math.max(state.boostTimer, manualCfg.duration);
-      const { phys } = state;
-      const boostCap = player.topSpeed * drift.boostScale;
-      const currentForward = Math.max(phys.vtan, 0);
-      const boosted = currentForward + manualCfg.impulse;
-      phys.vtan = clamp(boosted, 0, boostCap);
-      phys.boostFlashTimer = Math.max(phys.boostFlashTimer, 0.5);
+      triggerManualBoost();
     },
   };
 

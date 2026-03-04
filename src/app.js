@@ -16,16 +16,16 @@
       label: 'Sports Car',
       description: 'Lightweight racer built for speed.',
       atlasTextureKey: 'playerCar',
-      previewPath: 'tex/player-select-car.png',
-      previewAtlas: { columns: 9, rows: 9, frameCount: 81, frameRate: 24 },
+      previewPath: 'tex/temptex-0.png',
+      previewAtlas: { columns: 5, rows: 5, frameCount: 25, frameRate: 24 },
     },
     {
       key: 'van',
       label: 'Turbo Van',
       description: 'Sturdy ride with room to spare.',
       atlasTextureKey: 'playerVan',
-      previewPath: 'tex/player-select-van.png',
-      previewAtlas: { columns: 9, rows: 9, frameCount: 81, frameRate: 24 },
+      previewPath: 'tex/temptex-0.png',
+      previewAtlas: { columns: 5, rows: 5, frameCount: 25, frameRate: 24 },
     },
   ];
 
@@ -38,12 +38,7 @@
       cliffsPath: 'tracks/demo/demo-cliffs.csv',
       placementPath: 'tracks/demo/demo-placement.csv',
       previewPlacementPath: 'tracks/demo/demo-select.csv',
-      theme: {
-        road: 'tex/temptex.png',
-        cliff: 'tex/temptex.png',
-        rail: 'tex/temptex.png',
-        horizon: ['tex/temptex.png', 'tex/temptex.png', 'tex/temptex.png'],
-      },
+      atlasPath: 'tex/temptex-0.png',
     },
     {
       key: 'summer',
@@ -53,12 +48,7 @@
       cliffsPath: 'tracks/summer/summer-cliffs.csv',
       placementPath: 'tracks/summer/summer-placement.csv',
       previewPlacementPath: 'tracks/summer/summer-select.csv',
-      theme: {
-        road: 'tex/temptex.png',
-        cliff: 'tex/temptex.png',
-        rail: 'tex/temptex.png',
-        horizon: ['tex/temptex.png', 'tex/temptex.png', 'tex/temptex.png'],
-      },
+      atlasPath: 'tex/temptex-1.png',
     },
     {
       key: 'winter',
@@ -68,12 +58,7 @@
       cliffsPath: 'tracks/winter/winter-cliffs.csv',
       placementPath: 'tracks/winter/winter-placement.csv',
       previewPlacementPath: 'tracks/winter/winter-select.csv',
-      theme: {
-        road: 'tex/temptex.png',
-        cliff: 'tex/temptex.png',
-        rail: 'tex/temptex.png',
-        horizon: ['tex/temptex.png', 'tex/temptex.png', 'tex/temptex.png'],
-      },
+      atlasPath: 'tex/temptex-2.png',
     },
   ];
 
@@ -632,8 +617,8 @@
       if (Gameplay.invalidateSpriteCache) Gameplay.invalidateSpriteCache();
       Gameplay.spawnProps(option.previewPlacementPath);
     }
-    if (option && option.theme && Renderer && Renderer.updateTrackTextures) {
-      Renderer.updateTrackTextures(option.theme);
+    if (option && option.atlasPath && Renderer && Renderer.updateTrackTextures) {
+      Renderer.updateTrackTextures(option.atlasPath);
     }
 
     updateMenuLayer();
@@ -729,8 +714,8 @@
       if (Gameplay.invalidateSpriteCache) Gameplay.invalidateSpriteCache();
       Gameplay.spawnProps(option.previewPlacementPath);
     }
-    if (option && option.theme && Renderer && Renderer.updateTrackTextures) {
-      Renderer.updateTrackTextures(option.theme);
+    if (option && option.atlasPath && Renderer && Renderer.updateTrackTextures) {
+      Renderer.updateTrackTextures(option.atlasPath);
     }
   }
 
@@ -844,12 +829,7 @@
     }).catch((err) => console.warn('Attract reset failed', err));
 
     if (Renderer && Renderer.updateTrackTextures) {
-      Renderer.updateTrackTextures({
-        road: 'tex/temptex.png',
-        cliff: 'tex/temptex.png',
-        rail: 'tex/temptex.png',
-        horizon: ['tex/temptex.png', 'tex/temptex.png', 'tex/temptex.png'],
-      });
+      Renderer.updateTrackTextures('tex/temptex-0.png');
     }
   }
 
@@ -893,8 +873,8 @@
     applyVehicleSelection(vehicleKey);
     state.selectedTrackKey = trackKey;
     const trackOption = trackOptions.find(t => t.key === trackKey) || trackOptions[0];
-    if (trackOption && trackOption.theme && Renderer && Renderer.updateTrackTextures) {
-      Renderer.updateTrackTextures(trackOption.theme);
+    if (trackOption && trackOption.atlasPath && Renderer && Renderer.updateTrackTextures) {
+      Renderer.updateTrackTextures(trackOption.atlasPath);
     }
 
     const launch = () => {
@@ -943,6 +923,15 @@
     setMode('settings');
   }
 
+  function togglePause() {
+    if (state.mode === 'playing') {
+      setMode('paused');
+      resetGameplayInputs();
+    } else if (state.mode === 'paused') {
+      resumeRace();
+    }
+  }
+
   function resumeRace() {
     setMode('playing');
   }
@@ -960,12 +949,7 @@
         .catch((err) => console.error('Failed to reset scene after quitting', err));
 
       if (Renderer && Renderer.updateTrackTextures) {
-        Renderer.updateTrackTextures({
-          road: 'tex/temptex.png',
-          cliff: 'tex/temptex.png',
-          rail: 'tex/temptex.png',
-          horizon: ['tex/temptex.png', 'tex/temptex.png', 'tex/temptex.png'],
-        });
+        Renderer.updateTrackTextures('tex/temptex-0.png');
       }
     };
     if (Renderer && Renderer.matte) {
@@ -1443,5 +1427,6 @@
     handleRaceFinish,
     isSnowEnabled,
     isDebugEnabled,
+    togglePause,
   };
 })(window);

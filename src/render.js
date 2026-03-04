@@ -79,9 +79,9 @@
   const PLAYER_SPRITE_SLOPE_MAX_ANGLE_DEG = (sprites.slope && sprites.slope.maxAngleDeg) || 18;
   const PLAYER_SPRITE_SLOPE_MAX_ANGLE_RAD = (PLAYER_SPRITE_SLOPE_MAX_ANGLE_DEG * Math.PI) / 180;
   const PLAYER_SPRITE_HEIGHT_TIGHTEN = (sprites.slope && sprites.slope.heightTighten) || 0.7;
-  const NPC_ATLAS_COLUMNS = 9;
-  const NPC_ATLAS_ROWS = 9;
-  const NPC_COLOR_GRID_SIZE = 9;
+  const NPC_ATLAS_COLUMNS = 5;
+  const NPC_ATLAS_ROWS = 5;
+  const NPC_COLOR_GRID_SIZE = 5;
 
   const playerSpriteBlendState = {
     steer: 0,
@@ -155,6 +155,30 @@
       return cache.get(id);
     };
   })();
+
+  function resolveAtlas(key, localUV) {
+    const map = (World && World.assets && World.assets.atlasMap) ? World.assets.atlasMap : null;
+    const rect = map ? map[key] : null;
+    // Default to 'road' texture (the atlas) if key not found, or whatever texture is loaded for that key
+    const tex = (textures && textures[key]) ? textures[key] : (textures ? textures.road : null);
+    
+    if (!rect) return { tex, uv: localUV };
+
+    const w = rect.uMax - rect.uMin;
+    const h = rect.vMax - rect.vMin;
+    const mapU = (u) => rect.uMin + ((u % 1 + 1) % 1) * w;
+    const mapV = (v) => rect.vMin + ((v % 1 + 1) % 1) * h;
+
+    return {
+      tex,
+      uv: {
+        u1: mapU(localUV.u1), v1: mapV(localUV.v1),
+        u2: mapU(localUV.u2), v2: mapV(localUV.v2),
+        u3: mapU(localUV.u3), v3: mapV(localUV.v3),
+        u4: mapU(localUV.u4), v4: mapV(localUV.v4),
+      }
+    };
+  }
 
   function npcLateralAngleLimit(){
     const fovDeg = (state && state.camera && state.camera.fieldOfView)
@@ -695,6 +719,23 @@
     return item;
   }
 
+  // Object Pool for draw commands to reduce GC pressure
+  const drawCommandPool = [];
+  let drawCommandPoolIndex = 0;
+  const sharedDrawList = [];
+
+  function resetDrawCommandPool() {
+    drawCommandPoolIndex = 0;
+    sharedDrawList.length = 0;
+  }
+
+  function allocDrawCommand() {
+    if (drawCommandPoolIndex >= drawCommandPool.length) {
+      for (let i = 0; i < 256; i++) drawCommandPool.push({});
+    }
+    return drawCommandPool[drawCommandPoolIndex++];
+  }
+
   let overlayApi = {
     setOverlayCanvas(){},
     syncOverlayVisibility(){ return false; },
@@ -863,9 +904,10 @@
       y4: centerY + halfScaledH,
     };
     const uv = {u1: uOffset, v1: 0, u2: uOffset+cfg.uvSpanX, v2: 0, u3: uOffset+cfg.uvSpanX, v3: cfg.uvSpanY, u4: uOffset, v4: cfg.uvSpanY};
-    const useTextures = areTexturesEnabled() && tex;
+    const useTextures = areTexturesEnabled();
+    const { tex: atlasTex, uv: atlasUV } = resolveAtlas(cfg.key, uv);
     if (useTextures){
-      glr.drawQuadTextured(tex, quad, uv);
+      glr.drawQuadTextured(atlasTex, quad, atlasUV);
     } else {
       perf.registerSolidType('horizon');
       glr.drawQuadSolid(quad, randomColorFor(`parallax:${cfg.key || 'layer'}`));
@@ -873,15 +915,14 @@
   }
   function renderHorizon(){
     for (const layer of parallaxLayers){
-      drawParallaxLayer(textures[layer.key], layer);
+      drawParallaxLayer(true, layer);
     }
   }
 
-  function drawRoadStrip(x1,y1,w1, x2,y2,w2, v0, v1, fogRoad, tex, segIndex){
+  function drawRoadStrip(x1,y1,w1, x2,y2,w2, v0, v1, fogRoad, texKey, segIndex){
     if (!glr) return;
     const texturesEnabled = areTexturesEnabled();
-    let roadTex = tex;
-    if (texturesEnabled) roadTex = roadTex || glr.whiteTex;
+    // texKey is string e.g. 'road'
     const roadColorKey = `road:${segIndex}`;
 
     const dy   = Math.abs(y1 - y2);
@@ -892,7 +933,7 @@
     cols = clamp(cols, grid.roadColsFar, grid.roadColsNear);
 
     const fNear = fogRoad[0], fFar = fogRoad[2];
-    const isSolid = !texturesEnabled || !roadTex || roadTex === glr.whiteTex;
+    const isSolid = !texturesEnabled || !texKey;
 
     for (let i = 0; i < rows; i++){
       const t0 = i / rows, t1 = (i + 1) / rows;
@@ -924,8 +965,9 @@
         const uv = { u1:u0, v1:vv0, u2:u1, v2:vv0, u3:u1, v3:vv1, u4:u0, v4:vv1 };
         const fogValues = [fA, fA, fB, fB];
         if (isSolid) perf.registerSolidType('road');
-        if (texturesEnabled && roadTex){
-          glr.drawQuadTextured(roadTex, quad, uv, undefined, fogValues);
+        if (texturesEnabled && texKey){
+          const { tex: atlasTex, uv: atlasUV } = resolveAtlas(texKey, uv);
+          glr.drawQuadTextured(atlasTex, quad, atlasUV, undefined, fogValues);
         } else {
           glr.drawQuadSolid(quad, randomColorFor(roadColorKey), fogValues);
         }
@@ -958,7 +1000,6 @@
       const zoneColors = boost.colors[zone.type] || boost.fallbackColor;
       const solid = Array.isArray(zoneColors.solid) ? zoneColors.solid : boost.fallbackColor.solid;
       const texKey = boost.textures[zone.type];
-      const tex = texKey ? textures[texKey] : null;
 
       for (let i = 0; i < rows; i++){
         const t0 = i / rows, t1 = (i + 1) / rows;
@@ -994,10 +1035,11 @@
             ? solidColor
             : randomColorFor(`boost:${segIndex}:${zone.type || 'zone'}`);
           perf.registerBoostQuad();
-          const isSolid = !texturesEnabled || !tex || tex === glr.whiteTex;
+          const isSolid = !texturesEnabled || !texKey;
           if (isSolid) perf.registerSolidType('boost');
-          if (texturesEnabled && tex) {
-            glr.drawQuadTextured(tex, quad, uv, undefined, fog);
+          if (texturesEnabled && texKey) {
+            const { tex: atlasTex, uv: atlasUV } = resolveAtlas(texKey, uv);
+            glr.drawQuadTextured(atlasTex, quad, atlasUV, undefined, fog);
           } else {
             glr.drawQuadSolid(quad, fallbackColor, fog);
           }
@@ -1013,7 +1055,7 @@
     hPx,
     fogZ,
     tint = [1, 1, 1, 1],
-    texture = null,
+    textureKey = null,
     uvOverride = null,
     colorKey = null,
   ){
@@ -1025,11 +1067,12 @@
     const uv = uvOverride || {u1:0,v1:0,u2:1,v2:0,u3:1,v3:1,u4:0,v4:1};
     const fog = fogArray(fogZ);
     const quad = {x1:x1, y1:y1, x2:x2, y2:y1, x3:x2, y3:y2, x4:x1, y4:y2};
-    const useTexture = texturesEnabled && texture;
-    const isSolid = !useTexture || texture === glr.whiteTex;
+    const useTexture = texturesEnabled && textureKey;
+    const isSolid = !useTexture;
     if (isSolid) perf.registerSolidType('sprite');
     if (useTexture) {
-      glr.drawQuadTextured(texture, quad, uv, undefined, fog);
+      const { tex: atlasTex, uv: atlasUV } = resolveAtlas(textureKey, uv);
+      glr.drawQuadTextured(atlasTex, quad, atlasUV, undefined, fog);
     } else {
       const solidTint = Array.isArray(tint)
         ? tint
@@ -1045,7 +1088,7 @@
     hPx,
     fogZ,
     tint = [1, 1, 1, 1],
-    texture = null,
+    textureKey = null,
     uvOverride = null,
     colorKey = null,
     angleRad = 0,
@@ -1057,11 +1100,12 @@
     const centerX = anchorX;
     const centerY = baseY - hPx * 0.5;
     const quad = makeRotatedQuad(centerX, centerY, wPx, hPx, angleRad || 0);
-    const useTexture = texturesEnabled && texture;
-    const isSolid = !useTexture || texture === glr.whiteTex;
+    const useTexture = texturesEnabled && textureKey;
+    const isSolid = !useTexture;
     if (isSolid) perf.registerSolidType('sprite');
     if (useTexture) {
-      glr.drawQuadTextured(texture, quad, uv, undefined, fog);
+      const { tex: atlasTex, uv: atlasUV } = resolveAtlas(textureKey, uv);
+      glr.drawQuadTextured(atlasTex, quad, atlasUV, undefined, fog);
     } else {
       const solidTint = Array.isArray(tint)
         ? tint
@@ -1118,8 +1162,7 @@
   function renderHUD(dt){
     if (state.isMenu) return;
     if (!areTexturesEnabled()) return;
-    const hudTex = textures.hud;
-    if (!hudTex) return;
+    const hudKey = 'hud';
 
     glr.setRollPivot(0, 0, 0);
 
@@ -1162,7 +1205,8 @@
       x4: cx - halfS, y4: cy + halfS
     };
 
-    glr.drawQuadTextured(hudTex, iconQuad, iconUV);
+    const { tex: iconAtlas, uv: iconAtlasUV } = resolveAtlas(hudKey, iconUV);
+    glr.drawQuadTextured(iconAtlas, iconQuad, iconAtlasUV);
 
     const str = String(Math.max(0, Math.floor(count)));
     let cursorX = iconX + iconSize + 4;
@@ -1192,7 +1236,8 @@
         x4: cursorX, y4: cursorY + numSize
       };
 
-      glr.drawQuadTextured(hudTex, numQuad, numUV);
+      const { tex: numAtlas, uv: numAtlasUV } = resolveAtlas(hudKey, numUV);
+      glr.drawQuadTextured(numAtlas, numQuad, numAtlasUV);
       cursorX += numSize + numPad;
     }
 
@@ -1232,7 +1277,8 @@
         x3: curX + iconSize, y3: curY + iconSize,
         x4: curX, y4: curY + iconSize
       };
-      glr.drawQuadTextured(hudTex, flyQuad, iconUV);
+      const { tex: flyAtlas, uv: flyAtlasUV } = resolveAtlas(hudKey, iconUV);
+      glr.drawQuadTextured(flyAtlas, flyQuad, flyAtlasUV);
     }
 
     // Render Timer
@@ -1269,7 +1315,8 @@
           x4: tCursorX, y4: tCursorY + tNumSize
         };
 
-        glr.drawQuadTextured(hudTex, numQuad, numUV);
+        const { tex: tAtlas, uv: tAtlasUV } = resolveAtlas(hudKey, numUV);
+        glr.drawQuadTextured(tAtlas, numQuad, tAtlasUV);
         tCursorX += tNumSize + tNumPad;
       }
     }
@@ -1339,6 +1386,7 @@
     if (state.isMenu) Config.fog.enabled = originalFogEnabled;
     resetPointPool();
     resetStripItemPool();
+    resetDrawCommandPool();
 
     // Update Player Animation State (Squash & Stretch)
     const phys = state.phys;
@@ -1423,7 +1471,7 @@
 
     // Use wrapped sCam for world generation, but original linear sCam for player projection
     const worldFrame = { ...frame, sCam: sCamWorld };
-    const drawList = buildWorldDrawList(baseSeg, basePct, worldFrame, zoneData);
+    const drawList = buildWorldDrawList(baseSeg, basePct, worldFrame, zoneData, sharedDrawList);
     enqueuePlayer(drawList, frame);
     enqueueMenuGhost(drawList, frame);
 
@@ -1431,8 +1479,8 @@
     renderDrawList(drawList);
 
     // Render Title Dash
-    if (state.titleOpacity > 0.01 && textures.dash) {
-      const dashTex = textures.dash;
+    if (state.titleOpacity > 0.01) {
+      const dashKey = 'dash';
       const opacity = state.titleOpacity;
       const texW = 512; // Assuming standard size, or we could use aspect ratio
       const texH = 256;
@@ -1451,7 +1499,8 @@
 
       const quad = { x1: cx - w/2, y1: cy - h/2, x2: cx + w/2, y2: cy - h/2, x3: cx + w/2, y3: cy + h/2, x4: cx - w/2, y4: cy + h/2 };
       const uv = { u1: 0, v1: 0, u2: 1, v2: 0, u3: 1, v3: 1, u4: 0, v4: 1 };
-      glr.drawQuadTextured(dashTex, quad, uv, [1, 1, 1, opacity]);
+      const { tex: dashAtlas, uv: dashAtlasUV } = resolveAtlas(dashKey, uv);
+      glr.drawQuadTextured(dashAtlas, quad, dashAtlasUV, [1, 1, 1, opacity]);
     }
 
     renderHUD(dt);
@@ -1495,9 +1544,8 @@
     state.playerTiltDeg += (cliffDeg - state.playerTiltDeg) * 0.35;
   }
 
-  function buildWorldDrawList(baseSeg, basePct, frame, zoneData){
+  function buildWorldDrawList(baseSeg, basePct, frame, zoneData, drawList){
     const { sCam, camX, camY } = frame;
-    const drawList = [];
     const trackLength = getTrackLength();
     const SPRITE_META = state.spriteMeta;
     const snowMaxSegments = Number.isFinite(snowScreenDistance)
@@ -1661,32 +1709,32 @@
       let [v0Cliff, v1Cliff] = vSpanForSeg(zoneData.cliff, idx);
       v1Cliff = v0Cliff + (v1Cliff - v0Cliff) * step;
 
-      drawList.push({
-        type: 'strip',
-        depth,
-        segIndex: idx,
-        seg,
-        cameraOffset: n,
-        visibleRoad,
-        boostZones: boostZonesHere,
-        p1,
-        p2,
-        w1,
-        w2,
-        L,
-        R,
-        v0Road,
-        v1Road,
-        v0Rail,
-        v1Rail,
-        v0Cliff,
-        v1Cliff,
-        fogRoad,
-        p1LS,
-        p2LS,
-        p1RS,
-        p2RS,
-      });
+      const stripCmd = allocDrawCommand();
+      stripCmd.type = 'strip';
+      stripCmd.depth = depth;
+      stripCmd.segIndex = idx;
+      stripCmd.seg = seg;
+      stripCmd.cameraOffset = n;
+      stripCmd.visibleRoad = visibleRoad;
+      stripCmd.boostZones = boostZonesHere;
+      stripCmd.p1 = p1;
+      stripCmd.p2 = p2;
+      stripCmd.w1 = w1;
+      stripCmd.w2 = w2;
+      stripCmd.L = L;
+      stripCmd.R = R;
+      stripCmd.v0Road = v0Road;
+      stripCmd.v1Road = v1Road;
+      stripCmd.v0Rail = v0Rail;
+      stripCmd.v1Rail = v1Rail;
+      stripCmd.v0Cliff = v0Cliff;
+      stripCmd.v1Cliff = v1Cliff;
+      stripCmd.fogRoad = fogRoad;
+      stripCmd.p1LS = p1LS;
+      stripCmd.p2LS = p2LS;
+      stripCmd.p1RS = p1RS;
+      stripCmd.p2RS = p2RS;
+      drawList.push(stripCmd);
 
       for (const item of currentStripItems) {
         if (item.type === 'car') {
@@ -1709,34 +1757,33 @@
         const npcColor = npcColorForCar(car, camX, camY, sCam);
         const npcTex = (() => {
           const texKey = car && car.texKey;
-          if (texKey && textures[texKey]) return textures[texKey];
+          if (texKey) return texKey;
           const fallbackKeys = [
             'npcCar01', 'npcCar02', 'npcCar03',
             'npcVan01', 'npcVan02', 'npcVan03',
             'npcSemi01', 'npcSemi02', 'npcSemi03',
             'npcSpecial01',
           ];
-          for (const key of fallbackKeys) {
-            if (textures[key]) return textures[key];
-          }
-          return textures.car || (car.meta && typeof car.meta.tex === 'function' ? car.meta.tex() : null);
+          // Return first fallback key that exists in UV map? 
+          // For now just return 'car' if specific key missing
+          return 'car'; 
         })();
         const npcUv = npcAtlasUvFromBuckets(npcColor.buckets);
-        drawList.push({
-          type: 'npc',
-          depth: zObj,
-          x: xCenter,
-          y: yBase,
-          w: wPx,
-          h: hPx,
-          z: zObj,
-          tint: npcColor.color,
-          tex: npcTex,
-          uv: npcUv,
-          colorKey: `npc:${car.type || 'car'}`,
-          npcColorIndex: npcColor.index,
-          npcColorBuckets: npcColor.buckets,
-        });
+        const npcCmd = allocDrawCommand();
+        npcCmd.type = 'npc';
+        npcCmd.depth = zObj;
+        npcCmd.x = xCenter;
+        npcCmd.y = yBase;
+        npcCmd.w = wPx;
+        npcCmd.h = hPx;
+        npcCmd.z = zObj;
+        npcCmd.tint = npcColor.color;
+        npcCmd.tex = npcTex; // Now a string key
+        npcCmd.uv = npcUv;
+        npcCmd.colorKey = `npc:${car.type || 'car'}`;
+        npcCmd.npcColorIndex = npcColor.index;
+        npcCmd.npcColorBuckets = npcColor.buckets;
+        drawList.push(npcCmd);
         } else if (item.type === 'snowScreen') {
           const subSeg = item.obj;
           const t = (item.i + 0.5) / step;
@@ -1753,16 +1800,16 @@
             : [1, 1, 1, 1];
 
           if (sizePx > 0) {
-            drawList.push({
-              type: 'snowScreen',
-              depth: zMid + 1e-3,
-              x: centerX,
-              y: centerY,
-              size: sizePx,
-              color,
-              z: zMid,
-              segIndex: subSeg.index,
-            });
+            const snowCmd = allocDrawCommand();
+            snowCmd.type = 'snowScreen';
+            snowCmd.depth = zMid + 1e-3;
+            snowCmd.x = centerX;
+            snowCmd.y = centerY;
+            snowCmd.size = sizePx;
+            snowCmd.color = color;
+            snowCmd.z = zMid;
+            snowCmd.segIndex = subSeg.index;
+            drawList.push(snowCmd);
           }
         } else if (item.type === 'sprite') {
           const spr = item.obj;
@@ -1850,9 +1897,9 @@
         const screenOffsetY = Number.isFinite(spr.screenOffsetY) ? spr.screenOffsetY : 0;
         const drawX = xCenter + screenOffsetX;
         const drawY = yBase + screenOffsetY;
-        const texture = typeof meta.tex === 'function' ? meta.tex(spr) : (meta.tex || null);
+        const textureKey = (spr && spr.assetKey) ? spr.assetKey : (meta.textureKey || null);
         let uv = null;
-        if (texture && typeof meta.frameUv === 'function'){
+        if (textureKey && typeof meta.frameUv === 'function'){
           const frameIdx = Number.isFinite(spr && spr.animFrame)
             ? spr.animFrame
             : ((spr && spr.animation && Number.isFinite(spr.animation.frame)) ? spr.animation.frame : 0);
@@ -1860,21 +1907,21 @@
         } else if (spr && spr.uv) {
           uv = spr.uv;
         }
-        drawList.push({
-          type: 'prop',
-          depth: zObj,
-          x: drawX,
-          y: drawY,
-          w: wPx,
-          h: hPx,
-          z: zObj,
-          tint: meta.tint,
-          tex: texture,
-          uv,
-          angle,
-          kind: spr.kind || null,
-          colorKey: `prop:${spr.kind || 'generic'}`,
-        });
+        const propCmd = allocDrawCommand();
+        propCmd.type = 'prop';
+        propCmd.depth = zObj;
+        propCmd.x = drawX;
+        propCmd.y = drawY;
+        propCmd.w = wPx;
+        propCmd.h = hPx;
+        propCmd.z = zObj;
+        propCmd.tint = meta.tint;
+        propCmd.tex = textureKey;
+        propCmd.uv = uv;
+        propCmd.angle = angle;
+        propCmd.kind = spr.kind || null;
+        propCmd.colorKey = `prop:${spr.kind || 'generic'}`;
+        drawList.push(propCmd);
       }
       }
       n += step;
@@ -1945,19 +1992,19 @@
       const w = widthNorm * state.getKindScale('PLAYER') * roadWidthAt(phys.s) * pixScale;
       const h = w * aspect * playerAnimState.scaleY;
       const sprite = computePlayerSpriteSamples(frame, playerMeta);
-      drawList.push({
-        type: 'player',
-        depth: body.camera.z - 1e-3,
-        x: body.screen.x,
-        w,
-        h,
-        bodyY: body.screen.y,
-        shadowY: shadow.screen.y,
-        zBody: body.camera.z,
-        zShadow: shadow.camera.z,
-        meta: playerMeta,
-        sprite,
-      });
+      const playerCmd = allocDrawCommand();
+      playerCmd.type = 'player';
+      playerCmd.depth = body.camera.z - 1e-3;
+      playerCmd.x = body.screen.x;
+      playerCmd.w = w;
+      playerCmd.h = h;
+      playerCmd.bodyY = body.screen.y;
+      playerCmd.shadowY = shadow.screen.y;
+      playerCmd.zBody = body.camera.z;
+      playerCmd.zShadow = shadow.camera.z;
+      playerCmd.meta = playerMeta;
+      playerCmd.sprite = sprite;
+      drawList.push(playerCmd);
     }
   }
 
@@ -1988,19 +2035,22 @@
       const w = widthNorm * state.getKindScale('PLAYER') * roadWidthAt(phys.s) * pixScale;
       const h = w * aspect;
       
-      const ghostTex = textures[ghost.textureKey] || textures.car;
-      const sprite = computePlayerSpriteSamples(frame, { ...playerMeta, tex: () => ghostTex });
+      const ghostKey = ghost.textureKey || 'car';
+      const sprite = computePlayerSpriteSamples(frame, { ...playerMeta, tex: () => ghostKey });
       
-      drawList.push({
-        type: 'player',
-        depth: body.camera.z - 1e-3,
-        x: body.screen.x,
-        w, h,
-        bodyY: body.screen.y, shadowY: shadow.screen.y,
-        zBody: body.camera.z, zShadow: shadow.camera.z,
-        meta: playerMeta,
-        sprite: { ...sprite, texture: ghostTex }
-      });
+      const ghostCmd = allocDrawCommand();
+      ghostCmd.type = 'player';
+      ghostCmd.depth = body.camera.z - 1e-3;
+      ghostCmd.x = body.screen.x;
+      ghostCmd.w = w;
+      ghostCmd.h = h;
+      ghostCmd.bodyY = body.screen.y;
+      ghostCmd.shadowY = shadow.screen.y;
+      ghostCmd.zBody = body.camera.z;
+      ghostCmd.zShadow = shadow.camera.z;
+      ghostCmd.meta = playerMeta;
+      ghostCmd.sprite = { ...sprite, textureKey: ghostKey };
+      drawList.push(ghostCmd);
     }
   }
 
@@ -2023,7 +2073,7 @@
           item.h,
           item.z,
           item.tint,
-          item.tex,
+          item.tex, // string key
           item.uv,
           item.colorKey,
         );
@@ -2038,7 +2088,7 @@
             item.h,
             item.z,
             item.tint,
-            item.tex,
+            item.tex, // string key
             item.uv,
             item.colorKey,
             item.angle,
@@ -2051,7 +2101,7 @@
             item.h,
             item.z,
             item.tint,
-            item.tex,
+            item.tex, // string key
             item.uv,
             item.colorKey,
           );
@@ -2094,11 +2144,11 @@
     const viewCenterX = (HALF_VIEW && HALF_VIEW > 0) ? HALF_VIEW : (W * 0.5);
     const viewCenterY = (H && H > 0) ? H * 0.5 : y;
     const maxRadius = Math.max(1, Math.hypot(viewCenterX || 0, viewCenterY || 0));
-    const snowTex = textures.snowFlake;
-    const useTexture = areTexturesEnabled() && snowTex;
+    const snowKey = 'snowFlake';
+    const useTexture = areTexturesEnabled();
 
     for (let i = 0; i < flakes.length; i++){
-        if (!useTexture || snowTex === glr.whiteTex) perf.registerSolidType('snow');
+        if (!useTexture) perf.registerSolidType('snow');
       const flake = flakes[i];
       const fallT = animTime * flake.speed;
       let normY = (flake.baseY + fallT) % 1;
@@ -2162,7 +2212,8 @@
 
       perf.registerSnowQuad();
       if (useTexture) {
-        glr.drawQuadTextured(snowTex, quad, {u1:0,v1:0,u2:1,v2:0,u3:1,v3:1,u4:0,v4:1}, flakeColor, fogVals);
+        const { tex: snowAtlas, uv: snowAtlasUV } = resolveAtlas(snowKey, {u1:0,v1:0,u2:1,v2:0,u3:1,v3:1,u4:0,v4:1});
+        glr.drawQuadTextured(snowAtlas, quad, snowAtlasUV, flakeColor, fogVals);
       } else {
         glr.drawQuadSolid(quad, flakeColor, fogVals);
       }
@@ -2212,7 +2263,7 @@
     const group = ((segIndex / debug.span) | 0) % 2;
     const tint = group ? debug.colors.a : debug.colors.b;
     const debugFill = debug.mode === 'fill';
-    const cliffTex = texturesEnabled ? (textures.cliff || glr.whiteTex) : null;
+      const cliffTexKey = texturesEnabled ? 'cliff' : null;
     const fillCliffs = debugFill || !texturesEnabled;
 
     const leftQuadA = L ? padWithSpriteOverlap(L.quadA) : null;
@@ -2233,16 +2284,17 @@
       const uv1 = bIsHigher ? uvA : uvB;
       const uv2 = bIsHigher ? uvB : uvA;
 
-      if (solid || !cliffTex) {
+        if (solid || !cliffTexKey) {
         const solidTint = debugFill ? tint : randomColorFor(`cliffL:${segIndex}`);
         perf.registerSolidType('cliff');
         perf.registerSolidType('cliff');
         glr.drawQuadSolid(first, solidTint, fogCliff);
         glr.drawQuadSolid(second, solidTint, fogCliff);
       } else {
-        if (cliffTex === glr.whiteTex) { perf.registerSolidType('cliff'); perf.registerSolidType('cliff'); }
-        glr.drawQuadTextured(cliffTex, first, uv1, undefined, fogCliff);
-        glr.drawQuadTextured(cliffTex, second, uv2, undefined, fogCliff);
+          const { tex: t1, uv: u1 } = resolveAtlas(cliffTexKey, uv1);
+          const { tex: t2, uv: u2 } = resolveAtlas(cliffTexKey, uv2);
+          glr.drawQuadTextured(t1, first, u1, undefined, fogCliff);
+          glr.drawQuadTextured(t2, second, u2, undefined, fogCliff);
       }
     };
 
@@ -2259,16 +2311,17 @@
       const uv1 = bIsHigher ? uvA : uvB;
       const uv2 = bIsHigher ? uvB : uvA;
 
-      if (solid || !cliffTex) {
+        if (solid || !cliffTexKey) {
         const solidTint = debugFill ? tint : randomColorFor(`cliffR:${segIndex}`);
         perf.registerSolidType('cliff');
         perf.registerSolidType('cliff');
         glr.drawQuadSolid(first, solidTint, fogCliff);
         glr.drawQuadSolid(second, solidTint, fogCliff);
       } else {
-        if (cliffTex === glr.whiteTex) { perf.registerSolidType('cliff'); perf.registerSolidType('cliff'); }
-        glr.drawQuadTextured(cliffTex, first, uv1, undefined, fogCliff);
-        glr.drawQuadTextured(cliffTex, second, uv2, undefined, fogCliff);
+          const { tex: t1, uv: u1 } = resolveAtlas(cliffTexKey, uv1);
+          const { tex: t2, uv: u2 } = resolveAtlas(cliffTexKey, uv2);
+          glr.drawQuadTextured(t1, first, u1, undefined, fogCliff);
+          glr.drawQuadTextured(t2, second, u2, undefined, fogCliff);
       }
     };
 
@@ -2293,8 +2346,8 @@
         drawBoostZonesOnStrip(boostZones, x1, y1, x2, y2, w1, w2, fogRoad, segIndex);
       }
     } else {
-      const roadTex = textures.road || glr.whiteTex;
-      drawRoadStrip(x1, y1, w1, x2, y2, w2, v0Road, v1Road, fogRoad, roadTex, segIndex);
+        const roadTex = 'road';
+        drawRoadStrip(x1, y1, w1, x2, y2, w2, v0Road, v1Road, fogRoad, roadTex, segIndex);
       drawBoostZonesOnStrip(boostZones, x1, y1, x2, y2, w1, w2, fogRoad, segIndex);
     }
 
@@ -2302,7 +2355,7 @@
     if (R && !rightIsNegative) drawRightCliffs(fillCliffs);
 
     if (seg && seg.features && seg.features.rail){
-      const texRail = texturesEnabled ? (textures.rail || glr.whiteTex) : null;
+        const texRailKey = texturesEnabled ? 'rail' : null;
 
       const xL1 = x1 - w1 * track.railInset;
       const xL2 = x2 - w2 * track.railInset;
@@ -2315,9 +2368,9 @@
       const uvL = { u1: 0, v1: v0Rail, u2: 1, v2: v0Rail, u3: 1, v3: v1Rail, u4: 0, v4: v1Rail };
       const railFogL = fogArray(p1LS.camera.z, p2LS.camera.z);
       const quadLPadded = padWithSpriteOverlap(quadL);
-      if (texturesEnabled && texRail){
-        glr.drawQuadTextured(texRail, quadLPadded, uvL, undefined, railFogL);
-        if (texRail === glr.whiteTex) perf.registerSolidType('rail');
+        if (texturesEnabled && texRailKey){
+          const { tex: tL, uv: uL } = resolveAtlas(texRailKey, uvL);
+          glr.drawQuadTextured(tL, quadLPadded, uL, undefined, railFogL);
       } else {
         glr.drawQuadSolid(quadLPadded, randomColorFor(`railL:${segIndex}`), railFogL);
         perf.registerSolidType('rail');
@@ -2338,9 +2391,9 @@
       const uvR = { u1: 0, v1: v0Rail, u2: 1, v2: v0Rail, u3: 1, v3: v1Rail, u4: 0, v4: v1Rail };
       const railFogR = fogArray(p1RS.camera.z, p2RS.camera.z);
       const quadRPadded = padWithSpriteOverlap(quadR);
-      if (texturesEnabled && texRail){
-        glr.drawQuadTextured(texRail, quadRPadded, uvR, undefined, railFogR);
-        if (texRail === glr.whiteTex) perf.registerSolidType('rail');
+        if (texturesEnabled && texRailKey){
+          const { tex: tR, uv: uR } = resolveAtlas(texRailKey, uvR);
+          glr.drawQuadTextured(tR, quadRPadded, uR, undefined, railFogR);
       } else {
         glr.drawQuadSolid(quadRPadded, randomColorFor(`railR:${segIndex}`), railFogR);
         perf.registerSolidType('rail');
@@ -2362,11 +2415,11 @@
     const ang = (state.playerTiltDeg * Math.PI) / 180;
 
     const shQuad = makeRotatedQuad(shCX, shCY, item.w, shH, ang);
-    const shadowTex = texturesEnabled ? textures.shadow : null;
-    if (shadowTex) {
+    const shadowKey = texturesEnabled ? 'shadow' : null;
+    if (shadowKey) {
       const shUV = { u1: 0, v1: 0, u2: 1, v2: 0, u3: 1, v3: 1, u4: 0, v4: 1 };
-      if (shadowTex === glr.whiteTex) perf.registerSolidType('shadow');
-      glr.drawQuadTextured(shadowTex, shQuad, shUV, [1, 1, 1, 1], fogShadow);
+      const { tex: shAtlas, uv: shAtlasUV } = resolveAtlas(shadowKey, shUV);
+      glr.drawQuadTextured(shAtlas, shQuad, shAtlasUV, [1, 1, 1, 1], fogShadow);
     } else {
       perf.registerSolidType('shadow');
       const shadowColor = texturesEnabled ? [0.13, 0.13, 0.13, 1] : randomColorFor('player:shadow');
@@ -2376,9 +2429,10 @@
     const bodyQuad = makeRotatedQuad(bodyCX, bodyCY, item.w, item.h, ang);
     const meta = (item && item.meta) || (state.spriteMeta && state.spriteMeta.PLAYER) || {};
     const spriteInfo = item && item.sprite ? item.sprite : null;
-    const texture = spriteInfo && spriteInfo.texture
-      ? spriteInfo.texture
-      : (typeof meta.tex === 'function' ? meta.tex() : null);
+    // item.sprite.textureKey is set in computePlayerSpriteSamples
+    const textureKey = (spriteInfo && spriteInfo.textureKey)
+      ? spriteInfo.textureKey
+      : (meta.textureKey || 'playerCar');
     const atlasColumns = Math.max(1, spriteInfo && spriteInfo.columns
       ? spriteInfo.columns
       : ((meta.atlas && meta.atlas.columns) || PLAYER_ATLAS_COLUMNS));
@@ -2393,7 +2447,7 @@
     let samples = spriteInfo && Array.isArray(spriteInfo.samples)
       ? spriteInfo.samples.slice()
       : [];
-    if ((!samples || !samples.length) && texture) {
+    if ((!samples || !samples.length) && textureKey) {
       samples = [{
         col: centerCol,
         row: centerRow,
@@ -2402,8 +2456,8 @@
       }];
     }
 
-    if (!texturesEnabled || !texture || texture === glr.whiteTex) perf.registerSolidType('player');
-    if (texturesEnabled && texture && samples && samples.length) {
+    if (!texturesEnabled || !textureKey) perf.registerSolidType('player');
+    if (texturesEnabled && textureKey && samples && samples.length) {
       const sortedSamples = samples
         .slice()
         .sort((a, b) => (b.weight || 0) - (a.weight || 0))
@@ -2415,10 +2469,11 @@
           const firstWeight = clamp(first.weight || 0, 0, 1);
           if (firstWeight > 1e-4) {
             gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ZERO);
+            const { tex: t1, uv: u1 } = resolveAtlas(textureKey, first.uv);
             glr.drawQuadTextured(
-              texture,
+              t1,
               bodyQuad,
-              first.uv,
+              u1,
               [firstWeight, firstWeight, firstWeight, 1],
               fogBody,
             );
@@ -2428,10 +2483,11 @@
             for (const sample of rest) {
               const weight = clamp(sample.weight || 0, 0, 1);
               if (weight <= 1e-4) continue;
+              const { tex: tN, uv: uN } = resolveAtlas(textureKey, sample.uv);
               glr.drawQuadTextured(
-                texture,
+                tN,
                 bodyQuad,
-                sample.uv,
+                uN,
                 [weight, weight, weight, 1],
                 fogBody,
               );
@@ -2439,8 +2495,8 @@
           }
           gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         } else {
-          const sample = sortedSamples[0];
-          glr.drawQuadTextured(texture, bodyQuad, sample.uv, undefined, fogBody);
+          const { tex: t1, uv: u1 } = resolveAtlas(textureKey, sortedSamples[0].uv);
+          glr.drawQuadTextured(t1, bodyQuad, u1, undefined, fogBody);
         }
       } else {
         const fallbackTint = Array.isArray(meta.tint) ? meta.tint : [1, 1, 1, 1];
@@ -2559,32 +2615,21 @@
     requestAnimationFrame(loop);
   }
 
-  async function updateTrackTextures(theme) {
-    if (!glr || !theme) return;
-    const { road, cliff, rail, horizon } = theme;
+  async function updateTrackTextures(atlasPath) {
+    if (!glr || !atlasPath) return;
     
-    const load = async (key, url) => {
-      if (!url) return;
-      const resolved = (World && typeof World.resolveAssetUrl === 'function') 
-        ? World.resolveAssetUrl(url) 
-        : url;
-      const tex = await glr.loadTexture(resolved);
-      if (tex && textures) {
-        textures[key] = tex;
-      }
-    };
+    const resolved = (World && typeof World.resolveAssetUrl === 'function') 
+      ? World.resolveAssetUrl(atlasPath) 
+      : atlasPath;
 
-    const promises = [];
-    if (road) promises.push(load('road', road));
-    if (cliff) promises.push(load('cliff', cliff));
-    if (rail) promises.push(load('rail', rail));
-    if (Array.isArray(horizon)) {
-      if (horizon[0]) promises.push(load('horizon1', horizon[0]));
-      if (horizon[1]) promises.push(load('horizon2', horizon[1]));
-      if (horizon[2]) promises.push(load('horizon3', horizon[2]));
+    const tex = await glr.loadTexture(resolved);
+    if (tex && textures) {
+      for (const key in textures) {
+        if (Object.prototype.hasOwnProperty.call(textures, key)) {
+          textures[key] = tex;
+        }
+      }
     }
-    
-    await Promise.all(promises);
   }
 
   global.Renderer = {

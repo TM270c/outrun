@@ -3,11 +3,13 @@
 
   const resolve = (p) => (World && typeof World.resolveAssetUrl === 'function' ? World.resolveAssetUrl(p) : p);
 
+  const SHEET_URL = resolve('tex/temptex-0.png');
+
   const TEXTURE_MANIFEST = Object.freeze({
-    tree: resolve('tex/temptex.png'),
-    animPlate01: resolve('tex/temptex.png'),
-    jeriplate: resolve('tex/temptex.png'),
-    snowman: resolve('tex/temptex.png'),
+    tree: SHEET_URL,
+    animPlate01: SHEET_URL,
+    jeriplate: SHEET_URL,
+    snowman: SHEET_URL,
   });
 
   const METRIC_FALLBACK = Object.freeze({
@@ -16,6 +18,7 @@
     aspect: 1,
     tint: [1, 1, 1, 1],
     textureKey: null,
+    frameNames: null,
     atlas: null,
   });
 
@@ -53,13 +56,16 @@
 
   const CATALOG_SOURCE = [
     {
-      id: 'tree_forest',
+      id: 'trees',
       texture: 'tree',
-      atlas: { columns: 4, frames: 16 },
+      frameNames: [
+        'trees_00', 'trees_01', 'trees_02', 'trees_03',
+        'trees_04', 'trees_05', 'trees_06', 'trees_07',
+        'trees_08', 'trees_09', 'trees_10', 'trees_11'
+      ],
       wN: 1.0, aspect: 1.0, tint: [1, 1, 1, 1],
-      assetMode: 'random',
-      assetFrames: '0-15',
-      // Randomly picks any frame (0-15) regardless of position
+      assetMode: 'grouped',
+      assetFrames: ['0-3', '4-7', '8-11'],
       physics: 'static',
       idleAnim: 'none',
       idleFrames: null,
@@ -67,26 +73,15 @@
       onInteract: 'none',
     },
     {
-      id: 'tree_anim',
+      id: 'snowbank_taper',
       texture: 'tree',
-      atlas: { columns: 4, frames: 16 },
+      frameNames: [
+        'snowbank_taper_00', 'snowbank_taper_01', 'snowbank_taper_02',
+        'snowbank_taper_03', 'snowbank_taper_04', 'snowbank_taper_05'
+      ],
       wN: 1.0, aspect: 1.0, tint: [1, 1, 1, 1],
-      assetMode: 'single',
-      assetFrames: '0-15',
-      physics: 'static',
-      idleAnim: 'loop',
-      idleFrames: '0-15',
-      idleSpeed: 0.08,
-      onInteract: 'none',
-    },
-    {
-      id: 'tree_forest_taper',
-      texture: 'tree',
-      atlas: { columns: 4, frames: 16 },
-      wN: 1.0, aspect: 1.0, tint: [1, 1, 1, 1],
-      assetMode: 'grouped',
-      assetFrames: ['0-3', '4-7', '8-11', '12-15'],
-      // Ordered groups: Small (0-3) -> Large (12-15). Used by 'taper' placement.
+      assetMode: 'random',
+      assetFrames: '0-5',
       physics: 'static',
       idleAnim: 'none',
       idleFrames: null,
@@ -96,7 +91,9 @@
     {
       id: 'pickup_orb',
       texture: 'animPlate01',
-      atlas: { columns: 4, frames: 16 },
+      frameNames: [
+        'pickup_orb_00', 'pickup_orb_01', 'pickup_orb_02', 'pickup_orb_03'
+      ],
       wN: 0.1, aspect: 1.0, tint: [1, 0.92, 0.2, 1],
       assetMode: 'single',
       assetFrames: '0-3',
@@ -109,7 +106,7 @@
     {
       id: 'snowman',
       texture: 'snowman',
-      atlas: { columns: 4, frames: 16 },
+      frameNames: ['snowman_00', 'snowman_01', 'snowman_02', 'snowman_03'],
       wN: 0.4, aspect: 1.0, tint: [1, 1, 1, 1],
       hitboxWN: 0.25,
       assetMode: 'single',
@@ -118,18 +115,20 @@
       collisionPush: 0.6, // Heavy: short slide
       cooldown: 0.5,      // Can be hit again after 0.5s
       slowdown: 0.5,      // Slows car by 50% on impact
-      idleAnim: 'none',
-      idleFrames: null,
-      idleSpeed: 0,
+      idleAnim: 'loop',
+      idleFrames: '0-3',
+      idleSpeed: 0.15,
       onInteract: 'none',
     },
     {
-      id: 'bush_ghost',
+      id: 'bush',
       texture: 'tree',
-      atlas: { columns: 4, frames: 16 },
+      frameNames: [
+        'bush_00', 'bush_01', 'bush_02', 'bush_03', 'bush_04', 'bush_05'
+      ],
       wN: 0.5, aspect: 1.0, tint: [0.2, 0.8, 0.2, 1],
       assetMode: 'random',
-      assetFrames: '0-15',
+      assetFrames: '0-5',
       physics: 'static',
       idleAnim: 'none',
       idleFrames: null,
@@ -137,22 +136,11 @@
       onInteract: 'none',
     },
     {
-      id: 'coin_gold',
-      texture: 'animPlate01',
-      atlas: { columns: 4, frames: 16 },
-      wN: 0.15, aspect: 1.0, tint: [1, 0.8, 0.1, 1],
-      assetMode: 'single',
-      assetFrames: '0-3',
-      physics: 'trigger',
-      idleAnim: 'loop',
-      idleFrames: '0-3',
-      idleSpeed: 0.1,
-      onInteract: 'toggle',
-    },
-    {
       id: 'crate_break',
       texture: 'jeriplate',
-      atlas: { columns: 4, frames: 16 },
+      frameNames: [
+        'crate_break_00', 'crate_break_01', 'crate_break_02', 'crate_break_03'
+      ],
       wN: 0.3, aspect: 1.0, tint: [0.6, 0.4, 0.2, 1],
       assetMode: 'single',
       assetFrames: '0',
@@ -164,20 +152,22 @@
       idleSpeed: 0,
       onInteract: 'playAnim',
       interactAnim: 'once',
-      interactFrames: '0-15',
+      interactFrames: '0-3',
       interactSpeed: 0.05,
       interactHold: true,
     },
     {
       id: 'hazard_signal',
       texture: 'animPlate01',
-      atlas: { columns: 4, frames: 16 },
+      frameNames: [
+        'hazard_signal_00', 'hazard_signal_01'
+      ],
       wN: 0.2, aspect: 1.0, tint: [1, 0.1, 0.1, 0.9],
       assetMode: 'single',
-      assetFrames: '0-15',
+      assetFrames: '0-1',
       physics: 'static',
       idleAnim: 'pingpong',
-      idleFrames: '0-15',
+      idleFrames: '0-1',
       idleSpeed: 0.05,
       onInteract: 'none',
     },
@@ -192,6 +182,7 @@
       aspect: source.aspect,
       tint: Object.freeze(source.tint.slice()),
       textureKey: source.texture,
+      frameNames: source.frameNames ? Object.freeze(source.frameNames.slice()) : null,
       atlas: source.atlas ? Object.freeze({
         columns: source.atlas.columns,
         totalFrames: source.atlas.frames,

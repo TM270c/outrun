@@ -13,7 +13,7 @@
   
   const MAX_BATCH_QUADS = 2048;
   const FLOATS_PER_VERT = 9;
-  const VERTS_PER_QUAD = 6;
+  const VERTS_PER_QUAD = 4;
 
   class GLRenderer {
     constructor(canvas) {
@@ -94,6 +94,21 @@
       this.batchData = new Float32Array(MAX_BATCH_QUADS * VERTS_PER_QUAD * FLOATS_PER_VERT);
       this.batchCount = 0;
       this.currentTexture = null;
+
+      this.ibo = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.ibo);
+      const indices = new Uint16Array(MAX_BATCH_QUADS * 6);
+      for (let i = 0; i < MAX_BATCH_QUADS; i++) {
+        const v = i * 4;
+        const idx = i * 6;
+        indices[idx + 0] = v + 0;
+        indices[idx + 1] = v + 1;
+        indices[idx + 2] = v + 2;
+        indices[idx + 3] = v + 0;
+        indices[idx + 4] = v + 2;
+        indices[idx + 5] = v + 3;
+      }
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
 
       gl.viewport(0,0,canvas.width,canvas.height);
       gl.disable(gl.DEPTH_TEST);
@@ -200,7 +215,7 @@
       // Always use texture mode, whiteTex handles solid colors
       gl.uniform1i(this.u_useTex, 1);
       
-      gl.drawArrays(gl.TRIANGLES, 0, this.batchCount * VERTS_PER_QUAD);
+      gl.drawElements(gl.TRIANGLES, this.batchCount * 6, gl.UNSIGNED_SHORT, 0);
       this.batchCount = 0;
     }
     drawQuadTextured(tex, quad, uv, tint, fog){
@@ -215,13 +230,13 @@
       const v = this.batchData;
       let i = this.batchCount * VERTS_PER_QUAD * FLOATS_PER_VERT;
       
-      // tri 1
+      // v1
       v[i++]=quad.x1; v[i++]=quad.y1; v[i++]=uv.u1; v[i++]=uv.v1; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[0];
+      // v2
       v[i++]=quad.x2; v[i++]=quad.y2; v[i++]=uv.u2; v[i++]=uv.v2; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[1];
+      // v3
       v[i++]=quad.x3; v[i++]=quad.y3; v[i++]=uv.u3; v[i++]=uv.v3; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[2];
-      // tri 2
-      v[i++]=quad.x1; v[i++]=quad.y1; v[i++]=uv.u1; v[i++]=uv.v1; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[0];
-      v[i++]=quad.x3; v[i++]=quad.y3; v[i++]=uv.u3; v[i++]=uv.v3; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[2];
+      // v4
       v[i++]=quad.x4; v[i++]=quad.y4; v[i++]=uv.u4; v[i++]=uv.v4; v[i++]=tintArray[0]; v[i++]=tintArray[1]; v[i++]=tintArray[2]; v[i++]=tintArray[3]; v[i++]=fogArray[3];
       
       this.batchCount++;
