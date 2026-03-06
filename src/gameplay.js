@@ -71,6 +71,7 @@
     pushZone,
     buildTrackFromCSV,
     buildCliffsFromCSV_Lite,
+    buildRoadTexFromCSV,
     enforceCliffWrap,
   } = World;
 
@@ -327,9 +328,10 @@
     SPECIAL:{ wN: 0.35, hitboxWN: 0.2, aspect: 1, tint: [1, 0.95, 0.7, 1], tex: () => null },
     DRIFT_SMOKE: {
       wN: 0.1,
-      aspect: 1.0,
+      aspect: 0.7,
       tint: [0.3, 0.5, 1.0, 0.85],
       textureKey: 'driftSmoke',
+      atlas: { columns: 4, totalFrames: 20 },
       tex: () => (World && World.assets && World.assets.textures) ? World.assets.textures.driftSmoke : null,
     },
     SPARKS: {
@@ -367,19 +369,23 @@
       hitboxWN,
       aspect: base.aspect,
       tint: Array.isArray(base.tint) ? base.tint.slice() : [1, 1, 1, 1],
-      tex(spr) {
-        const textures = (World && World.assets && World.assets.textures)
-          ? World.assets.textures
-          : null;
-        if (!textures) return null;
-        if (spr && spr.assetKey && textures[spr.assetKey]) {
-          return textures[spr.assetKey];
-        }
-        if (base.textureKey && textures[base.textureKey]) {
-          return textures[base.textureKey];
-        }
-        return null;
-      },
+      textureKey: base.textureKey,
+      atlas: base.atlas,
+      tex: (typeof base.tex === 'function')
+        ? base.tex
+        : (spr) => {
+          const textures = (World && World.assets && World.assets.textures)
+            ? World.assets.textures
+            : null;
+          if (!textures) return null;
+          if (spr && spr.assetKey && textures[spr.assetKey]) {
+            return textures[spr.assetKey];
+          }
+          if (base.textureKey && textures[base.textureKey]) {
+            return textures[base.textureKey];
+          }
+          return null;
+        },
       frameUv(frameIndex, spr) {
         const names = (spr && spr.frameNames) ? spr.frameNames : base.frameNames;
         if (names && Array.isArray(names) && names.length > 0) {
@@ -717,14 +723,22 @@
     return 0;
   }
 
-  function buildSpriteMetaOverrides(catalog){
-    const overrides = {};
-    if (!catalog || typeof catalog.forEach !== 'function') return overrides;
-    catalog.forEach((entry, spriteId) => {
-      const metrics = (entry && entry.metrics) ? entry.metrics : SPRITE_METRIC_FALLBACK;
-      overrides[spriteId] = createSpriteMetaEntry(metrics);
-    });
-    return overrides;
+  function buildFullSpriteMeta(catalog) {
+    const fullMeta = {};
+    // Process defaults first
+    for (const key in DEFAULT_SPRITE_META) {
+      if (Object.prototype.hasOwnProperty.call(DEFAULT_SPRITE_META, key)) {
+        fullMeta[key] = createSpriteMetaEntry(DEFAULT_SPRITE_META[key]);
+      }
+    }
+    // Then process catalog, overriding defaults
+    if (catalog && typeof catalog.forEach === 'function') {
+      catalog.forEach((entry, spriteId) => {
+        const metrics = (entry && entry.metrics) ? entry.metrics : SPRITE_METRIC_FALLBACK;
+        fullMeta[spriteId] = createSpriteMetaEntry(metrics);
+      });
+    }
+    return fullMeta;
   }
 
   function generateSpriteInstances(catalog, placements){
@@ -1278,6 +1292,7 @@
         drag: DRIFT_SMOKE_DRAG,
         lateralVel: 0,
       };
+      sprite.animFrame = Math.floor(Math.random() * 12);
       sprites.push(sprite);
     }
   }
@@ -2823,8 +2838,7 @@
       return;
     }
 
-    const metaOverrides = buildSpriteMetaOverrides(data.catalog);
-    state.spriteMeta = { ...DEFAULT_SPRITE_META, ...metaOverrides };
+    state.spriteMeta = buildFullSpriteMeta(data.catalog);
 
     const instances = generateSpriteInstances(data.catalog, data.placements);
 
@@ -2976,6 +2990,7 @@
     track: 'tracks/test-track.csv',
     cliffs: 'tracks/cliffs.csv',
     placement: 'tracks/placement.csv',
+    roadTex: 'tracks/demo/demo-roadtex.csv',
   };
 
   async function resetScene(options = {}) {
@@ -2985,10 +3000,12 @@
       activeSceneOptions.track = options.track;
       activeSceneOptions.cliffs = options.cliffs || 'tracks/cliffs.csv';
       activeSceneOptions.placement = options.placement || 'tracks/placement.csv';
+      activeSceneOptions.roadTex = options.roadTex || null;
     }
     const trackPath = activeSceneOptions.track;
     const cliffPath = activeSceneOptions.cliffs;
     const placementPath = activeSceneOptions.placement;
+    const roadTexPath = activeSceneOptions.roadTex;
 
     if (typeof buildTrackFromCSV === 'function') {
       try {
@@ -3018,15 +3035,57 @@
     const roadZones = ensureArray(data, 'roadTexZones');
     const railZones = ensureArray(data, 'railTexZones');
     const cliffZones = ensureArray(data, 'cliffTexZones');
+    const cliffLZones = ensureArray(data, 'cliffLTexZones');
+    const cliffRZones = ensureArray(data, 'cliffRTexZones');
 
     roadZones.length = 0;
     railZones.length = 0;
     cliffZones.length = 0;
+    cliffLZones.length = 0;
+    cliffRZones.length = 0;
 
-    if (segmentCount > 0 && typeof pushZone === 'function') {
-      pushZone(roadZones, 0, segmentCount - 1, 20);
-      pushZone(railZones, 0, segmentCount - 1, 20);
-      pushZone(cliffZones, 0, segmentCount - 1, 3);
+    if (roadTexPath && typeof buildRoadTexFromCSV === 'function') {
+      try {
+        await buildRoadTexFromCSV(roadTexPath);
+      } catch (err) {
+        console.warn('RoadTex CSV build failed', err);
+      }
+      pushZone(railZones, 0, segmentCount - 1, 20, 'rail');
+    } else if (segmentCount > 0 && typeof pushZone === 'function') {
+      const types = ['a', 'b', 'c'];
+      let currentType = 'a';
+      let cursor = 0;
+      const tileLen = 20;
+
+      while (cursor < segmentCount) {
+        // 1. Main Loop Section
+        const loopLen = 20 + Math.floor(Math.random() * 5) * 20; // 20-100 segments
+        const loopEnd = Math.min(cursor + loopLen - 1, segmentCount - 1);
+        
+        pushZone(roadZones, cursor, loopEnd, tileLen, `road_${currentType}`);
+        pushZone(cliffZones, cursor, loopEnd, 3, `cliff_${currentType}`);
+        
+        cursor = loopEnd + 1;
+        if (cursor >= segmentCount) break;
+
+        // 2. Transition Section
+        const nextType = types.filter(t => t !== currentType)[Math.floor(Math.random() * 2)];
+        const transEnd = Math.min(cursor + tileLen - 1, segmentCount - 1);
+        
+        // Determine transition key and direction
+        // Keys are road_a_b, road_a_c, road_b_c.
+        // If we want B->A, we use road_a_b flipped.
+        const pair = [currentType, nextType].sort();
+        const keyBase = `${pair[0]}_${pair[1]}`;
+        const isFlipped = currentType !== pair[0];
+
+        pushZone(roadZones, cursor, transEnd, tileLen, `road_${keyBase}`, isFlipped);
+        pushZone(cliffZones, cursor, transEnd, 3, `cliff_${keyBase}`, isFlipped);
+
+        currentType = nextType;
+        cursor = transEnd + 1;
+      }
+      pushZone(railZones, 0, segmentCount - 1, 20, 'rail');
     }
 
     let gateCount = 0;

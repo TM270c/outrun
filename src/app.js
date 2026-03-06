@@ -38,6 +38,7 @@
       cliffsPath: 'tracks/demo/demo-cliffs.csv',
       placementPath: 'tracks/demo/demo-placement.csv',
       previewPlacementPath: 'tracks/demo/demo-select.csv',
+      roadTexPath: 'tracks/demo/demo-roadtex.csv',
       atlasPath: 'tex/temptex-0.png',
     },
     {
@@ -48,6 +49,7 @@
       cliffsPath: 'tracks/summer/summer-cliffs.csv',
       placementPath: 'tracks/summer/summer-placement.csv',
       previewPlacementPath: 'tracks/summer/summer-select.csv',
+      roadTexPath: 'tracks/summer/summer-roadtex.csv',
       atlasPath: 'tex/temptex-1.png',
     },
     {
@@ -58,6 +60,7 @@
       cliffsPath: 'tracks/winter/winter-cliffs.csv',
       placementPath: 'tracks/winter/winter-placement.csv',
       previewPlacementPath: 'tracks/winter/winter-select.csv',
+      roadTexPath: 'tracks/winter/winter-roadtex.csv',
       atlasPath: 'tex/temptex-2.png',
     },
   ];
@@ -826,6 +829,7 @@
       track: 'tracks/select/select-track.csv',
       cliffs: 'tracks/select/select-cliffs.csv',
       placement: 'tracks/demo/demo-select.csv',
+      roadTex: null,
     }).catch((err) => console.warn('Attract reset failed', err));
 
     if (Renderer && Renderer.updateTrackTextures) {
@@ -886,6 +890,7 @@
         track: trackOption ? trackOption.trackPath : 'tracks/demo/demo-track.csv',
         cliffs: trackOption ? trackOption.cliffsPath : 'tracks/demo/demo-cliffs.csv',
         placement: trackOption ? trackOption.placementPath : 'tracks/demo/demo-placement.csv',
+        roadTex: trackOption ? trackOption.roadTexPath : null,
       }))
         .then(() => {
           if (Gameplay && typeof Gameplay.startRaceSession === 'function') {
@@ -945,6 +950,7 @@
         track: 'tracks/select/select-track.csv',
         cliffs: 'tracks/select/select-cliffs.csv',
         placement: 'tracks/demo/demo-select.csv',
+        roadTex: null,
       }))
         .catch((err) => console.error('Failed to reset scene after quitting', err));
 

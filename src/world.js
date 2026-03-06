@@ -152,6 +152,11 @@
   const roadWidthAt = () => track.roadWidth;
 
   const segments = [];
+  const roadTexZones = [];
+  const railTexZones = [];
+  const cliffTexZones = [];
+  const cliffLTexZones = [];
+  const cliffRTexZones = [];
   let trackLength = 0;
   let boostZoneIdCounter = 0;
 
@@ -466,6 +471,74 @@
     trackLength = segments.length * segmentLength;
   }
 
+  async function buildRoadTexFromCSV(url) {
+    const csvUrl = resolveAssetUrl(url);
+    let text = '';
+    try {
+      const res = await fetch(csvUrl);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      text = await res.text();
+    } catch (e) {
+      console.warn('RoadTex CSV load failed:', e);
+      return;
+    }
+
+    const lines = text.split(/\r?\n/);
+    const TRANSITION_LEN = 20;
+    const TILE_LEN = 20;
+
+    const parseSequence = (seqStr, prefix) => {
+      const zones = [];
+      const tokens = seqStr.split(',').map(s => s.trim()).filter(s => s);
+      let cursor = 0;
+      let lastType = null;
+
+      for (const token of tokens) {
+        const match = token.match(/^([a-zA-Z]+)(\d+)$/);
+        if (!match) continue;
+        const type = match[1].toLowerCase();
+        const len = parseInt(match[2], 10);
+        if (len <= 0) continue;
+
+        if (lastType && lastType !== type) {
+          // Insert transition
+          const pair = [lastType, type].sort();
+          const keyBase = `${pair[0]}_${pair[1]}`;
+          const isFlipped = lastType !== pair[0];
+          const transKey = `${prefix}_${keyBase}`;
+          
+          // Transition zone
+          pushZone(zones, cursor, cursor + TRANSITION_LEN - 1, TILE_LEN, transKey, isFlipped);
+          cursor += TRANSITION_LEN;
+        }
+
+        // Main zone
+        const mainKey = `${prefix}_${type}`;
+        pushZone(zones, cursor, cursor + len - 1, TILE_LEN, mainKey);
+        cursor += len;
+        lastType = type;
+      }
+      return zones;
+    };
+
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+      
+      // Format: type, sequence... (e.g. road, A100, B50)
+      // We need to split by first comma to get type, then the rest is sequence
+      const firstComma = line.indexOf(',');
+      if (firstComma === -1) continue;
+      
+      const type = line.substring(0, firstComma).trim().toLowerCase();
+      const seq = line.substring(firstComma + 1);
+
+      if (type === 'road') World.data.roadTexZones.push(...parseSequence(seq, 'road'));
+      else if (type === 'cliffl') World.data.cliffLTexZones.push(...parseSequence(seq, 'cliff'));
+      else if (type === 'cliffr') World.data.cliffRTexZones.push(...parseSequence(seq, 'cliff'));
+    }
+  }
+
   async function buildCliffsFromCSV_Lite(url){
     if (!segments.length) return;
     resetCliffSeries();
@@ -606,9 +679,9 @@
     }
   }
 
-  function pushZone(stack, start, end, tile = 1){
+  function pushZone(stack, start, end, tile = 1, key = null, flipped = false){
     if (end < start) [start, end] = [end, start];
-    stack.push({ start, end, tile: Math.max(1, tile|0) });
+    stack.push({ start, end, tile: Math.max(1, tile|0), key, flipped: !!flipped });
   }
 
   function findZone(stack, segIndex){
@@ -620,13 +693,30 @@
   }
 
   function vSpanForSeg(zones, segIndex){
-    const z = findZone(zones, segIndex);
-    if (!z) return [0,1];
+    let idx = segIndex;
+    if (zones && zones.length > 0) {
+      const last = zones[zones.length - 1];
+      const total = last.end + 1;
+      if (total > 0) {
+        idx = ((idx % total) + total) % total;
+      }
+    }
+
+    const z = findZone(zones, idx);
+    if (!z) return { v0: 0, v1: 1, key: null };
     const perSeg = 1 / Math.max(1, z.tile);
-    const segPos = (segIndex - z.start);
-    const v0 = (segPos % z.tile) * perSeg;
-    const v1 = v0 + perSeg;
-    return [v0, v1];
+    const segPos = (idx - z.start);
+    let v0 = (segPos % z.tile) * perSeg;
+    let v1 = v0 + perSeg;
+    
+    if (z.flipped) {
+      const t0 = (segPos % z.tile) * perSeg;
+      const t1 = t0 + perSeg;
+      v0 = 1 - t0;
+      v1 = 1 - t1;
+    }
+    
+    return { v0, v1, key: z.key };
   }
 
   const clampBoostLane = (v) => {
@@ -881,10 +971,51 @@
     return info.slope;
   }
 
+  function exportAtlasDebugImage(size = 2048) {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+
+    ctx.clearRect(0, 0, size, size);
+
+    Object.entries(atlasMap).forEach(([key, rect]) => {
+      const hue = Math.floor(Math.random() * 360);
+      const sat = 60 + Math.floor(Math.random() * 40);
+      const lit = 40 + Math.floor(Math.random() * 20);
+      ctx.fillStyle = `hsl(${hue}, ${sat}%, ${lit}%)`;
+
+      const x = Math.floor(rect.uMin * size);
+      const y = Math.floor(rect.vMin * size);
+      const w = Math.ceil((rect.uMax - rect.uMin) * size);
+      const h = Math.ceil((rect.vMax - rect.vMin) * size);
+
+      ctx.fillRect(x, y, w, h);
+
+      if (w > 40 && h > 14) {
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.font = '10px sans-serif';
+        ctx.fillText(key, x + 3, y + 11);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(key, x + 2, y + 10);
+      }
+    });
+
+    const a = document.createElement('a');
+    a.download = 'atlas-debug.png';
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+  }
+
   global.World = {
     data: {
       segments,
       get trackLength(){ return trackLength; },
+      roadTexZones,
+      railTexZones,
+      cliffTexZones,
+      cliffLTexZones,
+      cliffRTexZones,
     },
     assets: { manifest: assetManifest, textures, atlasMap },
     resolveAssetUrl,
@@ -896,6 +1027,7 @@
     groundProfileAt,
     roadWidthAt,
     buildTrackFromCSV,
+    buildRoadTexFromCSV,
     pushZone,
     vSpanForSeg,
     buildCliffsFromCSV_Lite,
@@ -912,5 +1044,6 @@
       laneToRoadRatio,
       getZoneLaneBounds,
     },
+    exportAtlasDebugImage,
   };
 })(window);

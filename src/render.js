@@ -72,7 +72,7 @@
   const PLAYER_SPRITE_HEIGHT_DEADZONE = 0;
   const PLAYER_SPRITE_SMOOTH_TIME = 0.12;
   const PLAYER_SPRITE_LATERAL_MAX = 0.045;
-  const PLAYER_SPRITE_INPUT_WEIGHT = 0.55;
+  const PLAYER_SPRITE_INPUT_WEIGHT = 0.8;
   const PLAYER_SPRITE_LATERAL_WEIGHT = 0.3;
   const PLAYER_SPRITE_CURVE_WEIGHT = 0.15;
   const PLAYER_SPRITE_SPEED_FLOOR = 0.25;
@@ -166,8 +166,14 @@
 
     const w = rect.uMax - rect.uMin;
     const h = rect.vMax - rect.vMin;
-    const mapU = (u) => rect.uMin + ((u % 1 + 1) % 1) * w;
-    const mapV = (v) => rect.vMin + ((v % 1 + 1) % 1) * h;
+    const mapU = (u) => {
+      const t = (u === 1.0) ? 1.0 : ((u % 1 + 1) % 1);
+      return rect.uMin + t * w;
+    };
+    const mapV = (v) => {
+      const t = (v === 1.0) ? 1.0 : ((v % 1 + 1) % 1);
+      return rect.vMin + t * h;
+    };
 
     return {
       tex,
@@ -407,9 +413,7 @@
     }
 
     const rawSteerValue = clamp(playerSpriteBlendState.steer, -1, 1);
-    const isDrifting = state && state.driftState === 'drifting';
-    const steerLimit = isDrifting ? 1 : 0.5;
-    const steerValue = clamp(rawSteerValue, -steerLimit, steerLimit);
+    const steerValue = rawSteerValue;
     const heightValue = clamp(playerSpriteBlendState.height, -1, 1);
     const samples = computePlayerAtlasSamples(steerValue, heightValue, columns, rows);
 
@@ -854,9 +858,9 @@
     const x1_B = x1_A     - dxB0 * k1;
     const x2_B = x2_A     - dxB1 * k2;
     const quadA = { x1:x1_A, y1:yA1, x2:x1_inner, y2:y1_inner, x3:x2_inner, y3:y2_inner, x4:x2_A, y4:yA2 };
-    const uvA   = { u1:u0, v1:0, u2:u0, v2:0, u3:u1, v3:1, u4:u1, v4:1 };
+    const uvA   = { u1:u0, v1:0, u2:u1, v2:0, u3:u1, v3:1, u4:u0, v4:1 };
     const quadB = { x1:x1_B, y1:yB1, x2:x1_A, y2:yA1, x3:x2_A, y3:yA2, x4:x2_B, y4:yB2 };
-    const uvB   = { u1:u0, v1:0, u2:u0, v2:0, u3:u1, v3:1, u4:u1, v4:1 };
+    const uvB   = { u1:u1, v1:0, u2:u0, v2:0, u3:u0, v3:1, u4:u1, v4:1 };
     return {quadA, uvA, quadB, uvB, x1_inner, x2_inner, x1_A, x2_A, x1_B, x2_B};
   }
   function makeCliffRightQuads(x1,y1,w1, x2,y2,w2, yA1,yA2, yB1,yB2, dxA0, dxA1, dxB0, dxB1, u0,u1, rw1, rw2){
@@ -868,9 +872,9 @@
     const x1_B = x1_A     + dxB0 * k1;
     const x2_B = x2_A     + dxB1 * k2;
     const quadA = { x1:x1_inner, y1:y1_inner, x2:x1_A, y2:yA1, x3:x2_A, y3:yA2, x4:x2_inner, y4:y2_inner };
-    const uvA   = { u1:u0, v1:0, u2:u0, v2:0, u3:u1, v3:1, u4:u1, v4:1 };
+    const uvA   = { u1:u1, v1:0, u2:u0, v2:0, u3:u0, v3:1, u4:u1, v4:1 };
     const quadB = { x1:x1_A, y1:yA1, x2:x1_B, y2:yB1, x3:x2_B, y3:yB2, x4:x2_A, y4:yA2 };
-    const uvB   = { u1:u0, v1:0, u2:u0, v2:0, u3:u1, v3:1, u4:u1, v4:1 };
+    const uvB   = { u1:u0, v1:0, u2:u1, v2:0, u3:u1, v3:1, u4:u0, v4:1 };
     return {quadA, uvA, quadB, uvB, x1_inner, x2_inner, x1_A, x2_A, x1_B, x2_B};
   }
 
@@ -891,26 +895,47 @@
     const scaledH = H * BACKDROP_SCALE;
     const centerX = W * 0.5;
     const centerY = H * 0.5;
-    const halfScaledW = scaledW * 0.5;
-    const halfScaledH = scaledH * 0.5;
-    const quad = {
-      x1: centerX - halfScaledW,
-      y1: centerY - halfScaledH,
-      x2: centerX + halfScaledW,
-      y2: centerY - halfScaledH,
-      x3: centerX + halfScaledW,
-      y3: centerY + halfScaledH,
-      x4: centerX - halfScaledW,
-      y4: centerY + halfScaledH,
-    };
-    const uv = {u1: uOffset, v1: 0, u2: uOffset+cfg.uvSpanX, v2: 0, u3: uOffset+cfg.uvSpanX, v3: cfg.uvSpanY, u4: uOffset, v4: cfg.uvSpanY};
+    const xLeft = centerX - scaledW * 0.5;
+    const yTop = centerY - scaledH * 0.5;
+    const yBottom = centerY + scaledH * 0.5;
+
     const useTextures = areTexturesEnabled();
-    const { tex: atlasTex, uv: atlasUV } = resolveAtlas(cfg.key, uv);
-    if (useTextures){
-      glr.drawQuadTextured(atlasTex, quad, atlasUV);
-    } else {
+
+    if (!useTextures) {
+      const quad = {
+        x1: xLeft, y1: yTop,
+        x2: xLeft + scaledW, y2: yTop,
+        x3: xLeft + scaledW, y3: yBottom,
+        x4: xLeft, y4: yBottom,
+      };
       perf.registerSolidType('horizon');
       glr.drawQuadSolid(quad, randomColorFor(`parallax:${cfg.key || 'layer'}`));
+      return;
+    }
+
+    const uvSpanX = cfg.uvSpanX || 1;
+    const uvSpanY = cfg.uvSpanY || 1;
+    const uStart = uOffset;
+    const uEnd = uOffset + uvSpanX;
+    const iStart = Math.floor(uStart);
+    const iEnd = Math.floor(uEnd);
+
+    for (let i = iStart; i <= iEnd; i++) {
+      const segU1 = Math.max(uStart, i);
+      const segU2 = Math.min(uEnd, i + 1);
+      if (segU2 <= segU1 + 1e-5) continue;
+
+      const localU1 = segU1 - i;
+      const localU2 = segU2 - i;
+      const t1 = (segU1 - uStart) / uvSpanX;
+      const t2 = (segU2 - uStart) / uvSpanX;
+      const sx1 = xLeft + t1 * scaledW;
+      const sx2 = xLeft + t2 * scaledW;
+
+      const quad = { x1: sx1, y1: yTop, x2: sx2, y2: yTop, x3: sx2, y3: yBottom, x4: sx1, y4: yBottom };
+      const uv = { u1: localU1, v1: 0, u2: localU2, v2: 0, u3: localU2, v3: uvSpanY, u4: localU1, v4: uvSpanY };
+      const { tex: atlasTex, uv: atlasUV } = resolveAtlas(cfg.key, uv);
+      glr.drawQuadTextured(atlasTex, quad, atlasUV);
     }
   }
   function renderHorizon(){
@@ -1467,6 +1492,8 @@
       road: zonesFor('road'),
       rail: zonesFor('rail'),
       cliff: zonesFor('cliff'),
+      cliffL: zonesFor('cliffL'),
+      cliffR: zonesFor('cliffR'),
     };
 
     // Use wrapped sCam for world generation, but original linear sCam for player projection
@@ -1544,6 +1571,25 @@
     state.playerTiltDeg += (cliffDeg - state.playerTiltDeg) * 0.35;
   }
 
+  function getZoneLimit(zones, absIdx) {
+    if (!zones || !zones.length) return Infinity;
+    const last = zones[zones.length - 1];
+    const total = last.end + 1;
+    if (total <= 0) return Infinity;
+    const idx = ((absIdx % total) + total) % total;
+    for (let i = 0; i < zones.length; i++) {
+      const z = zones[i];
+      if (idx >= z.start && idx <= z.end) {
+        const distToZoneEnd = z.end - idx + 1;
+        const tile = Math.max(1, z.tile || 1);
+        const offsetInZone = idx - z.start;
+        const distToTileEnd = tile - (offsetInZone % tile);
+        return Math.min(distToZoneEnd, distToTileEnd);
+      }
+    }
+    return Infinity;
+  }
+
   function buildWorldDrawList(baseSeg, basePct, frame, zoneData, drawList){
     const { sCam, camX, camY } = frame;
     const trackLength = getTrackLength();
@@ -1580,6 +1626,13 @@
       }
 
       const idx = (baseSeg.index + n) % segments.length;
+
+      const limitRoad = getZoneLimit(zoneData.road, idx);
+      const limitRail = getZoneLimit(zoneData.rail, idx);
+      const limitCliffL = getZoneLimit(zoneData.cliffL.length ? zoneData.cliffL : zoneData.cliff, idx);
+      const limitCliffR = getZoneLimit(zoneData.cliffR.length ? zoneData.cliffR : zoneData.cliff, idx);
+      step = Math.min(step, limitRoad, limitRail, limitCliffL, limitCliffR);
+
       const seg = segments[idx];
       const looped = seg.index < baseSeg.index;
       const camSRef = sCam - (looped ? trackLength : 0);
@@ -1702,12 +1755,25 @@
         rw1, rw2
       ) : null;
 
-      let [v0Road, v1Road] = vSpanForSeg(zoneData.road, idx);
-      v1Road = v0Road + (v1Road - v0Road) * step;
-      let [v0Rail, v1Rail] = vSpanForSeg(zoneData.rail, idx);
-      v1Rail = v0Rail + (v1Rail - v0Rail) * step;
-      let [v0Cliff, v1Cliff] = vSpanForSeg(zoneData.cliff, idx);
-      v1Cliff = v0Cliff + (v1Cliff - v0Cliff) * step;
+      const roadSpanStart = vSpanForSeg(zoneData.road, idx);
+      const roadSpanEnd = vSpanForSeg(zoneData.road, idxEnd);
+      const v0Road = clamp01(roadSpanStart.v0);
+      const v1Road = clamp01(roadSpanEnd.v1);
+
+      const railSpanStart = vSpanForSeg(zoneData.rail, idx);
+      const railSpanEnd = vSpanForSeg(zoneData.rail, idxEnd);
+      const v0Rail = clamp01(railSpanStart.v0);
+      const v1Rail = clamp01(railSpanEnd.v1);
+
+      const cliffLSpanStart = vSpanForSeg(zoneData.cliffL.length ? zoneData.cliffL : zoneData.cliff, idx);
+      const cliffLSpanEnd = vSpanForSeg(zoneData.cliffL.length ? zoneData.cliffL : zoneData.cliff, idxEnd);
+      const v0CliffL = clamp01(cliffLSpanStart.v0);
+      const v1CliffL = clamp01(cliffLSpanEnd.v1);
+
+      const cliffRSpanStart = vSpanForSeg(zoneData.cliffR.length ? zoneData.cliffR : zoneData.cliff, idx);
+      const cliffRSpanEnd = vSpanForSeg(zoneData.cliffR.length ? zoneData.cliffR : zoneData.cliff, idxEnd);
+      const v0CliffR = clamp01(cliffRSpanStart.v0);
+      const v1CliffR = clamp01(cliffRSpanEnd.v1);
 
       const stripCmd = allocDrawCommand();
       stripCmd.type = 'strip';
@@ -1727,13 +1793,19 @@
       stripCmd.v1Road = v1Road;
       stripCmd.v0Rail = v0Rail;
       stripCmd.v1Rail = v1Rail;
-      stripCmd.v0Cliff = v0Cliff;
-      stripCmd.v1Cliff = v1Cliff;
+      stripCmd.v0CliffL = v0CliffL;
+      stripCmd.v1CliffL = v1CliffL;
+      stripCmd.v0CliffR = v0CliffR;
+      stripCmd.v1CliffR = v1CliffR;
       stripCmd.fogRoad = fogRoad;
       stripCmd.p1LS = p1LS;
       stripCmd.p2LS = p2LS;
       stripCmd.p1RS = p1RS;
       stripCmd.p2RS = p2RS;
+      stripCmd.roadKey = roadSpanStart.key;
+      stripCmd.cliffKeyL = cliffLSpanStart.key;
+      stripCmd.cliffKeyR = cliffRSpanStart.key;
+      stripCmd.railKey = railSpanStart.key;
       drawList.push(stripCmd);
 
       for (const item of currentStripItems) {
@@ -2232,8 +2304,10 @@
       v1Road,
       v0Rail,
       v1Rail,
-      v0Cliff,
-      v1Cliff,
+      v0CliffL,
+      v1CliffL,
+      v0CliffR,
+      v1CliffR,
       fogRoad,
       visibleRoad,
       segIndex,
@@ -2244,6 +2318,10 @@
       p1RS,
       p2RS,
       clipT = 0,
+      roadKey,
+      cliffKeyL,
+      cliffKeyR,
+      railKey,
     } = it;
 
     const texturesEnabled = areTexturesEnabled();
@@ -2263,7 +2341,8 @@
     const group = ((segIndex / debug.span) | 0) % 2;
     const tint = group ? debug.colors.a : debug.colors.b;
     const debugFill = debug.mode === 'fill';
-      const cliffTexKey = texturesEnabled ? 'cliff' : null;
+    const cliffTexL = texturesEnabled ? (cliffKeyL || 'cliff_a') : null;
+    const cliffTexR = texturesEnabled ? (cliffKeyR || 'cliff_a') : null;
     const fillCliffs = debugFill || !texturesEnabled;
 
     const leftQuadA = L ? padWithSpriteOverlap(L.quadA) : null;
@@ -2273,8 +2352,8 @@
 
     const drawLeftCliffs = (solid = false) => {
       if (!L) return;
-      const uvA = { ...L.uvA, v1: v0Cliff, v2: v0Cliff, v3: v1Cliff, v4: v1Cliff };
-      const uvB = { ...L.uvB, v1: v0Cliff, v2: v0Cliff, v3: v1Cliff, v4: v1Cliff };
+      const uvA = { ...L.uvA, v1: v0CliffL, v2: v0CliffL, v3: v1CliffL, v4: v1CliffL };
+      const uvB = { ...L.uvB, v1: v0CliffL, v2: v0CliffL, v3: v1CliffL, v4: v1CliffL };
 
       // If outer (B) is higher (smaller Y) than inner (A), draw A then B.
       // If outer (B) is lower (larger Y) than inner (A), draw B then A.
@@ -2284,15 +2363,15 @@
       const uv1 = bIsHigher ? uvA : uvB;
       const uv2 = bIsHigher ? uvB : uvA;
 
-        if (solid || !cliffTexKey) {
+        if (solid || !cliffTexL) {
         const solidTint = debugFill ? tint : randomColorFor(`cliffL:${segIndex}`);
         perf.registerSolidType('cliff');
         perf.registerSolidType('cliff');
         glr.drawQuadSolid(first, solidTint, fogCliff);
         glr.drawQuadSolid(second, solidTint, fogCliff);
       } else {
-          const { tex: t1, uv: u1 } = resolveAtlas(cliffTexKey, uv1);
-          const { tex: t2, uv: u2 } = resolveAtlas(cliffTexKey, uv2);
+          const { tex: t1, uv: u1 } = resolveAtlas(cliffTexL, uv1);
+          const { tex: t2, uv: u2 } = resolveAtlas(cliffTexL, uv2);
           glr.drawQuadTextured(t1, first, u1, undefined, fogCliff);
           glr.drawQuadTextured(t2, second, u2, undefined, fogCliff);
       }
@@ -2300,8 +2379,8 @@
 
     const drawRightCliffs = (solid = false) => {
       if (!R) return;
-      const uvA = { ...R.uvA, v1: v0Cliff, v2: v0Cliff, v3: v1Cliff, v4: v1Cliff };
-      const uvB = { ...R.uvB, v1: v0Cliff, v2: v0Cliff, v3: v1Cliff, v4: v1Cliff };
+      const uvA = { ...R.uvA, v1: v0CliffR, v2: v0CliffR, v3: v1CliffR, v4: v1CliffR };
+      const uvB = { ...R.uvB, v1: v0CliffR, v2: v0CliffR, v3: v1CliffR, v4: v1CliffR };
 
       // If outer (B) is higher (smaller Y) than inner (A), draw A then B.
       // If outer (B) is lower (larger Y) than inner (A), draw B then A.
@@ -2311,15 +2390,15 @@
       const uv1 = bIsHigher ? uvA : uvB;
       const uv2 = bIsHigher ? uvB : uvA;
 
-        if (solid || !cliffTexKey) {
+        if (solid || !cliffTexR) {
         const solidTint = debugFill ? tint : randomColorFor(`cliffR:${segIndex}`);
         perf.registerSolidType('cliff');
         perf.registerSolidType('cliff');
         glr.drawQuadSolid(first, solidTint, fogCliff);
         glr.drawQuadSolid(second, solidTint, fogCliff);
       } else {
-          const { tex: t1, uv: u1 } = resolveAtlas(cliffTexKey, uv1);
-          const { tex: t2, uv: u2 } = resolveAtlas(cliffTexKey, uv2);
+          const { tex: t1, uv: u1 } = resolveAtlas(cliffTexR, uv1);
+          const { tex: t2, uv: u2 } = resolveAtlas(cliffTexR, uv2);
           glr.drawQuadTextured(t1, first, u1, undefined, fogCliff);
           glr.drawQuadTextured(t2, second, u2, undefined, fogCliff);
       }
@@ -2346,7 +2425,7 @@
         drawBoostZonesOnStrip(boostZones, x1, y1, x2, y2, w1, w2, fogRoad, segIndex);
       }
     } else {
-        const roadTex = 'road';
+        const roadTex = roadKey || 'road_a';
         drawRoadStrip(x1, y1, w1, x2, y2, w2, v0Road, v1Road, fogRoad, roadTex, segIndex);
       drawBoostZonesOnStrip(boostZones, x1, y1, x2, y2, w1, w2, fogRoad, segIndex);
     }
@@ -2355,7 +2434,7 @@
     if (R && !rightIsNegative) drawRightCliffs(fillCliffs);
 
     if (seg && seg.features && seg.features.rail){
-        const texRailKey = texturesEnabled ? 'rail' : null;
+        const texRailKey = texturesEnabled ? (railKey || 'rail') : null;
 
       const xL1 = x1 - w1 * track.railInset;
       const xL2 = x2 - w2 * track.railInset;

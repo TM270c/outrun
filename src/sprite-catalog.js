@@ -63,7 +63,7 @@
         'trees_04', 'trees_05', 'trees_06', 'trees_07',
         'trees_08', 'trees_09', 'trees_10', 'trees_11'
       ],
-      wN: 1.0, aspect: 1.0, tint: [1, 1, 1, 1],
+      wN: 0.8, aspect: 1.0, tint: [1, 1, 1, 1],
       assetMode: 'grouped',
       assetFrames: ['0-3', '4-7', '8-11'],
       physics: 'static',
