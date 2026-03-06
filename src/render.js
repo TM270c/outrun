@@ -2647,6 +2647,28 @@
     };
   })();
 
+  function renderFPS() {
+    if (!ctxHUD) return;
+    // If matte is not active, we need to clear the previous frame's text.
+    // If matte is active, it clears the canvas itself in resetMatte.draw().
+    if (!resetMatte.active) {
+      ctxHUD.clearRect(0, 0, HUD_W, HUD_H);
+    }
+
+    const stats = perf.getLastFrameStats();
+    const fps = Math.round(stats.fps);
+
+    ctxHUD.save();
+    ctxHUD.font = 'bold 12px monospace';
+    ctxHUD.textAlign = 'right';
+    ctxHUD.textBaseline = 'top';
+    ctxHUD.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    ctxHUD.fillText(`FPS: ${fps}`, HUD_W - 4, 5);
+    ctxHUD.fillStyle = '#00ff00';
+    ctxHUD.fillText(`FPS: ${fps}`, HUD_W - 5, 4);
+    ctxHUD.restore();
+  }
+
   function attach(glRenderer, dom){
     glr = glRenderer;
     perf.wrapRenderer(glr);
@@ -2689,6 +2711,7 @@
       perf.endFrame();
       renderOverlay();
       resetMatte.draw();
+      renderFPS();
       requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
